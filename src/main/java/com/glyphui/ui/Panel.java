@@ -160,11 +160,21 @@ public class Panel extends Component {
             bgPaint.close();
         }
 
-        // Render all children
-        for (Component child : children) {
-            if (child.isVisible()) {
-                child.render(canvas);
+        // Save the canvas state and translate to panel's local coordinate system
+        io.github.humbleui.skija.Canvas nativeCanvas = canvas.getNativeCanvas();
+        int saveCount = nativeCanvas.save();
+        nativeCanvas.translate(x, y);
+
+        try {
+            // Render all children in local coordinates
+            for (Component child : children) {
+                if (child.isVisible()) {
+                    child.render(canvas);
+                }
             }
+        } finally {
+            // Restore the canvas state
+            nativeCanvas.restoreToCount(saveCount);
         }
     }
 
@@ -174,11 +184,24 @@ public class Panel extends Component {
             return;
         }
 
+        // Convert mouse coordinates to local coordinate system for children
+        int localX = event.getX() - (int)x;
+        int localY = event.getY() - (int)y;
+        
+        // Create a new MouseEvent with local coordinates
+        com.glyphui.events.MouseEvent localEvent = new com.glyphui.events.MouseEvent(
+            event.getType(),
+            localX,
+            localY,
+            event.getButton(),
+            event.getClickCount()
+        );
+
         // Propagate event to children in reverse order (top-most first)
         for (int i = children.size() - 1; i >= 0; i--) {
             Component child = children.get(i);
             if (child.isVisible() && child.isEnabled()) {
-                child.onMouseEvent(event);
+                child.onMouseEvent(localEvent);
             }
         }
     }

@@ -66,8 +66,9 @@ public class FlowLayout extends LayoutManager {
 
     @Override
     public void layout(Panel panel) {
-        float currentX = panel.getX() + padding;
-        float currentY = panel.getY() + padding;
+        // Use local coordinates - start at padding within the panel
+        float currentX = padding;
+        float currentY = padding;
         float maxY = currentY;
         float panelWidth = panel.getWidth();
 
@@ -79,17 +80,17 @@ public class FlowLayout extends LayoutManager {
             // Get the preferred height of the component
             float componentHeight = component.getPreferredHeight();
             
-            // Check if component fits in current row
-            if (currentX + component.getWidth() > panel.getX() + panelWidth - padding) {
+            // Check if component fits in current row (using local coordinates)
+            if (currentX + component.getWidth() > panelWidth - padding) {
                 // Move to next row
-                currentX = panel.getX() + padding;
+                currentX = padding;
                 currentY = maxY + gap;
             }
 
             // Set the component height to its preferred height
             component.setHeight(componentHeight);
 
-            // Position the component
+            // Position the component in local coordinates
             component.setX(currentX);
             component.setY(currentY);
 
