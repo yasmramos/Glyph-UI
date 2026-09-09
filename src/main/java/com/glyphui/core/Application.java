@@ -12,10 +12,14 @@ import org.lwjgl.glfw.GLFWKeyCallbackI;
 import org.lwjgl.glfw.GLFWMouseButtonCallbackI;
 import org.lwjgl.glfw.GLFWCursorPosCallbackI;
 import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 
 import java.util.EnumSet;
 
 import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL30.*;
 
 /**
  * Main application class that manages the event loop, rendering, and window lifecycle.
@@ -25,6 +29,7 @@ public class Application {
     private Surface surface;
     private Canvas canvas;
     private Panel rootPanel;
+    private DirectContext directContext;
     private boolean running;
     private double lastFrameTime;
     private int targetFPS;
@@ -68,7 +73,7 @@ public class Application {
                 return false;
             }
 
-            // Initialize Skija surface
+            // Initialize Skija surface with GPU backend
             initSurface();
 
             // Setup callbacks
@@ -90,15 +95,47 @@ public class Application {
     }
 
     /**
-     * Initializes the Skija surface for rendering.
+     * Initializes the Skija surface with GPU backend.
      */
     private void initSurface() {
         int width = window.getWidth();
         int height = window.getHeight();
 
-        // Create Skija surface using raster backend (no OpenGL context needed)
-        surface = Surface.makeRaster(
-            ImageInfo.makeN32Premul(width, height)
+        // Create OpenGL context is already current from Window.create()
+        
+        // Create Skija DirectContext for GPU backend
+        directContext = DirectContext.makeGL();
+        if (directContext == null) {
+            throw new RuntimeException("Failed to create Skija DirectContext");
+        }
+
+        // Get framebuffer ID (0 for default framebuffer)
+        int[] fbIdArray = new int[1];
+        GL11.glGetIntegerv(GL_FRAMEBUFFER_BINDING, fbIdArray);
+        int fbId = fbIdArray[0];
+        
+        // Create BackendRenderTarget for the OpenGL framebuffer
+        // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
+        BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
+            width, 
+            height, 
+            0,      // samples
+            0,      // stencil
+            fbId, 
+            0x8058  // GL_RGBA8 constant
+        );
+
+        if (renderTarget == null) {
+            throw new RuntimeException("Failed to create BackendRenderTarget");
+        }
+
+        // Create surface wrapping the OpenGL framebuffer
+        surface = Surface.wrapBackendRenderTarget(
+            directContext,
+            renderTarget,
+            SurfaceOrigin.BOTTOM_LEFT,
+            SurfaceColorFormat.RGBA_8888,
+            ColorSpace.getSRGB()
         );
 
         if (surface == null) {
@@ -172,8 +209,33 @@ public class Application {
             surface.close();
         }
 
-        surface = Surface.makeRaster(
-            ImageInfo.makeN32Premul(width, height)
+        // Get framebuffer ID (0 for default framebuffer)
+        int[] fbIdArray = new int[1];
+        GL11.glGetIntegerv(GL_FRAMEBUFFER_BINDING, fbIdArray);
+        int fbId = fbIdArray[0];
+        
+        // Create BackendRenderTarget for the OpenGL framebuffer
+        // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
+        BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
+            width, 
+            height, 
+            0,      // samples
+            0,      // stencil
+            fbId, 
+            0x8058  // GL_RGBA8 constant
+        );
+
+        if (renderTarget == null) {
+            throw new RuntimeException("Failed to recreate BackendRenderTarget");
+        }
+
+        // Create surface wrapping the OpenGL framebuffer
+        surface = Surface.wrapBackendRenderTarget(
+            directContext,
+            renderTarget,
+            SurfaceOrigin.BOTTOM_LEFT,
+            SurfaceColorFormat.RGBA_8888,
+            ColorSpace.getSRGB()
         );
 
         if (surface == null) {
@@ -280,8 +342,16 @@ public class Application {
         // Render root panel and all children
         rootPanel.render(canvas);
 
-        // Flush drawing commands
+        // Flush drawing commands to GPU
         canvas.flush();
+        
+        // Flush DirectContext if available
+        if (directContext != null) {
+            directContext.flush();
+        }
+        
+        // Swap buffers to present the frame
+        window.swapBuffers();
     }
 
     /**
@@ -295,6 +365,9 @@ public class Application {
      * Cleans up resources and destroys the application.
      */
     public void destroy() {
+        if (directContext != null) {
+            directContext.close();
+        }
         if (surface != null) {
             surface.close();
         }
