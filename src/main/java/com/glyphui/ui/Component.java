@@ -241,4 +241,14 @@ public abstract class Component {
     public void dispose() {
         // Default implementation does nothing
     }
+    
+    /**
+     * Gets the preferred height of this component.
+     * Subclasses can override this to provide content-based sizing.
+     * 
+     * @return the preferred height
+     */
+    public float getPreferredHeight() {
+        return height;
+    }
 }
