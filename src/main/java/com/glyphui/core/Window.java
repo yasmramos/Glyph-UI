@@ -182,6 +182,54 @@ public class Window {
     }
 
     /**
+     * Gets the window content scale X factor for HiDPI support.
+     *
+     * @return the X scale factor
+     */
+    public float getContentScaleX() {
+        float[] xScale = new float[1];
+        float[] yScale = new float[1];
+        glfwGetWindowContentScale(windowHandle, xScale, yScale);
+        return xScale[0];
+    }
+
+    /**
+     * Gets the window content scale Y factor for HiDPI support.
+     *
+     * @return the Y scale factor
+     */
+    public float getContentScaleY() {
+        float[] xScale = new float[1];
+        float[] yScale = new float[1];
+        glfwGetWindowContentScale(windowHandle, xScale, yScale);
+        return yScale[0];
+    }
+
+    /**
+     * Gets the window width in screen coordinates (not framebuffer pixels).
+     *
+     * @return the width in screen coordinates
+     */
+    public int getWindowWidth() {
+        int[] w = new int[1];
+        int[] h = new int[1];
+        glfwGetWindowSize(windowHandle, w, h);
+        return w[0];
+    }
+
+    /**
+     * Gets the window height in screen coordinates (not framebuffer pixels).
+     *
+     * @return the height in screen coordinates
+     */
+    public int getWindowHeight() {
+        int[] w = new int[1];
+        int[] h = new int[1];
+        glfwGetWindowSize(windowHandle, w, h);
+        return h[0];
+    }
+
+    /**
      * Destroys the window and terminates GLFW.
      */
     public void destroy() {

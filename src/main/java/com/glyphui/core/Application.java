@@ -148,7 +148,7 @@ public class Application {
     }
 
     /**
-     * Sets up GLFW callbacks for events.
+     * Sets up GLFW callbacks for events with HiDPI support.
      */
     private void setupCallbacks() {
         long windowHandle = window.getWindowHandle();
@@ -160,24 +160,49 @@ public class Application {
         };
         GLFWFramebufferSizeCallback.create(framebufferCallback).set(windowHandle);
 
-        // Mouse button callback
+        // Mouse button callback with HiDPI coordinate conversion
         GLFWMouseButtonCallbackI mouseButtonCallback = (w, button, action, mods) -> {
             MouseButton glyphButton = convertMouseButton(button);
             MouseEventType type = (action == GLFW_PRESS) ? MouseEventType.PRESS : MouseEventType.RELEASE;
             
             mouseButtons[button] = (action == GLFW_PRESS);
             
-            MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, glyphButton, 1);
+            // Convert screen coordinates to framebuffer coordinates for HiDPI displays
+            int[] fbWidth = new int[1];
+            int[] fbHeight = new int[1];
+            glfwGetFramebufferSize(windowHandle, fbWidth, fbHeight);
+            int[] winWidth = new int[1];
+            int[] winHeight = new int[1];
+            glfwGetWindowSize(windowHandle, winWidth, winHeight);
+            
+            float scaleX = (float) fbWidth[0] / winWidth[0];
+            float scaleY = (float) fbHeight[0] / winHeight[0];
+            
+            int fbX = (int) (mouseX * scaleX);
+            int fbY = (int) (mouseY * scaleY);
+            
+            MouseEvent event = new MouseEvent(type, fbX, fbY, glyphButton, 1);
             rootPanel.onMouseEvent(event);
         };
         GLFWMouseButtonCallback.create(mouseButtonCallback).set(windowHandle);
 
-        // Cursor position callback
+        // Cursor position callback with HiDPI coordinate conversion
         GLFWCursorPosCallbackI cursorCallback = (w, xpos, ypos) -> {
-            mouseX = xpos;
-            mouseY = ypos;
+            // Convert screen coordinates to framebuffer coordinates for HiDPI displays
+            int[] fbWidth = new int[1];
+            int[] fbHeight = new int[1];
+            glfwGetFramebufferSize(windowHandle, fbWidth, fbHeight);
+            int[] winWidth = new int[1];
+            int[] winHeight = new int[1];
+            glfwGetWindowSize(windowHandle, winWidth, winHeight);
             
-            MouseEvent event = new MouseEvent(MouseEventType.MOVE, (int) xpos, (int) ypos, MouseButton.LEFT, 0);
+            float scaleX = (float) fbWidth[0] / winWidth[0];
+            float scaleY = (float) fbHeight[0] / winHeight[0];
+            
+            mouseX = xpos * scaleX;
+            mouseY = ypos * scaleY;
+            
+            MouseEvent event = new MouseEvent(MouseEventType.MOVE, (int) mouseX, (int) mouseY, MouseButton.LEFT, 0);
             rootPanel.onMouseEvent(event);
         };
         GLFWCursorPosCallback.create(cursorCallback).set(windowHandle);
