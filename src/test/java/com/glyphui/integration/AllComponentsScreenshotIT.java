@@ -26,8 +26,9 @@ public class AllComponentsScreenshotIT {
     @BeforeEach
     public void setUp() {
         app = new Application();
-        // Initialize with invisible window for automated testing
-        boolean initialized = app.init("Glyph UI Integration Test", 800, 600);
+        // Initialize with raster surface for testing (no GPU context needed)
+        // This is more reliable in CI environments with Xvfb
+        boolean initialized = app.init("Glyph UI Integration Test", 800, 600, true);
         // Skip test if GLFW cannot be initialized (headless environment)
         Assumptions.assumeTrue(initialized, "GLFW not available (headless environment); skipping test");
     }
@@ -68,14 +69,14 @@ public class AllComponentsScreenshotIT {
         
         rootPanel.add(nestedPanel);
         
-        // Define output file path
-        File outputFile = new File(SCREENSHOT_DIR, SCREENSHOT_FILE);
+        // Define output file path - use absolute path to ensure it's in project root
+        File outputFile = new File(System.getProperty("user.dir"), SCREENSHOT_DIR + File.separator + SCREENSHOT_FILE);
         
         // Capture screenshot
         app.captureToPng(outputFile);
         
         // Verify the file was created and is not empty
-        assertTrue(outputFile.exists(), "Screenshot file should exist");
+        assertTrue(outputFile.exists(), "Screenshot file should exist at: " + outputFile.getAbsolutePath());
         assertTrue(outputFile.length() > 0, "Screenshot file should not be empty");
         
         // Optional: Validate PNG header (first 8 bytes: 137 80 78 71 13 10 26 10)

@@ -66,6 +66,19 @@ public class Application {
      * @return true if initialization was successful
      */
     public boolean init(String title, int width, int height) {
+        return init(title, width, height, false);
+    }
+    
+    /**
+     * Initializes the application.
+     *
+     * @param title  the window title
+     * @param width  the window width
+     * @param height the window height
+     * @param useRasterSurface if true, uses a raster surface instead of GPU backend (for testing)
+     * @return true if initialization was successful
+     */
+    public boolean init(String title, int width, int height, boolean useRasterSurface) {
         try {
             // Create window
             window = new Window(title, width, height);
@@ -73,8 +86,12 @@ public class Application {
                 return false;
             }
 
-            // Initialize Skija surface with GPU backend
-            initSurface();
+            // Initialize Skija surface
+            if (useRasterSurface) {
+                initRasterSurface();
+            } else {
+                initSurface();
+            }
 
             // Setup callbacks
             setupCallbacks();
@@ -140,6 +157,25 @@ public class Application {
 
         if (surface == null) {
             throw new RuntimeException("Failed to create Skija surface");
+        }
+
+        // Create canvas wrapper
+        io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
+        canvas = new Canvas(skijaCanvas, surface, width, height);
+    }
+
+    /**
+     * Initializes the Skija surface with raster backend (for testing).
+     */
+    private void initRasterSurface() {
+        int width = window.getWidth();
+        int height = window.getHeight();
+
+        // Create raster surface (no OpenGL context needed)
+        surface = Surface.makeRaster(ImageInfo.makeN32Premul(width, height));
+        
+        if (surface == null) {
+            throw new RuntimeException("Failed to create raster surface");
         }
 
         // Create canvas wrapper
