@@ -3,6 +3,7 @@ package com.glyphui.ui;
 import java.util.ArrayList;
 import java.util.List;
 import com.glyphui.layout.LayoutManager;
+import io.github.humbleui.skija.Color;
 
 /**
  * A container component that can hold other components.
@@ -11,6 +12,7 @@ public class Panel extends Component {
     protected List<Component> children;
     protected LayoutManager layoutManager;
     protected boolean layoutDirty;
+    protected int backgroundColor;
 
     /**
      * Creates a new Panel.
@@ -25,6 +27,7 @@ public class Panel extends Component {
         this.children = new ArrayList<>();
         this.layoutManager = null;
         this.layoutDirty = false;
+        this.backgroundColor = Color.makeARGB(0, 0, 0, 0); // Transparent by default
     }
 
     /**
@@ -121,6 +124,24 @@ public class Panel extends Component {
         markLayoutDirty();
     }
 
+    /**
+     * Gets the background color of this panel.
+     *
+     * @return the background color (as ARGB int)
+     */
+    public int getBackgroundColor() {
+        return backgroundColor;
+    }
+
+    /**
+     * Sets the background color of this panel.
+     *
+     * @param backgroundColor the new background color (as ARGB int)
+     */
+    public void setBackgroundColor(int backgroundColor) {
+        this.backgroundColor = backgroundColor;
+    }
+
     @Override
     public void render(com.glyphui.graphics.Canvas canvas) {
         if (!visible) {
@@ -129,6 +150,15 @@ public class Panel extends Component {
 
         // Ensure layout is applied before rendering children
         doLayout();
+
+        // Draw background if color is set (non-transparent)
+        if (backgroundColor != Color.makeARGB(0, 0, 0, 0)) {
+            io.github.humbleui.skija.Paint bgPaint = new io.github.humbleui.skija.Paint();
+            bgPaint.setColor(backgroundColor);
+            bgPaint.setAntiAlias(true);
+            canvas.drawRect(x, y, width, height, bgPaint);
+            bgPaint.close();
+        }
 
         // Render all children
         for (Component child : children) {
