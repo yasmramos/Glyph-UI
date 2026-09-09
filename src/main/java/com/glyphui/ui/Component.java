@@ -232,4 +232,13 @@ public abstract class Component {
      * @param event the key event
      */
     public abstract void onKeyEvent(KeyEvent event);
+    
+    /**
+     * Releases resources held by this component.
+     * Subclasses should override this method to clean up resources.
+     * The default implementation does nothing.
+     */
+    public void dispose() {
+        // Default implementation does nothing
+    }
 }

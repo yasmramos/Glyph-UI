@@ -365,12 +365,22 @@ public class Application {
      * Cleans up resources and destroys the application.
      */
     public void destroy() {
+        // Dispose all components in the root panel
+        if (rootPanel != null) {
+            rootPanel.dispose();
+        }
+        
+        // Close Skija DirectContext
         if (directContext != null) {
             directContext.close();
         }
+        
+        // Close Skija surface
         if (surface != null) {
             surface.close();
         }
+        
+        // Destroy window
         if (window != null) {
             window.destroy();
         }
