@@ -18,6 +18,11 @@ public class Button extends Component {
     private int borderColor;
     private float borderRadius;
     private Font font;
+    
+    // Reusable Paint objects to avoid allocation per frame
+    private Paint bgPaint;
+    private Paint borderPaint;
+    private Paint textPaint;
 
     /**
      * Creates a new Button.
@@ -44,6 +49,18 @@ public class Button extends Component {
         // Initialize font
         Typeface typeface = Typeface.makeFromName(null, FontStyle.NORMAL);
         this.font = new Font(typeface, 16.0f);
+        
+        // Initialize reusable Paint objects
+        this.bgPaint = new Paint();
+        this.bgPaint.setAntiAlias(true);
+        
+        this.borderPaint = new Paint();
+        this.borderPaint.setMode(PaintMode.STROKE);
+        this.borderPaint.setStrokeWidth(1.0f);
+        this.borderPaint.setAntiAlias(true);
+        
+        this.textPaint = new Paint();
+        this.textPaint.setAntiAlias(true);
     }
 
     /**
@@ -216,18 +233,14 @@ public class Button extends Component {
             return;
         }
 
-        // Draw background with rounded corners
-        Paint bgPaint = new Paint();
+        // Update background color based on state
         bgPaint.setColor(getBackgroundColor());
-        bgPaint.setAntiAlias(true);
+
+        // Draw background with rounded corners
         canvas.drawRRect(x, y, width, height, borderRadius, borderRadius, bgPaint);
 
-        // Draw border
-        Paint borderPaint = new Paint();
+        // Update border color and draw border
         borderPaint.setColor(borderColor);
-        borderPaint.setStrokeWidth(1.0f);
-        borderPaint.setMode(PaintMode.STROKE);
-        borderPaint.setAntiAlias(true);
         canvas.drawRRect(x + 0.5f, y + 0.5f, width - 1.0f, height - 1.0f, 
                         borderRadius, borderRadius, borderPaint);
 
@@ -237,16 +250,11 @@ public class Button extends Component {
         float textX = x + (width - textWidth) / 2.0f;
         float textY = y + (height + textHeight) / 2.0f;
 
-        // Draw text
-        Paint textPaint = new Paint();
+        // Update text color based on enabled state
         textPaint.setColor(enabled ? textColor : Color.makeARGB(255, 150, 150, 150));
-        textPaint.setAntiAlias(true);
+        
+        // Draw text
         canvas.drawString(text, textX, textY, textPaint, font);
-
-        // Clean up paints
-        bgPaint.close();
-        borderPaint.close();
-        textPaint.close();
     }
 
     @Override
@@ -293,5 +301,28 @@ public class Button extends Component {
     public void onKeyEvent(KeyEvent event) {
         // Buttons typically don't handle key events unless focused
         // This can be extended for keyboard accessibility
+    }
+    
+    /**
+     * Releases resources held by this button.
+     * Should be called when the button is no longer needed.
+     */
+    public void dispose() {
+        if (bgPaint != null) {
+            bgPaint.close();
+            bgPaint = null;
+        }
+        if (borderPaint != null) {
+            borderPaint.close();
+            borderPaint = null;
+        }
+        if (textPaint != null) {
+            textPaint.close();
+            textPaint = null;
+        }
+        if (font != null) {
+            font.close();
+            font = null;
+        }
     }
 }
