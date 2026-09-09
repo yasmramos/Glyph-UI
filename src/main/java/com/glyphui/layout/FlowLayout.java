@@ -76,6 +76,9 @@ public class FlowLayout extends LayoutManager {
                 continue;
             }
 
+            // Get the preferred height of the component
+            float componentHeight = component.getPreferredHeight();
+            
             // Check if component fits in current row
             if (currentX + component.getWidth() > panel.getX() + panelWidth - padding) {
                 // Move to next row
@@ -83,13 +86,16 @@ public class FlowLayout extends LayoutManager {
                 currentY = maxY + gap;
             }
 
+            // Set the component height to its preferred height
+            component.setHeight(componentHeight);
+
             // Position the component
             component.setX(currentX);
             component.setY(currentY);
 
             // Update position for next component
             currentX += component.getWidth() + gap;
-            maxY = Math.max(maxY, currentY + component.getHeight());
+            maxY = Math.max(maxY, currentY + componentHeight);
         }
     }
 }
