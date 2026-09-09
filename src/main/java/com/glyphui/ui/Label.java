@@ -80,6 +80,17 @@ public class Label extends Component {
     }
 
     /**
+     * Gets the preferred height of this label based on its font size.
+     * 
+     * @return the preferred height
+     */
+    @Override
+    public float getPreferredHeight() {
+        // Return font size plus some padding for proper spacing
+        return font.getSize() + 10.0f;
+    }
+
+    /**
      * Gets the text alignment.
      *
      * @return the alignment
