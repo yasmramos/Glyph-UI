@@ -46,13 +46,35 @@ jobs:
         DISPLAY: ":99"
       run: |
         echo "Starting Xvfb..."
-        Xvfb :99 -screen 0 1280x1024x24 &
+        Xvfb :99 -screen 0 1280x1024x24 +extension GLX &
         sleep 2
+        echo "Xvfb started with DISPLAY=$DISPLAY"
+        
+        # Create screenshots directory in project root
+        mkdir -p screenshots
+        echo "Created screenshots directory at $(pwd)/screenshots"
+        
         echo "Running Maven tests..."
-        mvn -B test
-        echo "Tests completed. Checking for screenshots..."
+        mvn -B test || {
+          echo "Tests failed with exit code $?"
+          exit 1
+        }
+        
+        echo "Tests completed successfully!"
+        echo "Checking for screenshots..."
         ls -la screenshots/ || echo "No screenshots directory found"
-        find . -name "*.png" -type f || echo "No PNG files found"
+        find . -name "*.png" -type f -ls || echo "No PNG files found"
+        
+        # Verify the specific file exists
+        if [ -f "screenshots/all-components.png" ]; then
+          echo "SUCCESS: Found screenshots/all-components.png"
+          ls -lh screenshots/all-components.png
+        else
+          echo "WARNING: screenshots/all-components.png not found"
+          echo "Current working directory: $(pwd)"
+          echo "Contents of current directory:"
+          ls -la
+        fi
 
     - name: Upload screenshot artifacts
       uses: actions/upload-artifact@v4
