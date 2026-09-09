@@ -46,6 +46,7 @@ public class Panel extends Component {
     public void remove(Component component) {
         children.remove(component);
         component.setParent(null);
+        component.dispose();
         markLayoutDirty();
     }
 
@@ -55,6 +56,7 @@ public class Panel extends Component {
     public void clear() {
         for (Component child : children) {
             child.setParent(null);
+            child.dispose();
         }
         children.clear();
         markLayoutDirty();
