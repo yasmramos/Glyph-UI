@@ -376,7 +376,93 @@ public class Application {
     }
 
     /**
+     * Returns true if using GPU backend, false for raster.
+     * @return true if GPU backend is active
+     */
+    public boolean isGpuBackend() {
+        return directContext != null;
+    }
+    
+    /**
+     * Flips an image vertically. Used for GPU backend where surface origin is BOTTOM_LEFT.
+     * @param image the image to flip
+     * @return a new flipped image (caller must close it)
+     */
+    private Image flipVertically(Image image) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        
+        // For GPU images, we need to read pixels via DirectContext
+        // Create a temporary raster surface to read into
+        Surface tempSurface = Surface.makeRaster(ImageInfo.makeN32Premul(width, height));
+        if (tempSurface == null) {
+            System.err.println("Warning: Failed to create temporary raster surface");
+            return null;
+        }
+        
+        try {
+            // Draw the original image onto the temp surface
+            io.github.humbleui.skija.Canvas tempCanvas = tempSurface.getCanvas();
+            tempCanvas.drawImage(image, 0, 0);
+            
+            // Now read pixels from the raster surface
+            Bitmap bitmap = new Bitmap();
+            bitmap.allocN32Pixels(width, height);
+            
+            try {
+                if (!tempSurface.readPixels(bitmap, 0, 0)) {
+                    System.err.println("Warning: Failed to read pixels from temp surface");
+                    return null;
+                }
+                
+                // Get pixel data as ByteBuffer
+                java.nio.ByteBuffer buffer = bitmap.peekPixels();
+                if (buffer == null) {
+                    System.err.println("Warning: peekPixels returned null");
+                    return null;
+                }
+                
+                // Ensure buffer is at position 0
+                buffer.rewind();
+                
+                // Read bytes from buffer
+                byte[] pixels = new byte[buffer.remaining()];
+                buffer.get(pixels);
+                
+                // Flip pixel data vertically
+                int bytesPerPixel = 4; // RGBA
+                int rowBytes = width * bytesPerPixel;
+                byte[] flipped = new byte[pixels.length];
+                
+                for (int y = 0; y < height; y++) {
+                    int srcRow = y * rowBytes;
+                    int dstRow = (height - 1 - y) * rowBytes;
+                    System.arraycopy(pixels, srcRow, flipped, dstRow, rowBytes);
+                }
+                
+                // Create new image with flipped pixels
+                ImageInfo info = ImageInfo.makeN32Premul(width, height);
+                Image flippedImage = Image.makeRaster(info, flipped, rowBytes);
+                if (flippedImage == null) {
+                    System.err.println("Warning: Failed to create flipped image");
+                    return null;
+                }
+                return flippedImage;
+            } finally {
+                bitmap.close();
+            }
+        } catch (Exception e) {
+            System.err.println("Error flipping image: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        } finally {
+            tempSurface.close();
+        }
+    }
+    
+    /**
      * Captures the current frame to a PNG file.
+     * For GPU backend, flips the image vertically since Skija renders BOTTOM_LEFT.
      *
      * @param file the output file path
      * @throws RuntimeException if capture fails
@@ -384,6 +470,11 @@ public class Application {
     public void captureToPng(java.io.File file) {
         // Render the current frame first
         renderFrame();
+        
+        // Flush GPU context if using GPU backend
+        if (directContext != null) {
+            directContext.flush();
+        }
         
         // Create directory if it doesn't exist
         if (file.getParentFile() != null) {
@@ -396,9 +487,28 @@ public class Application {
             throw new RuntimeException("Failed to create image snapshot");
         }
         
+        Image imageToEncode = null;
+        boolean needsFlip = isGpuBackend();
+        
         try {
+            // For GPU backend, flip the image vertically
+            if (needsFlip) {
+                imageToEncode = flipVertically(image);
+                if (imageToEncode == null) {
+                    throw new RuntimeException("Failed to flip image for GPU backend");
+                }
+            } else {
+                imageToEncode = image;
+            }
+            
             // Encode to PNG format
-            Data data = image.encodeToData(EncodedImageFormat.PNG);
+            Data data = imageToEncode.encodeToData(EncodedImageFormat.PNG);
+            
+            // If encoding failed, try alternative approach
+            if (data == null) {
+                data = imageToEncode.encodeToData();
+            }
+            
             if (data == null) {
                 throw new RuntimeException("Failed to encode image to PNG");
             }
@@ -416,6 +526,9 @@ public class Application {
             }
         } finally {
             image.close();
+            if (needsFlip && imageToEncode != null && imageToEncode != image) {
+                imageToEncode.close();
+            }
         }
     }
 
