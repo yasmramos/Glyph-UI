@@ -4,6 +4,10 @@ import com.glyphui.graphics.Canvas;
 import com.glyphui.ui.Panel;
 import com.glyphui.events.*;
 import io.github.humbleui.skija.*;
+import org.lwjgl.glfw.GLFWKeyCallback;
+import org.lwjgl.glfw.GLFWMouseButtonCallback;
+import org.lwjgl.glfw.GLFWCursorPosCallback;
+import org.lwjgl.glfw.GLFWFramebufferSizeCallback;
 import org.lwjgl.glfw.GLFWKeyCallbackI;
 import org.lwjgl.glfw.GLFWMouseButtonCallbackI;
 import org.lwjgl.glfw.GLFWCursorPosCallbackI;
@@ -117,7 +121,7 @@ public class Application {
             window.updateDimensions(width, height);
             recreateSurface(width, height);
         };
-        GLFWFramebufferSizeCallback.create(windowHandle, framebufferCallback).set();
+        GLFWFramebufferSizeCallback.create(framebufferCallback).set(windowHandle);
 
         // Mouse button callback
         GLFWMouseButtonCallbackI mouseButtonCallback = (w, button, action, mods) -> {
@@ -129,7 +133,7 @@ public class Application {
             MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, glyphButton, 1);
             rootPanel.onMouseEvent(event);
         };
-        GLFWMouseButtonCallback.create(windowHandle, mouseButtonCallback).set();
+        GLFWMouseButtonCallback.create(mouseButtonCallback).set(windowHandle);
 
         // Cursor position callback
         GLFWCursorPosCallbackI cursorCallback = (w, xpos, ypos) -> {
@@ -139,7 +143,7 @@ public class Application {
             MouseEvent event = new MouseEvent(MouseEventType.MOVE, (int) xpos, (int) ypos, MouseButton.LEFT, 0);
             rootPanel.onMouseEvent(event);
         };
-        GLFWCursorPosCallback.create(windowHandle, cursorCallback).set();
+        GLFWCursorPosCallback.create(cursorCallback).set(windowHandle);
 
         // Key callback
         GLFWKeyCallbackI keyCallback = (w, key, scancode, action, mods) -> {
@@ -154,7 +158,7 @@ public class Application {
             KeyEvent event = new KeyEvent(type, key, (char) 0, modifiers);
             rootPanel.onKeyEvent(event);
         };
-        GLFWKeyCallback.create(windowHandle, keyCallback).set();
+        GLFWKeyCallback.create(keyCallback).set(windowHandle);
     }
 
     /**

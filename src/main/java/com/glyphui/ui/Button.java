@@ -11,11 +11,11 @@ import io.github.humbleui.skija.*;
 public class Button extends Component {
     private String text;
     private Runnable onClick;
-    private Color normalColor;
-    private Color hoverColor;
-    private Color pressedColor;
-    private Color textColor;
-    private Color borderColor;
+    private int normalColor;
+    private int hoverColor;
+    private int pressedColor;
+    private int textColor;
+    private int borderColor;
     private float borderRadius;
     private Font font;
 
@@ -85,90 +85,90 @@ public class Button extends Component {
     /**
      * Gets the normal state color.
      *
-     * @return the normal color
+     * @return the normal color (as ARGB int)
      */
-    public Color getNormalColor() {
+    public int getNormalColor() {
         return normalColor;
     }
 
     /**
      * Sets the normal state color.
      *
-     * @param normalColor the new normal color
+     * @param normalColor the new normal color (as ARGB int)
      */
-    public void setNormalColor(Color normalColor) {
+    public void setNormalColor(int normalColor) {
         this.normalColor = normalColor;
     }
 
     /**
      * Gets the hover state color.
      *
-     * @return the hover color
+     * @return the hover color (as ARGB int)
      */
-    public Color getHoverColor() {
+    public int getHoverColor() {
         return hoverColor;
     }
 
     /**
      * Sets the hover state color.
      *
-     * @param hoverColor the new hover color
+     * @param hoverColor the new hover color (as ARGB int)
      */
-    public void setHoverColor(Color hoverColor) {
+    public void setHoverColor(int hoverColor) {
         this.hoverColor = hoverColor;
     }
 
     /**
      * Gets the pressed state color.
      *
-     * @return the pressed color
+     * @return the pressed color (as ARGB int)
      */
-    public Color getPressedColor() {
+    public int getPressedColor() {
         return pressedColor;
     }
 
     /**
      * Sets the pressed state color.
      *
-     * @param pressedColor the new pressed color
+     * @param pressedColor the new pressed color (as ARGB int)
      */
-    public void setPressedColor(Color pressedColor) {
+    public void setPressedColor(int pressedColor) {
         this.pressedColor = pressedColor;
     }
 
     /**
      * Gets the text color.
      *
-     * @return the text color
+     * @return the text color (as ARGB int)
      */
-    public Color getTextColor() {
+    public int getTextColor() {
         return textColor;
     }
 
     /**
      * Sets the text color.
      *
-     * @param textColor the new text color
+     * @param textColor the new text color (as ARGB int)
      */
-    public void setTextColor(Color textColor) {
+    public void setTextColor(int textColor) {
         this.textColor = textColor;
     }
 
     /**
      * Gets the border color.
      *
-     * @return the border color
+     * @return the border color (as ARGB int)
      */
-    public Color getBorderColor() {
+    public int getBorderColor() {
         return borderColor;
     }
 
     /**
      * Sets the border color.
      *
-     * @param borderColor the new border color
+     * @param borderColor the new border color (as ARGB int)
      */
-    public void setBorderColor(Color borderColor) {
+    public void setBorderColor(int borderColor) {
         this.borderColor = borderColor;
     }
 
@@ -195,7 +195,7 @@ public class Button extends Component {
      *
      * @return the appropriate background color
      */
-    private Color getBackgroundColor() {
+    private int getBackgroundColor() {
         if (!enabled) {
             return Color.makeARGB(255, 50, 50, 50);
         }
@@ -225,8 +225,8 @@ public class Button extends Component {
         // Draw border
         Paint borderPaint = new Paint();
         borderPaint.setColor(borderColor);
-        borderPaint.setStyle(Paint.Style.STROKE);
         borderPaint.setStrokeWidth(1.0f);
+        borderPaint.setMode(PaintMode.STROKE);
         borderPaint.setAntiAlias(true);
         canvas.drawRRect(x + 0.5f, y + 0.5f, width - 1.0f, height - 1.0f, 
                         borderRadius, borderRadius, borderPaint);
@@ -269,7 +269,7 @@ public class Button extends Component {
                 break;
 
             case PRESS:
-                if (isInside && event.getButton() == MouseButton.LEFT) {
+                if (isInside && event.getButton() == com.glyphui.events.MouseButton.LEFT) {
                     state = ComponentState.PRESSED;
                 }
                 break;
