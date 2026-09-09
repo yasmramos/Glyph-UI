@@ -3,4 +3,7 @@
 target/
 # Maven-specific
 target/maven-status/
+
+# Keep screenshot test results (allow PNG files in screenshots directory)
+!screenshots/*.png
 ```
