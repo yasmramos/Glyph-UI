@@ -120,6 +120,25 @@ public class MyApp {
 
 This project is open source. See the LICENSE file for details.
 
+## Testing
+
+### Running Tests
+
+```bash
+mvn test
+```
+
+### Integration Tests
+
+The project includes integration tests that create actual GLFW windows and capture screenshots. These tests require a display server:
+
+- **Linux**: Install Xvfb (`sudo apt-get install xvfb`) and run with `xvfb-run -a mvn test`
+- **macOS/Windows**: A physical display is required, or use virtual display software
+
+**Note on Monocle**: Monocle is specific to JavaFX and does NOT apply to this toolkit, which uses LWJGL/GLFW + Skija for rendering.
+
+Screenshot artifacts from CI builds can be downloaded from GitHub Actions workflow runs.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
