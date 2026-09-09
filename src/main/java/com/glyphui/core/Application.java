@@ -324,6 +324,66 @@ public class Application {
     }
 
     /**
+     * Gets the canvas for rendering operations.
+     *
+     * @return the canvas
+     */
+    public Canvas getCanvas() {
+        return canvas;
+    }
+
+    /**
+     * Renders a single frame. Exposed for testing purposes.
+     */
+    public void renderFrame() {
+        render();
+    }
+
+    /**
+     * Captures the current frame to a PNG file.
+     *
+     * @param file the output file path
+     * @throws RuntimeException if capture fails
+     */
+    public void captureToPng(java.io.File file) {
+        // Render the current frame first
+        renderFrame();
+        
+        // Create directory if it doesn't exist
+        if (file.getParentFile() != null) {
+            file.getParentFile().mkdirs();
+        }
+        
+        // Take a snapshot of the surface
+        Image image = surface.makeImageSnapshot();
+        if (image == null) {
+            throw new RuntimeException("Failed to create image snapshot");
+        }
+        
+        try {
+            // Encode to PNG format
+            Data data = image.encodeToData(EncodedImageFormat.PNG);
+            if (data == null) {
+                throw new RuntimeException("Failed to encode image to PNG");
+            }
+            
+            try {
+                // Write bytes to file
+                byte[] bytes = data.getBytes();
+                try {
+                    java.nio.file.Files.write(file.toPath(), bytes);
+                } catch (java.io.IOException e) {
+                    throw new RuntimeException("Failed to write PNG file: " + e.getMessage(), e);
+                }
+            } finally {
+                data.close();
+            }
+        } finally {
+            image.close();
+        }
+    }
+
+    /**
      * Runs the application main loop.
      */
     public void run() {
