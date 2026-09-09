@@ -2,12 +2,15 @@ package com.glyphui.ui;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.glyphui.layout.LayoutManager;
 
 /**
  * A container component that can hold other components.
  */
 public class Panel extends Component {
     protected List<Component> children;
+    protected LayoutManager layoutManager;
+    protected boolean layoutDirty;
 
     /**
      * Creates a new Panel.
@@ -20,6 +23,8 @@ public class Panel extends Component {
     public Panel(float x, float y, float width, float height) {
         super(x, y, width, height);
         this.children = new ArrayList<>();
+        this.layoutManager = null;
+        this.layoutDirty = false;
     }
 
     /**
@@ -30,6 +35,7 @@ public class Panel extends Component {
     public void add(Component component) {
         children.add(component);
         component.setParent(this);
+        markLayoutDirty();
     }
 
     /**
@@ -40,6 +46,7 @@ public class Panel extends Component {
     public void remove(Component component) {
         children.remove(component);
         component.setParent(null);
+        markLayoutDirty();
     }
 
     /**
@@ -50,6 +57,14 @@ public class Panel extends Component {
             child.setParent(null);
         }
         children.clear();
+        markLayoutDirty();
+    }
+
+    /**
+     * Marks the layout as dirty, triggering a relayout on next render.
+     */
+    protected void markLayoutDirty() {
+        layoutDirty = true;
     }
 
     /**
@@ -61,11 +76,57 @@ public class Panel extends Component {
         return children;
     }
 
+    /**
+     * Gets the layout manager for this panel.
+     *
+     * @return the layout manager
+     */
+    public LayoutManager getLayoutManager() {
+        return layoutManager;
+    }
+
+    /**
+     * Sets the layout manager for this panel and triggers an immediate relayout if there are children.
+     *
+     * @param layoutManager the layout manager to set
+     */
+    public void setLayoutManager(LayoutManager layoutManager) {
+        this.layoutManager = layoutManager;
+        if (layoutManager != null && !children.isEmpty()) {
+            doLayout();
+        }
+    }
+
+    /**
+     * Performs the layout if a layout manager is set and layout is dirty.
+     */
+    public void doLayout() {
+        if (layoutManager != null && layoutDirty) {
+            layoutManager.layout(this);
+            layoutDirty = false;
+        }
+    }
+
+    @Override
+    public void setWidth(float width) {
+        super.setWidth(width);
+        markLayoutDirty();
+    }
+
+    @Override
+    public void setHeight(float height) {
+        super.setHeight(height);
+        markLayoutDirty();
+    }
+
     @Override
     public void render(com.glyphui.graphics.Canvas canvas) {
         if (!visible) {
             return;
         }
+
+        // Ensure layout is applied before rendering children
+        doLayout();
 
         // Render all children
         for (Component child : children) {
