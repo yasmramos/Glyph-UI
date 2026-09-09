@@ -10,7 +10,7 @@ import io.github.humbleui.skija.*;
  */
 public class Label extends Component {
     private String text;
-    private Color textColor;
+    private int textColor;
     private Font font;
     private TextAlignment alignment;
 
@@ -35,7 +35,7 @@ public class Label extends Component {
     public Label(float x, float y, float width, float height, String text) {
         super(x, y, width, height);
         this.text = text;
-        this.textColor = new Color(255, 255, 255, 255);
+        this.textColor = Color.makeARGB(255, 255, 255, 255);
         this.alignment = TextAlignment.LEFT;
         
         // Initialize font
@@ -64,18 +64,18 @@ public class Label extends Component {
     /**
      * Gets the text color.
      *
-     * @return the text color
+     * @return the text color (as ARGB int)
      */
-    public Color getTextColor() {
+    public int getTextColor() {
         return textColor;
     }
 
     /**
      * Sets the text color.
      *
-     * @param textColor the new text color
+     * @param textColor the new text color (as ARGB int)
      */
-    public void setTextColor(Color textColor) {
+    public void setTextColor(int textColor) {
         this.textColor = textColor;
     }
 
