@@ -37,11 +37,22 @@ jobs:
           libglfw3 \
           libglfw3-dev
 
+    - name: Ensure screenshots directory exists
+      run: mkdir -p screenshots
+
     - name: Run tests with Xvfb (virtual display)
       env:
         LIBGL_ALWAYS_SOFTWARE: "1"
+        DISPLAY: ":99"
       run: |
-        xvfb-run -a --server-args="-screen 0 1280x1024x24" mvn -B test
+        echo "Starting Xvfb..."
+        Xvfb :99 -screen 0 1280x1024x24 &
+        sleep 2
+        echo "Running Maven tests..."
+        mvn -B test
+        echo "Tests completed. Checking for screenshots..."
+        ls -la screenshots/ || echo "No screenshots directory found"
+        find . -name "*.png" -type f || echo "No PNG files found"
 
     - name: Upload screenshot artifacts
       uses: actions/upload-artifact@v4
