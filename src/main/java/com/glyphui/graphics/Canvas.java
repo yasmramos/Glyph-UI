@@ -78,9 +78,9 @@ public class Canvas {
     /**
      * Clears the canvas with the specified color.
      *
-     * @param color the color to fill the canvas with
+     * @param color the color to fill the canvas with (as ARGB int)
      */
-    public void clear(Color color) {
+    public void clear(int color) {
         canvas.clear(color);
     }
 
