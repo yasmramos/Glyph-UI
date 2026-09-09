@@ -26,8 +26,9 @@ public class AllComponentsScreenshotIT {
     @BeforeEach
     public void setUp() {
         app = new Application();
-        // Initialize with invisible window for automated testing
-        boolean initialized = app.init("Glyph UI Integration Test", 800, 600);
+        // Initialize with raster surface for testing (no GPU context needed)
+        // This is more reliable in CI environments with Xvfb
+        boolean initialized = app.init("Glyph UI Integration Test", 800, 600, true);
         // Skip test if GLFW cannot be initialized (headless environment)
         Assumptions.assumeTrue(initialized, "GLFW not available (headless environment); skipping test");
     }
