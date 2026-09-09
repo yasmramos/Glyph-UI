@@ -2,6 +2,7 @@ package com.glyphui.core;
 
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryUtil;
 
 import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
@@ -34,7 +35,7 @@ public class Window {
     }
 
     /**
-     * Initializes the window and GLFW context.
+     * Initializes the window and GLFW context with OpenGL.
      *
      * @return true if initialization was successful
      */
@@ -48,10 +49,17 @@ public class Window {
             return false;
         }
 
-        // Configure GLFW
+        // Configure GLFW for OpenGL context
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+        
+        // OpenGL context settings for Skija GPU backend
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+        glfwWindowHint(GLFW_SAMPLES, 4); // MSAA
 
         // Create the window
         windowHandle = glfwCreateWindow(width, height, title, MemoryUtil.NULL, MemoryUtil.NULL);
@@ -60,6 +68,15 @@ public class Window {
             glfwTerminate();
             return false;
         }
+
+        // Make OpenGL context current
+        glfwMakeContextCurrent(windowHandle);
+        
+        // Enable vsync
+        glfwSwapInterval(1);
+        
+        // Initialize LWJGL OpenGL capabilities
+        GL.createCapabilities();
 
         // Get actual window size (may differ on HiDPI displays)
         int[] actualWidth = new int[1];
@@ -82,6 +99,13 @@ public class Window {
         glfwShowWindow(windowHandle);
 
         return true;
+    }
+
+    /**
+     * Swaps the front and back buffers (presents the frame).
+     */
+    public void swapBuffers() {
+        glfwSwapBuffers(windowHandle);
     }
 
     /**
