@@ -6,10 +6,17 @@ import io.github.humbleui.types.RRect;
 
 /**
  * Canvas wrapper that provides drawing methods using Skija.
+ *
+ * <p><strong>Ownership:</strong> this class is NOT the owner of the native
+ * {@code io.github.humbleui.skija.Canvas} or {@code Surface} it references.
+ * Both are created and owned by {@link com.glyphui.core.Application}, which
+ * closes them during {@code Application.close()}. This wrapper never closes
+ * them; it only holds references and rebinds them when the application
+ * recreates its surface (e.g. on window resize).</p>
  */
 public class Canvas {
-    private final io.github.humbleui.skija.Canvas canvas;
-    private final Surface surface;
+    private io.github.humbleui.skija.Canvas canvas;
+    private Surface surface;
     private int width;
     private int height;
 
@@ -44,6 +51,30 @@ public class Canvas {
      */
     public Surface getSurface() {
         return surface;
+    }
+
+    /**
+     * Replaces the underlying native canvas and surface.
+     * Used when the application recreates its surface (e.g. after a window
+     * resize on the raster backend) so wrappers keep drawing to the new target.
+     *
+     * @param newCanvas the new Skija canvas
+     * @param newSurface the new Skija surface owning the canvas
+     */
+    public void setNativeCanvas(io.github.humbleui.skija.Canvas newCanvas, Surface newSurface) {
+        this.canvas = newCanvas;
+        if (newSurface != null) {
+            this.surface = newSurface;
+        }
+    }
+
+    /**
+     * Replaces the underlying native canvas, keeping the current surface reference.
+     *
+     * @param newCanvas the new Skija canvas
+     */
+    public void setNativeCanvas(io.github.humbleui.skija.Canvas newCanvas) {
+        setNativeCanvas(newCanvas, null);
     }
 
     /**
@@ -231,5 +262,58 @@ public class Canvas {
      */
     public void flush() {
         surface.flushAndSubmit();
+    }
+
+    /**
+     * Saves the current canvas matrix and clip stack. Must be paired with a
+     * later {@link #restore()} or {@link #restoreToCount(int)} call.
+     *
+     * @return the saved stack depth, to be passed to {@link #restoreToCount(int)}
+     */
+    public int save() {
+        return canvas.save();
+    }
+
+    /**
+     * Restores the most recently saved canvas state.
+     */
+    public void restore() {
+        canvas.restore();
+    }
+
+    /**
+     * Restores canvas state to the depth returned by a previous
+     * {@link #save()} call, unwinding any intermediate saves.
+     *
+     * @param saveCount the stack depth captured by {@link #save()}
+     */
+    public void restoreToCount(int saveCount) {
+        canvas.restoreToCount(saveCount);
+    }
+
+    /**
+     * Intersects the current clip with the given rectangle, so subsequent
+     * drawing is confined to that region (in the canvas' current coordinate
+     * system).
+     *
+     * @param x      left edge of the clipping rectangle
+     * @param y      top edge of the clipping rectangle
+     * @param width  width of the clipping rectangle
+     * @param height height of the clipping rectangle
+     */
+    public void clipRect(float x, float y, float width, float height) {
+        canvas.clipRect(Rect.makeXYWH(x, y, width, height), ClipMode.INTERSECT, true);
+    }
+
+    /**
+     * Translates the canvas' current coordinate system by the given offsets.
+     * Typically called right after {@link #save()} when drawing children in
+     * local coordinates.
+     *
+     * @param dx horizontal translation
+     * @param dy vertical translation
+     */
+    public void translate(float dx, float dy) {
+        canvas.translate(dx, dy);
     }
 }

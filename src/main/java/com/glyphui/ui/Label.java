@@ -1,6 +1,8 @@
 package com.glyphui.ui;
 
+import com.glyphui.core.Application;
 import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Property;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 import io.github.humbleui.skija.*;
@@ -13,6 +15,10 @@ public class Label extends Component {
     private int textColor;
     private Font font;
     private TextAlignment alignment;
+    /** Reusable text paint: created once, reused every frame, closed in dispose(). */
+    private Paint textPaint;
+    /** Observable text property (lazily created). */
+    private Property<String> textProperty;
 
     /**
      * Text alignment options.
@@ -35,12 +41,37 @@ public class Label extends Component {
     public Label(float x, float y, float width, float height, String text) {
         super(x, y, width, height);
         this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Label without explicit bounds. The size will be derived
+     * from the preferred (measured) text size when a layout manager runs.
+     *
+     * @param text the text to display
+     */
+    public Label(String text) {
+        super();
+        this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Label with default (unset) bounds and empty text.
+     */
+    public Label() {
+        this("");
+    }
+
+    /**
+     * Initializes default color, alignment and font.
+     */
+    private void initDefaults() {
         this.textColor = Color.makeARGB(255, 255, 255, 255);
         this.alignment = TextAlignment.LEFT;
-        
-        // Initialize font
-        Typeface typeface = Typeface.makeFromName(null, FontStyle.NORMAL);
-        this.font = new Font(typeface, 14.0f);
+
+        // Initialize font from the shared cached typeface (cheap Font wrapper)
+        this.font = com.glyphui.graphics.Fonts.createDefaultFont(14.0f);
     }
 
     /**
@@ -53,13 +84,29 @@ public class Label extends Component {
     }
 
     /**
-     * Sets the label text.
+     * Returns the observable text property. Setting it from a background
+     * thread marshals the change onto the UI thread automatically.
+     *
+     * @return the text property (never null after first access)
+     */
+    public Property<String> textProperty() {
+        if (textProperty == null) {
+            textProperty = new Property<>(Application.getCurrent(), text, newText -> {
+                this.text = newText;
+                requestRepaint();
+            });
+        }
+        return textProperty;
+    }
+
+    /**
+     * Sets the label text. Delegates to {@link #textProperty()} for
+     * backward compatibility and cross-thread safety.
      *
      * @param text the new text
      */
     public void setText(String text) {
-        this.text = text;
-        invalidate();
+        textProperty().set(text);
     }
 
     /**
@@ -77,17 +124,40 @@ public class Label extends Component {
      * @param textColor the new text color (as ARGB int)
      */
     public void setTextColor(int textColor) {
-        this.textColor = textColor;
-        invalidate();
+        if (this.textColor != textColor) {
+            this.textColor = textColor;
+            requestRepaint();
+        }
+    }
+
+    /**
+     * Gets the preferred width of this label: measured text width without any
+     * decorative padding. Falls back to the base defaults when the user
+     * provided explicit bounds.
+     *
+     * @return the preferred width
+     */
+    @Override
+    public float getPreferredWidth() {
+        if (sizeExplicitlySet) {
+            return width;
+        }
+        if (font == null || font.isClosed()) {
+            return DEFAULT_WIDTH;
+        }
+        return font.measureTextWidth(text == null ? "" : text);
     }
 
     /**
      * Gets the preferred height of this label based on its font size.
-     * 
+     *
      * @return the preferred height
      */
     @Override
     public float getPreferredHeight() {
+        if (sizeExplicitlySet) {
+            return height;
+        }
         // Return font size plus some padding for proper spacing
         return font.getSize() + 10.0f;
     }
@@ -107,8 +177,10 @@ public class Label extends Component {
      * @param alignment the new alignment
      */
     public void setAlignment(TextAlignment alignment) {
-        this.alignment = alignment;
-        invalidate();
+        if (this.alignment != alignment) {
+            this.alignment = alignment;
+            requestRepaint();
+        }
     }
 
     /**
@@ -126,9 +198,13 @@ public class Label extends Component {
      * @param size the new font size
      */
     public void setFontSize(float size) {
-        Typeface typeface = font.getTypeface();
-        this.font = new Font(typeface, size);
-        invalidate();
+        if (font.getSize() != size) {
+            Typeface typeface = font.getTypeface();
+            Font oldFont = this.font;
+            this.font = new Font(typeface, size);
+            oldFont.close();
+            requestRepaint();
+        }
     }
 
     @Override
@@ -156,21 +232,48 @@ public class Label extends Component {
         
         float textY = y + (height + textHeight) / 2.0f;
 
-        // Draw text
-        Paint textPaint = new Paint();
+        // Draw text using the reusable paint field (no per-frame allocations)
+        ensureTextPaint();
         textPaint.setColor(textColor);
-        textPaint.setAntiAlias(true);
         canvas.drawString(text, textX, textY, textPaint, font);
-        textPaint.close();
+    }
+
+    /**
+     * Lazily creates the reusable text paint so {@link #render} never
+     * allocates native objects per frame.
+     */
+    private void ensureTextPaint() {
+        if (textPaint == null || textPaint.isClosed()) {
+            textPaint = new Paint();
+            textPaint.setAntiAlias(true);
+        }
     }
 
     @Override
-    public void onMouseEvent(MouseEvent event) {
-        // Labels typically don't handle mouse events
+    public boolean onMouseEvent(MouseEvent event) {
+        // Labels are inert: they never consume mouse events
+        return false;
     }
 
     @Override
     public void onKeyEvent(KeyEvent event) {
         // Labels typically don't handle key events
+    }
+
+    /**
+     * Releases the native Skija resources owned by this label (font and text
+     * paint). The shared {@code Typeface} from {@link com.glyphui.graphics.Fonts}
+     * is intentionally NOT closed here: it is owned by the cache.
+     */
+    @Override
+    public void dispose() {
+        if (textPaint != null) {
+            textPaint.close();
+            textPaint = null;
+        }
+        if (font != null) {
+            font.close();
+            font = null;
+        }
     }
 }

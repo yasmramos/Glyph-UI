@@ -1,13 +1,71 @@
 package com.glyphui.ui;
 
+import com.glyphui.core.Application;
 import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Property;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 
 /**
  * Abstract base class for all UI components.
+ *
+ * <p>Components that own native resources (paints, fonts) should release them
+ * in {@link #dispose()}. {@code Component} implements {@link AutoCloseable} so
+ * widgets can also be used with try-with-resources; {@link #close()} simply
+ * delegates to {@link #dispose()}.</p>
+ *
+ * <h2>Threading</h2>
+ * <p>The geometric/visibility state is exposed as observable
+ * {@link Property} objects ({@link #xProperty()}, {@link #yProperty()},
+ * {@link #widthProperty()}, {@link #heightProperty()},
+ * {@link #visibleProperty()}, {@link #enabledProperty()}). Calling
+ * {@code Property.set(...)} from a background thread marshals the change onto
+ * the UI thread automatically; the classic setters ({@link #setX(float)}, etc.)
+ * delegate to those properties and are therefore equally safe.</p>
  */
-public abstract class Component {
+public abstract class Component implements AutoCloseable {
+
+    /** Monotonic counter used to generate unique component IDs. */
+    private static final java.util.concurrent.atomic.AtomicLong ID_COUNTER =
+            new java.util.concurrent.atomic.AtomicLong();
+
+
+    /**
+     * Callback used to notify the application that a component's visual state
+     * changed and a repaint should be scheduled (on-demand rendering).
+     * The default implementation is a no-op so components work standalone
+     * (e.g. in unit tests) without an application attached.
+     */
+    public interface RepaintRequester {
+        void requestRepaint();
+    }
+
+    private static volatile RepaintRequester repaintRequester = () -> { };
+
+    /**
+     * Registers the global repaint requester, typically called by the
+     * {@code Application} during initialization.
+     *
+     * @param requester the callback to invoke on visual mutations, or null to reset to a no-op
+     */
+    public static void setRepaintRequester(RepaintRequester requester) {
+        repaintRequester = (requester != null) ? requester : () -> { };
+    }
+
+    /**
+     * Notifies the registered repaint requester that this component needs repainting.
+     * Subclasses and containers should call this after any mutation that affects
+     * how the component is drawn.
+     */
+    protected void requestRepaint() {
+        repaintRequester.requestRepaint();
+    }
+
+    /** Default width used when no explicit bounds were provided and layout is free to decide. */
+    public static final float DEFAULT_WIDTH = 150f;
+    /** Default height used when no explicit bounds were provided and layout is free to decide. */
+    public static final float DEFAULT_HEIGHT = 40f;
+
     protected float x;
     protected float y;
     protected float width;
@@ -17,6 +75,133 @@ public abstract class Component {
     protected Panel parent;
     protected String id;
     protected ComponentState state;
+    /**
+     * Tracks whether the bounds (width/height) were set explicitly by the user
+     * through a bounds-carrying constructor or {@link #setWidth}/{@link #setHeight}.
+     * When false, layout managers are free to resize the component to its
+     * preferred size; when true, the user-provided size must be respected.
+     */
+    protected boolean sizeExplicitlySet;
+
+    // --- Observable properties (lazily created, marshalled via Application.invokeLater) ---
+
+    private Property<Float> xProperty;
+    private Property<Float> yProperty;
+    private Property<Float> widthProperty;
+    private Property<Float> heightProperty;
+    private Property<Boolean> visibleProperty;
+    private Property<Boolean> enabledProperty;
+
+    /** Applies a user-set width: marks bounds as explicit and repaints. */
+    private void applyWidthExplicit(float newWidth) {
+        this.width = newWidth;
+        this.sizeExplicitlySet = true;
+        requestRepaint();
+    }
+
+    /** Applies a user-set height: marks bounds as explicit and repaints. */
+    private void applyHeightExplicit(float newHeight) {
+        this.height = newHeight;
+        this.sizeExplicitlySet = true;
+        requestRepaint();
+    }
+
+    /**
+     * Returns the observable x-coordinate property. Setting it from a
+     * background thread marshals the change onto the UI thread.
+     *
+     * @return the x property (never null after first access)
+     */
+    public Property<Float> xProperty() {
+        if (xProperty == null) {
+            xProperty = new Property<>(Application.getCurrent(), x, v -> { this.x = v; requestRepaint(); });
+        }
+        return xProperty;
+    }
+
+    /**
+     * Returns the observable y-coordinate property.
+     *
+     * @return the y property (never null after first access)
+     */
+    public Property<Float> yProperty() {
+        if (yProperty == null) {
+            yProperty = new Property<>(Application.getCurrent(), y, v -> { this.y = v; requestRepaint(); });
+        }
+        return yProperty;
+    }
+
+    /**
+     * Returns the observable width property. Changes applied through the
+     * property do not mark the bounds as explicitly user-set; use
+     * {@link #setWidth(float)} for that.
+     *
+     * @return the width property (never null after first access)
+     */
+    public Property<Float> widthProperty() {
+        if (widthProperty == null) {
+            widthProperty = new Property<>(Application.getCurrent(), width, this::applyWidthExplicit);
+        }
+        return widthProperty;
+    }
+
+    /**
+     * Returns the observable height property. Changes applied through the
+     * property do not mark the bounds as explicitly user-set; use
+     * {@link #setHeight(float)} for that.
+     *
+     * @return the height property (never null after first access)
+     */
+    public Property<Float> heightProperty() {
+        if (heightProperty == null) {
+            heightProperty = new Property<>(Application.getCurrent(), height, this::applyHeightExplicit);
+        }
+        return heightProperty;
+    }
+
+    /**
+     * Returns the observable visibility property.
+     *
+     * @return the visible property (never null after first access)
+     */
+    public Property<Boolean> visibleProperty() {
+        if (visibleProperty == null) {
+            visibleProperty = new Property<>(Application.getCurrent(), visible, v -> {
+                if (this.visible != v) {
+                    this.visible = v;
+                    requestRepaint();
+                }
+            });
+        }
+        return visibleProperty;
+    }
+
+    /**
+     * Returns the observable enabled property.
+     *
+     * @return the enabled property (never null after first access)
+     */
+    public Property<Boolean> enabledProperty() {
+        if (enabledProperty == null) {
+            enabledProperty = new Property<>(Application.getCurrent(), enabled, v -> {
+                if (this.enabled != v) {
+                    this.enabled = v;
+                    requestRepaint();
+                }
+            });
+        }
+        return enabledProperty;
+    }
+
+    /**
+     * Creates a new Component with default (unset) bounds.
+     * The resulting component has zero geometry until a layout manager assigns
+     * a preferred size or the user sets bounds explicitly.
+     */
+    public Component() {
+        this(0f, 0f, 0f, 0f);
+        this.sizeExplicitlySet = false;
+    }
 
     /**
      * Global repaint hook. When set (typically by {@code Application}), any
@@ -65,8 +250,9 @@ public abstract class Component {
         this.visible = true;
         this.enabled = true;
         this.parent = null;
-        this.id = "component_" + System.nanoTime();
+        this.id = "component_" + ID_COUNTER.incrementAndGet();
         this.state = ComponentState.IDLE;
+        this.sizeExplicitlySet = true;
     }
 
     /**
@@ -127,8 +313,7 @@ public abstract class Component {
      * @param x the new x-coordinate
      */
     public void setX(float x) {
-        this.x = x;
-        invalidate();
+        xProperty().set(x);
     }
 
     /**
@@ -146,8 +331,7 @@ public abstract class Component {
      * @param y the new y-coordinate
      */
     public void setY(float y) {
-        this.y = y;
-        invalidate();
+        yProperty().set(y);
     }
 
     /**
@@ -165,8 +349,9 @@ public abstract class Component {
      * @param width the new width
      */
     public void setWidth(float width) {
-        this.width = width;
-        invalidate();
+        // Single source of truth: the observable property applies the value,
+        // notifies listeners and requests a repaint via its change hook.
+        widthProperty().set(width);
     }
 
     /**
@@ -184,8 +369,43 @@ public abstract class Component {
      * @param height the new height
      */
     public void setHeight(float height) {
-        this.height = height;
-        invalidate();
+        // Single source of truth: the observable property applies the value,
+        // notifies listeners and requests a repaint via its change hook.
+        heightProperty().set(height);
+    }
+
+    /**
+     * Applies a size computed by a layout manager without marking the bounds as
+     * explicitly user-set. This keeps {@link #isSizeExplicitlySet()} false so a
+     * subsequent layout pass can still resize the component to its preferred size.
+     *
+     * @param width  the layout-assigned width
+     * @param height the layout-assigned height
+     */
+    public void applyLayoutSize(float width, float height) {
+        boolean changed = false;
+        if (this.width != width) {
+            this.width = width;
+            changed = true;
+        }
+        if (this.height != height) {
+            this.height = height;
+            changed = true;
+        }
+        if (changed) {
+            requestRepaint();
+        }
+    }
+
+    /**
+     * Checks whether the component's size was provided explicitly by the user
+     * (via a bounds-carrying constructor or {@link #setWidth}/{@link #setHeight})
+     * rather than left for layout managers to decide.
+     *
+     * @return true if the size must be respected by layout managers
+     */
+    public boolean isSizeExplicitlySet() {
+        return sizeExplicitlySet;
     }
 
     /**
@@ -203,8 +423,7 @@ public abstract class Component {
      * @param visible true to make visible, false to hide
      */
     public void setVisible(boolean visible) {
-        this.visible = visible;
-        invalidate();
+        visibleProperty().set(visible);
     }
 
     /**
@@ -222,8 +441,7 @@ public abstract class Component {
      * @param enabled true to enable, false to disable
      */
     public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-        invalidate();
+        enabledProperty().set(enabled);
     }
 
     /**
@@ -277,8 +495,10 @@ public abstract class Component {
      * @param state the new state
      */
     public void setState(ComponentState state) {
-        this.state = state;
-        invalidate();
+        if (this.state != state) {
+            this.state = state;
+            requestRepaint();
+        }
     }
 
     /**
@@ -304,8 +524,10 @@ public abstract class Component {
      * Handles mouse events.
      *
      * @param event the mouse event
+     * @return {@code true} if the event was consumed and propagation to other
+     *         components should stop; {@code false} otherwise
      */
-    public abstract void onMouseEvent(MouseEvent event);
+    public abstract boolean onMouseEvent(MouseEvent event);
 
     /**
      * Handles key events.
@@ -322,14 +544,36 @@ public abstract class Component {
     public void dispose() {
         // Default implementation does nothing
     }
-    
+
+    /**
+     * Releases resources held by this component by delegating to
+     * {@link #dispose()}. Provided so components can be used with
+     * try-with-resources statements.
+     */
+    @Override
+    public void close() {
+        dispose();
+    }
+
+    /**
+     * Gets the preferred width of this component.
+     * The base implementation returns the user-provided width when bounds were
+     * set explicitly, otherwise a sensible default so layout managers can place
+     * the component without measuring content.
+     *
+     * @return the preferred width
+     */
+    public float getPreferredWidth() {
+        return sizeExplicitlySet ? width : DEFAULT_WIDTH;
+    }
+
     /**
      * Gets the preferred height of this component.
      * Subclasses can override this to provide content-based sizing.
-     * 
+     *
      * @return the preferred height
      */
     public float getPreferredHeight() {
-        return height;
+        return sizeExplicitlySet ? height : DEFAULT_HEIGHT;
     }
 }
