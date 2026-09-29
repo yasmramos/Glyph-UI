@@ -35,9 +35,35 @@ public class Label extends Component {
     public Label(float x, float y, float width, float height, String text) {
         super(x, y, width, height);
         this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Label without explicit bounds. The size will be derived
+     * from the preferred (measured) text size when a layout manager runs.
+     *
+     * @param text the text to display
+     */
+    public Label(String text) {
+        super();
+        this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Label with default (unset) bounds and empty text.
+     */
+    public Label() {
+        this("");
+    }
+
+    /**
+     * Initializes default color, alignment and font.
+     */
+    private void initDefaults() {
         this.textColor = Color.makeARGB(255, 255, 255, 255);
         this.alignment = TextAlignment.LEFT;
-        
+
         // Initialize font
         Typeface typeface = Typeface.makeFromName(null, FontStyle.NORMAL);
         this.font = new Font(typeface, 14.0f);
@@ -58,7 +84,10 @@ public class Label extends Component {
      * @param text the new text
      */
     public void setText(String text) {
-        this.text = text;
+        if (!java.util.Objects.equals(this.text, text)) {
+            this.text = text;
+            requestRepaint();
+        }
     }
 
     /**
@@ -76,16 +105,40 @@ public class Label extends Component {
      * @param textColor the new text color (as ARGB int)
      */
     public void setTextColor(int textColor) {
-        this.textColor = textColor;
+        if (this.textColor != textColor) {
+            this.textColor = textColor;
+            requestRepaint();
+        }
+    }
+
+    /**
+     * Gets the preferred width of this label: measured text width without any
+     * decorative padding. Falls back to the base defaults when the user
+     * provided explicit bounds.
+     *
+     * @return the preferred width
+     */
+    @Override
+    public float getPreferredWidth() {
+        if (sizeExplicitlySet) {
+            return width;
+        }
+        if (font == null || font.isClosed()) {
+            return DEFAULT_WIDTH;
+        }
+        return font.measureTextWidth(text == null ? "" : text);
     }
 
     /**
      * Gets the preferred height of this label based on its font size.
-     * 
+     *
      * @return the preferred height
      */
     @Override
     public float getPreferredHeight() {
+        if (sizeExplicitlySet) {
+            return height;
+        }
         // Return font size plus some padding for proper spacing
         return font.getSize() + 10.0f;
     }
@@ -105,7 +158,10 @@ public class Label extends Component {
      * @param alignment the new alignment
      */
     public void setAlignment(TextAlignment alignment) {
-        this.alignment = alignment;
+        if (this.alignment != alignment) {
+            this.alignment = alignment;
+            requestRepaint();
+        }
     }
 
     /**
@@ -123,8 +179,13 @@ public class Label extends Component {
      * @param size the new font size
      */
     public void setFontSize(float size) {
-        Typeface typeface = font.getTypeface();
-        this.font = new Font(typeface, size);
+        if (font.getSize() != size) {
+            Typeface typeface = font.getTypeface();
+            Font oldFont = this.font;
+            this.font = new Font(typeface, size);
+            oldFont.close();
+            requestRepaint();
+        }
     }
 
     @Override

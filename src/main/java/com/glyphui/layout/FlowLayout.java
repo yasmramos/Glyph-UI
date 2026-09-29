@@ -77,9 +77,15 @@ public class FlowLayout extends LayoutManager {
                 continue;
             }
 
-            // Get the preferred height of the component
-            float componentHeight = component.getPreferredHeight();
-            
+            // Get the preferred size of the component. When the user did not
+            // provide explicit bounds, the layout assigns the preferred size
+            // so widgets fit their content (e.g. measured button text).
+            float preferredWidth = component.getPreferredWidth();
+            float preferredHeight = component.getPreferredHeight();
+            if (!component.isSizeExplicitlySet()) {
+                component.applyLayoutSize(preferredWidth, preferredHeight);
+            }
+
             // Check if component fits in current row (using local coordinates)
             if (currentX + component.getWidth() > panelWidth - padding) {
                 // Move to next row
@@ -87,16 +93,13 @@ public class FlowLayout extends LayoutManager {
                 currentY = maxY + gap;
             }
 
-            // Set the component height to its preferred height
-            component.setHeight(componentHeight);
-
             // Position the component in local coordinates
             component.setX(currentX);
             component.setY(currentY);
 
             // Update position for next component
             currentX += component.getWidth() + gap;
-            maxY = Math.max(maxY, currentY + componentHeight);
+            maxY = Math.max(maxY, currentY + preferredHeight);
         }
     }
 }

@@ -8,6 +8,43 @@ import com.glyphui.events.KeyEvent;
  * Abstract base class for all UI components.
  */
 public abstract class Component {
+
+    /**
+     * Callback used to notify the application that a component's visual state
+     * changed and a repaint should be scheduled (on-demand rendering).
+     * The default implementation is a no-op so components work standalone
+     * (e.g. in unit tests) without an application attached.
+     */
+    public interface RepaintRequester {
+        void requestRepaint();
+    }
+
+    private static volatile RepaintRequester repaintRequester = () -> { };
+
+    /**
+     * Registers the global repaint requester, typically called by the
+     * {@code Application} during initialization.
+     *
+     * @param requester the callback to invoke on visual mutations, or null to reset to a no-op
+     */
+    public static void setRepaintRequester(RepaintRequester requester) {
+        repaintRequester = (requester != null) ? requester : () -> { };
+    }
+
+    /**
+     * Notifies the registered repaint requester that this component needs repainting.
+     * Subclasses and containers should call this after any mutation that affects
+     * how the component is drawn.
+     */
+    protected void requestRepaint() {
+        repaintRequester.requestRepaint();
+    }
+
+    /** Default width used when no explicit bounds were provided and layout is free to decide. */
+    public static final float DEFAULT_WIDTH = 150f;
+    /** Default height used when no explicit bounds were provided and layout is free to decide. */
+    public static final float DEFAULT_HEIGHT = 40f;
+
     protected float x;
     protected float y;
     protected float width;
@@ -17,6 +54,23 @@ public abstract class Component {
     protected Panel parent;
     protected String id;
     protected ComponentState state;
+    /**
+     * Tracks whether the bounds (width/height) were set explicitly by the user
+     * through a bounds-carrying constructor or {@link #setWidth}/{@link #setHeight}.
+     * When false, layout managers are free to resize the component to its
+     * preferred size; when true, the user-provided size must be respected.
+     */
+    protected boolean sizeExplicitlySet;
+
+    /**
+     * Creates a new Component with default (unset) bounds.
+     * The resulting component has zero geometry until a layout manager assigns
+     * a preferred size or the user sets bounds explicitly.
+     */
+    public Component() {
+        this(0f, 0f, 0f, 0f);
+        this.sizeExplicitlySet = false;
+    }
 
     /**
      * Creates a new Component.
@@ -36,6 +90,7 @@ public abstract class Component {
         this.parent = null;
         this.id = "component_" + System.nanoTime();
         this.state = ComponentState.IDLE;
+        this.sizeExplicitlySet = true;
     }
 
     /**
@@ -53,7 +108,10 @@ public abstract class Component {
      * @param x the new x-coordinate
      */
     public void setX(float x) {
-        this.x = x;
+        if (this.x != x) {
+            this.x = x;
+            requestRepaint();
+        }
     }
 
     /**
@@ -71,7 +129,10 @@ public abstract class Component {
      * @param y the new y-coordinate
      */
     public void setY(float y) {
-        this.y = y;
+        if (this.y != y) {
+            this.y = y;
+            requestRepaint();
+        }
     }
 
     /**
@@ -89,7 +150,11 @@ public abstract class Component {
      * @param width the new width
      */
     public void setWidth(float width) {
-        this.width = width;
+        if (this.width != width) {
+            this.width = width;
+            this.sizeExplicitlySet = true;
+            requestRepaint();
+        }
     }
 
     /**
@@ -107,7 +172,45 @@ public abstract class Component {
      * @param height the new height
      */
     public void setHeight(float height) {
-        this.height = height;
+        if (this.height != height) {
+            this.height = height;
+            this.sizeExplicitlySet = true;
+            requestRepaint();
+        }
+    }
+
+    /**
+     * Applies a size computed by a layout manager without marking the bounds as
+     * explicitly user-set. This keeps {@link #isSizeExplicitlySet()} false so a
+     * subsequent layout pass can still resize the component to its preferred size.
+     *
+     * @param width  the layout-assigned width
+     * @param height the layout-assigned height
+     */
+    public void applyLayoutSize(float width, float height) {
+        boolean changed = false;
+        if (this.width != width) {
+            this.width = width;
+            changed = true;
+        }
+        if (this.height != height) {
+            this.height = height;
+            changed = true;
+        }
+        if (changed) {
+            requestRepaint();
+        }
+    }
+
+    /**
+     * Checks whether the component's size was provided explicitly by the user
+     * (via a bounds-carrying constructor or {@link #setWidth}/{@link #setHeight})
+     * rather than left for layout managers to decide.
+     *
+     * @return true if the size must be respected by layout managers
+     */
+    public boolean isSizeExplicitlySet() {
+        return sizeExplicitlySet;
     }
 
     /**
@@ -125,7 +228,10 @@ public abstract class Component {
      * @param visible true to make visible, false to hide
      */
     public void setVisible(boolean visible) {
-        this.visible = visible;
+        if (this.visible != visible) {
+            this.visible = visible;
+            requestRepaint();
+        }
     }
 
     /**
@@ -143,7 +249,10 @@ public abstract class Component {
      * @param enabled true to enable, false to disable
      */
     public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
+        if (this.enabled != enabled) {
+            this.enabled = enabled;
+            requestRepaint();
+        }
     }
 
     /**
@@ -197,7 +306,10 @@ public abstract class Component {
      * @param state the new state
      */
     public void setState(ComponentState state) {
-        this.state = state;
+        if (this.state != state) {
+            this.state = state;
+            requestRepaint();
+        }
     }
 
     /**
@@ -243,12 +355,24 @@ public abstract class Component {
     }
     
     /**
+     * Gets the preferred width of this component.
+     * The base implementation returns the user-provided width when bounds were
+     * set explicitly, otherwise a sensible default so layout managers can place
+     * the component without measuring content.
+     *
+     * @return the preferred width
+     */
+    public float getPreferredWidth() {
+        return sizeExplicitlySet ? width : DEFAULT_WIDTH;
+    }
+
+    /**
      * Gets the preferred height of this component.
      * Subclasses can override this to provide content-based sizing.
-     * 
+     *
      * @return the preferred height
      */
     public float getPreferredHeight() {
-        return height;
+        return sizeExplicitlySet ? height : DEFAULT_HEIGHT;
     }
 }

@@ -9,6 +9,11 @@ import io.github.humbleui.skija.*;
  * A button component with text, click handler, and visual states.
  */
 public class Button extends Component {
+    /** Horizontal padding added on each side of the measured text. */
+    public static final float HORIZONTAL_PADDING = 24.0f;
+    /** Vertical padding added to the measured text height. */
+    public static final float VERTICAL_PADDING = 16.0f;
+
     private String text;
     private Runnable onClick;
     private int normalColor;
@@ -36,8 +41,34 @@ public class Button extends Component {
     public Button(float x, float y, float width, float height, String text) {
         super(x, y, width, height);
         this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Button without explicit bounds. The size will be derived
+     * from the preferred (measured) text size when a layout manager runs.
+     *
+     * @param text the text displayed on the button
+     */
+    public Button(String text) {
+        super();
+        this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Button with default (unset) bounds and empty text.
+     */
+    public Button() {
+        this("");
+    }
+
+    /**
+     * Initializes default colors, font and reusable paint objects.
+     */
+    private void initDefaults() {
         this.onClick = null;
-        
+
         // Default colors
         this.normalColor = Color.makeARGB(255, 60, 60, 60);
         this.hoverColor = Color.makeARGB(255, 80, 80, 80);
@@ -45,20 +76,20 @@ public class Button extends Component {
         this.textColor = Color.makeARGB(255, 255, 255, 255);
         this.borderColor = Color.makeARGB(255, 120, 120, 120);
         this.borderRadius = 8.0f;
-        
+
         // Initialize font
         Typeface typeface = Typeface.makeFromName(null, FontStyle.NORMAL);
         this.font = new Font(typeface, 16.0f);
-        
+
         // Initialize reusable Paint objects
         this.bgPaint = new Paint();
         this.bgPaint.setAntiAlias(true);
-        
+
         this.borderPaint = new Paint();
         this.borderPaint.setMode(PaintMode.STROKE);
         this.borderPaint.setStrokeWidth(1.0f);
         this.borderPaint.setAntiAlias(true);
-        
+
         this.textPaint = new Paint();
         this.textPaint.setAntiAlias(true);
     }
@@ -78,7 +109,47 @@ public class Button extends Component {
      * @param text the new text
      */
     public void setText(String text) {
-        this.text = text;
+        if (!java.util.Objects.equals(this.text, text)) {
+            this.text = text;
+            requestRepaint();
+        }
+    }
+
+    /**
+     * Gets the preferred width of this button: measured text width plus
+     * horizontal padding on both sides. Falls back to the base defaults when
+     * the user provided explicit bounds.
+     *
+     * @return the preferred width
+     */
+    @Override
+    public float getPreferredWidth() {
+        if (sizeExplicitlySet) {
+            return width;
+        }
+        if (font == null || font.isClosed()) {
+            return Math.max(DEFAULT_WIDTH, HORIZONTAL_PADDING * 2);
+        }
+        return font.measureTextWidth(text == null ? "" : text) + HORIZONTAL_PADDING * 2;
+    }
+
+    /**
+     * Gets the preferred height of this button: measured text height plus
+     * vertical padding. Falls back to the base defaults when the user provided
+     * explicit bounds.
+     *
+     * @return the preferred height
+     */
+    @Override
+    public float getPreferredHeight() {
+        if (sizeExplicitlySet) {
+            return height;
+        }
+        if (font == null || font.isClosed()) {
+            return DEFAULT_HEIGHT;
+        }
+        FontMetrics metrics = font.getMetrics();
+        return (metrics.getDescent() - metrics.getAscent()) + VERTICAL_PADDING;
     }
 
     /**
@@ -114,7 +185,10 @@ public class Button extends Component {
      * @param normalColor the new normal color (as ARGB int)
      */
     public void setNormalColor(int normalColor) {
-        this.normalColor = normalColor;
+        if (this.normalColor != normalColor) {
+            this.normalColor = normalColor;
+            requestRepaint();
+        }
     }
 
     /**
@@ -132,7 +206,10 @@ public class Button extends Component {
      * @param hoverColor the new hover color (as ARGB int)
      */
     public void setHoverColor(int hoverColor) {
-        this.hoverColor = hoverColor;
+        if (this.hoverColor != hoverColor) {
+            this.hoverColor = hoverColor;
+            requestRepaint();
+        }
     }
 
     /**
@@ -150,7 +227,10 @@ public class Button extends Component {
      * @param pressedColor the new pressed color (as ARGB int)
      */
     public void setPressedColor(int pressedColor) {
-        this.pressedColor = pressedColor;
+        if (this.pressedColor != pressedColor) {
+            this.pressedColor = pressedColor;
+            requestRepaint();
+        }
     }
 
     /**
@@ -168,7 +248,10 @@ public class Button extends Component {
      * @param textColor the new text color (as ARGB int)
      */
     public void setTextColor(int textColor) {
-        this.textColor = textColor;
+        if (this.textColor != textColor) {
+            this.textColor = textColor;
+            requestRepaint();
+        }
     }
 
     /**
@@ -186,7 +269,10 @@ public class Button extends Component {
      * @param borderColor the new border color (as ARGB int)
      */
     public void setBorderColor(int borderColor) {
-        this.borderColor = borderColor;
+        if (this.borderColor != borderColor) {
+            this.borderColor = borderColor;
+            requestRepaint();
+        }
     }
 
     /**
@@ -204,7 +290,10 @@ public class Button extends Component {
      * @param borderRadius the new border radius
      */
     public void setBorderRadius(float borderRadius) {
-        this.borderRadius = borderRadius;
+        if (this.borderRadius != borderRadius) {
+            this.borderRadius = borderRadius;
+            requestRepaint();
+        }
     }
 
     /**
@@ -265,6 +354,8 @@ public class Button extends Component {
 
         boolean isInside = contains(event.getX(), event.getY());
 
+        ComponentState oldState = state;
+
         switch (event.getType()) {
             case MOVE:
                 if (isInside) {
@@ -294,6 +385,11 @@ public class Button extends Component {
 
             default:
                 break;
+        }
+
+        // Request a repaint only when the visual state actually changed
+        if (state != oldState) {
+            requestRepaint();
         }
     }
 
