@@ -67,9 +67,12 @@ public class Panel extends Component {
 
     /**
      * Marks the layout as dirty, triggering a relayout on next render.
+     * Also requests a repaint so the application re-renders when the
+     * layout result changes the visual tree (on-demand rendering).
      */
     protected void markLayoutDirty() {
         layoutDirty = true;
+        requestRepaint();
     }
 
     /**
@@ -114,14 +117,20 @@ public class Panel extends Component {
 
     @Override
     public void setWidth(float width) {
+        float oldWidth = this.width;
         super.setWidth(width);
-        markLayoutDirty();
+        if (oldWidth != width) {
+            markLayoutDirty();
+        }
     }
 
     @Override
     public void setHeight(float height) {
+        float oldHeight = this.height;
         super.setHeight(height);
-        markLayoutDirty();
+        if (oldHeight != height) {
+            markLayoutDirty();
+        }
     }
 
     /**
@@ -139,7 +148,10 @@ public class Panel extends Component {
      * @param backgroundColor the new background color (as ARGB int)
      */
     public void setBackgroundColor(int backgroundColor) {
-        this.backgroundColor = backgroundColor;
+        if (this.backgroundColor != backgroundColor) {
+            this.backgroundColor = backgroundColor;
+            requestRepaint();
+        }
     }
 
     @Override

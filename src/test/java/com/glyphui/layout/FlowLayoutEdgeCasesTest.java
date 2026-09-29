@@ -1,5 +1,6 @@
 package com.glyphui.layout;
 
+import com.glyphui.ui.Component;
 import com.glyphui.ui.Panel;
 import com.glyphui.ui.TestComponent;
 import org.junit.jupiter.api.Test;
@@ -151,12 +152,14 @@ public class FlowLayoutEdgeCasesTest {
     }
 
     @Test
-    public void testFlowLayoutUsesPreferredHeightOverConstructorHeight() {
+    public void testFlowLayoutUsesPreferredHeightForRowSpacingButKeepsExplicitBounds() {
         Panel panel = new Panel(0, 0, 200, 100);
         FlowLayout layout = new FlowLayout(10, 10);
         panel.setLayoutManager(layout);
 
-        // Component whose preferred height differs from its constructor height
+        // Component whose preferred height differs from its explicit height.
+        // The layout must NOT resize explicit bounds, but it does use the
+        // preferred height when computing row heights for wrapping.
         TestComponent tall = new TestComponent(0, 0, 50, 5) {
             @Override
             public float getPreferredHeight() {
@@ -169,10 +172,11 @@ public class FlowLayoutEdgeCasesTest {
         panel.add(next);
         panel.doLayout();
 
-        assertEquals(40f, tall.getHeight(), "Layout should apply the preferred height");
+        assertEquals(5f, tall.getHeight(), "Explicit height must be respected");
+        assertEquals(50f, tall.getWidth(), "Explicit width must be respected");
 
         // Force wrap to check row height uses preferred height:
-        // panel width 200, padding 10 -> two 50-wide components fit, so wrap manually
+        // narrow panel width 80, padding 10 -> two 50-wide components do not fit.
         Panel narrow = new Panel(0, 0, 80, 200);
         narrow.setLayoutManager(new FlowLayout(5, 10));
         TestComponent t1 = new TestComponent(0, 0, 50, 5) {
@@ -189,6 +193,84 @@ public class FlowLayoutEdgeCasesTest {
         assertEquals(10, t2.getX(), "Second component should wrap to a new line");
         assertEquals(10 + 40 + 5, t2.getY(),
                 "Next row must start after the preferred height of the tallest component in the previous row");
+    }
+
+    @Test
+    public void testFlowLayoutAssignsPreferredSizeWhenBoundsNotExplicit() {
+        Panel panel = new Panel(0, 0, 400, 100);
+        panel.setLayoutManager(new FlowLayout(10, 10));
+
+        // No bounds provided: layout must adopt the component's preferred size.
+        TestComponent auto = new TestComponent() {
+            @Override
+            public float getPreferredWidth() {
+                return 60f;
+            }
+
+            @Override
+            public float getPreferredHeight() {
+                return 20f;
+            }
+        };
+        TestComponent second = new TestComponent() {
+            @Override
+            public float getPreferredWidth() {
+                return 60f;
+            }
+
+            @Override
+            public float getPreferredHeight() {
+                return 20f;
+            }
+        };
+
+        panel.add(auto);
+        panel.add(second);
+        panel.doLayout();
+
+        assertEquals(60f, auto.getWidth(), "Layout should assign the preferred width");
+        assertEquals(20f, auto.getHeight(), "Layout should assign the preferred height");
+        assertFalse(auto.isSizeExplicitlySet(),
+                "Layout-assigned size must not mark bounds as user-explicit");
+
+        // Second component flows after the assigned width, not the old zero width.
+        assertEquals(10 + 60 + 10, second.getX(),
+                "Row advance must use the preferred width assigned by the layout");
+
+        // Re-running the layout keeps the same geometry (idempotent sizing).
+        panel.doLayout();
+        assertEquals(60f, auto.getWidth());
+        assertEquals(10 + 60 + 10, second.getX());
+    }
+
+    @Test
+    public void testFlowLayoutRespectsUserPreferredWidthForUnsetComponents() {
+        Panel panel = new Panel(0, 0, 100, 200);
+        panel.setLayoutManager(new FlowLayout(5, 10));
+
+        // Unset bounds but wide preferred width forces wrapping on a 80px content area.
+        TestComponent wide = new TestComponent() {
+            @Override
+            public float getPreferredWidth() {
+                return 70f;
+            }
+        };
+        TestComponent other = new TestComponent() {
+            @Override
+            public float getPreferredWidth() {
+                return 70f;
+            }
+        };
+        panel.add(wide);
+        panel.add(other);
+        panel.doLayout();
+
+        assertEquals(70f, wide.getWidth());
+        assertEquals(10, other.getX(), "Second wide component should wrap to a new row");
+        // Row spacing uses the preferred height (TestComponent.PREFERRED_HEIGHT)
+        // even though the anonymous subclass only overrides getPreferredWidth().
+        assertEquals(10 + TestComponent.PREFERRED_HEIGHT + 5, other.getY(),
+                "Wrapped row must account for the preferred height of the first row");
     }
 
     @Test
