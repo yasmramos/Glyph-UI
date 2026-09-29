@@ -200,16 +200,21 @@ public class Panel extends Component {
 
         // Draw background if color is set (non-transparent). The paint object
         // is reused across frames to avoid per-frame native allocations.
-        if (backgroundColor != Color.makeARGB(0, 0, 0, 0)) {
+        // Compare the alpha channel directly: io.github.humbleui.skija.Color
+        // is an int value class that does not override equals(), so reference
+        // comparison against a freshly built transparent color is unreliable.
+        if ((backgroundColor >>> 24) != 0) {
             ensureBgPaint();
             bgPaint.setColor(backgroundColor);
             canvas.drawRect(x, y, width, height, bgPaint);
         }
 
-        // Save the canvas state and translate to panel's local coordinate system
-        io.github.humbleui.skija.Canvas nativeCanvas = canvas.getNativeCanvas();
-        int saveCount = nativeCanvas.save();
-        nativeCanvas.translate(x, y);
+        // Save the canvas state, translate to the panel's local coordinate
+        // system and clip to its bounds so that children cannot draw outside
+        // the panel. The saved state is restored with restoreToCount().
+        int saveCount = canvas.save();
+        canvas.translate(x, y);
+        canvas.clipRect(0, 0, width, height);
 
         try {
             // Render all children in local coordinates
@@ -220,14 +225,14 @@ public class Panel extends Component {
             }
         } finally {
             // Restore the canvas state
-            nativeCanvas.restoreToCount(saveCount);
+            canvas.restoreToCount(saveCount);
         }
     }
 
     @Override
-    public void onMouseEvent(com.glyphui.events.MouseEvent event) {
+    public boolean onMouseEvent(com.glyphui.events.MouseEvent event) {
         if (!visible || !enabled) {
-            return;
+            return false;
         }
 
         // Convert mouse coordinates to local coordinate system for children
@@ -243,13 +248,22 @@ public class Panel extends Component {
             event.getClickCount()
         );
 
-        // Propagate event to children in reverse order (top-most first)
+        // Propagate the event to children in reverse order (top-most first).
+        // Only children whose bounds contain the pointer receive the event,
+        // and propagation stops as soon as a child consumes it.
         for (int i = children.size() - 1; i >= 0; i--) {
             Component child = children.get(i);
-            if (child.isVisible() && child.isEnabled()) {
-                child.onMouseEvent(localEvent);
+            if (!child.isVisible() || !child.isEnabled()) {
+                continue;
+            }
+            if (!child.contains(localX, localY)) {
+                continue;
+            }
+            if (child.onMouseEvent(localEvent)) {
+                return true;
             }
         }
+        return false;
     }
 
     @Override

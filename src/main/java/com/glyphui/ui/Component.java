@@ -14,6 +14,11 @@ import com.glyphui.events.KeyEvent;
  */
 public abstract class Component implements AutoCloseable {
 
+    /** Monotonic counter used to generate unique component IDs. */
+    private static final java.util.concurrent.atomic.AtomicLong ID_COUNTER =
+            new java.util.concurrent.atomic.AtomicLong();
+
+
     /**
      * Callback used to notify the application that a component's visual state
      * changed and a repaint should be scheduled (on-demand rendering).
@@ -93,7 +98,7 @@ public abstract class Component implements AutoCloseable {
         this.visible = true;
         this.enabled = true;
         this.parent = null;
-        this.id = "component_" + System.nanoTime();
+        this.id = "component_" + ID_COUNTER.incrementAndGet();
         this.state = ComponentState.IDLE;
         this.sizeExplicitlySet = true;
     }
@@ -340,8 +345,10 @@ public abstract class Component implements AutoCloseable {
      * Handles mouse events.
      *
      * @param event the mouse event
+     * @return {@code true} if the event was consumed and propagation to other
+     *         components should stop; {@code false} otherwise
      */
-    public abstract void onMouseEvent(MouseEvent event);
+    public abstract boolean onMouseEvent(MouseEvent event);
 
     /**
      * Handles key events.

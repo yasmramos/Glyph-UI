@@ -129,9 +129,9 @@ public class ButtonTest {
         }
         
         @Override
-        public void onMouseEvent(MouseEvent event) {
+        public boolean onMouseEvent(MouseEvent event) {
             if (!visible || !enabled) {
-                return;
+                return false;
             }
 
             boolean isInside = contains(event.getX(), event.getY());
@@ -162,6 +162,7 @@ public class ButtonTest {
                     state = isInside ? ComponentState.HOVER : ComponentState.IDLE;
                     break;
             }
+            return isInside;
         }
         
         @Override

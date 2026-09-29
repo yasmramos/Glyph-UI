@@ -232,8 +232,9 @@ public class Label extends Component {
     }
 
     @Override
-    public void onMouseEvent(MouseEvent event) {
-        // Labels typically don't handle mouse events
+    public boolean onMouseEvent(MouseEvent event) {
+        // Labels are inert: they never consume mouse events
+        return false;
     }
 
     @Override
