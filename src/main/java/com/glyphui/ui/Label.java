@@ -13,6 +13,8 @@ public class Label extends Component {
     private int textColor;
     private Font font;
     private TextAlignment alignment;
+    /** Reusable text paint: created once, reused every frame, closed in dispose(). */
+    private Paint textPaint;
 
     /**
      * Text alignment options.
@@ -64,9 +66,8 @@ public class Label extends Component {
         this.textColor = Color.makeARGB(255, 255, 255, 255);
         this.alignment = TextAlignment.LEFT;
 
-        // Initialize font
-        Typeface typeface = Typeface.makeFromName(null, FontStyle.NORMAL);
-        this.font = new Font(typeface, 14.0f);
+        // Initialize font from the shared cached typeface (cheap Font wrapper)
+        this.font = com.glyphui.graphics.Fonts.createDefaultFont(14.0f);
     }
 
     /**
@@ -213,12 +214,21 @@ public class Label extends Component {
         
         float textY = y + (height + textHeight) / 2.0f;
 
-        // Draw text
-        Paint textPaint = new Paint();
+        // Draw text using the reusable paint field (no per-frame allocations)
+        ensureTextPaint();
         textPaint.setColor(textColor);
-        textPaint.setAntiAlias(true);
         canvas.drawString(text, textX, textY, textPaint, font);
-        textPaint.close();
+    }
+
+    /**
+     * Lazily creates the reusable text paint so {@link #render} never
+     * allocates native objects per frame.
+     */
+    private void ensureTextPaint() {
+        if (textPaint == null || textPaint.isClosed()) {
+            textPaint = new Paint();
+            textPaint.setAntiAlias(true);
+        }
     }
 
     @Override
@@ -229,5 +239,22 @@ public class Label extends Component {
     @Override
     public void onKeyEvent(KeyEvent event) {
         // Labels typically don't handle key events
+    }
+
+    /**
+     * Releases the native Skija resources owned by this label (font and text
+     * paint). The shared {@code Typeface} from {@link com.glyphui.graphics.Fonts}
+     * is intentionally NOT closed here: it is owned by the cache.
+     */
+    @Override
+    public void dispose() {
+        if (textPaint != null) {
+            textPaint.close();
+            textPaint = null;
+        }
+        if (font != null) {
+            font.close();
+            font = null;
+        }
     }
 }

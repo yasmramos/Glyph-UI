@@ -15,6 +15,12 @@ public class Panel extends Component {
     protected int backgroundColor;
 
     /**
+     * Reusable background paint, created lazily on first render and closed in
+     * {@link #dispose()} to avoid per-frame native allocations.
+     */
+    private io.github.humbleui.skija.Paint bgPaint;
+
+    /**
      * Creates a new Panel.
      *
      * @param x      the x-coordinate of the panel
@@ -49,20 +55,49 @@ public class Panel extends Component {
     public void remove(Component component) {
         children.remove(component);
         component.setParent(null);
-        component.dispose();
+        component.close();
         markLayoutDirty();
     }
 
     /**
-     * Removes all child components from this panel.
+     * Removes all child components from this panel, closing each one.
      */
     public void clear() {
         for (Component child : children) {
             child.setParent(null);
-            child.dispose();
+            child.close();
         }
         children.clear();
         markLayoutDirty();
+    }
+
+    /**
+     * Releases this panel's resources and cascades {@link Component#close()}
+     * to every child so nested widgets free their native Skija objects too.
+     * The child list is cleared afterwards.
+     */
+    @Override
+    public void dispose() {
+        for (Component child : children) {
+            child.setParent(null);
+            child.close();
+        }
+        children.clear();
+        if (bgPaint != null) {
+            bgPaint.close();
+            bgPaint = null;
+        }
+    }
+
+    /**
+     * Lazily creates the reusable background paint. Kept out of the render
+     * loop's allocation path: it is created once and reused every frame.
+     */
+    private void ensureBgPaint() {
+        if (bgPaint == null || bgPaint.isClosed()) {
+            bgPaint = new io.github.humbleui.skija.Paint();
+            bgPaint.setAntiAlias(true);
+        }
     }
 
     /**
@@ -163,13 +198,12 @@ public class Panel extends Component {
         // Ensure layout is applied before rendering children
         doLayout();
 
-        // Draw background if color is set (non-transparent)
+        // Draw background if color is set (non-transparent). The paint object
+        // is reused across frames to avoid per-frame native allocations.
         if (backgroundColor != Color.makeARGB(0, 0, 0, 0)) {
-            io.github.humbleui.skija.Paint bgPaint = new io.github.humbleui.skija.Paint();
+            ensureBgPaint();
             bgPaint.setColor(backgroundColor);
-            bgPaint.setAntiAlias(true);
             canvas.drawRect(x, y, width, height, bgPaint);
-            bgPaint.close();
         }
 
         // Save the canvas state and translate to panel's local coordinate system
