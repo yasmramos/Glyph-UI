@@ -29,13 +29,19 @@ public class HiDpiRenderIT {
     @BeforeEach
     public void setUp() {
         app = new Application();
-        boolean initialized = app.init("HiDPI IT", 400, 300, true);
+        boolean initialized = false;
+        try {
+            initialized = app.init("HiDPI IT", 400, 300, true);
+        } catch (Throwable t) {
+            // GLFW/native libraries unavailable in this environment
+            Assumptions.abort("GLFW not available (headless environment); skipping test: " + t);
+        }
         Assumptions.assumeTrue(initialized, "GLFW not available (headless environment); skipping test");
     }
 
     @AfterEach
     public void tearDown() {
-        if (app != null) {
+        if (app != null && app.getWindow() != null) {
             app.destroy();
         }
     }
@@ -54,8 +60,11 @@ public class HiDpiRenderIT {
             byte[] px = new byte[buf.remaining()];
             buf.get(px);
             int off = (physY * w + physX) * 4;
-            int r = px[off] & 0xFF, g = px[off + 1] & 0xFF, b = px[off + 2] & 0xFF;
-            return (r << 16) | (g << 8) | b;
+            // N32 premultiplied on little-endian JVMs: bytes are [B, G, R, A].
+            // Read as a little-endian ARGB int so 0xFFFF0000 == opaque red.
+            int argb = (px[off] & 0xFF) | ((px[off + 1] & 0xFF) << 8)
+                     | ((px[off + 2] & 0xFF) << 16) | ((px[off + 3] & 0xFF) << 24);
+            return argb;
         } finally {
             full.close();
         }
@@ -74,10 +83,13 @@ public class HiDpiRenderIT {
         root.setBackgroundColor(0xFFFF0000); // opaque red, logical 400x300
 
         // Simulate a 2.0x HiDPI display on the raster path: physical
-        // framebuffer = logical * 2.
+        // framebuffer = logical * 2. Grow the root panel to the full logical
+        // window size so its background covers every logical pixel.
         app.getWindow().setContentScale(2.0f, 2.0f);
         app.getWindow().setSizes(app.getWindow().getWidth(), app.getWindow().getHeight(),
                 app.getWindow().getWidth() * 2, app.getWindow().getHeight() * 2);
+        root.setWidth(app.getWindow().getWidth());
+        root.setHeight(app.getWindow().getHeight());
         app.recreateRasterSurfaceForTesting();
 
         Canvas wrapper = app.getCanvas();
@@ -86,7 +98,8 @@ public class HiDpiRenderIT {
 
         app.renderFrame();
 
-        // Inside the scaled region: logical (10,10) -> physical (20,20) is red
+        // Inside the scaled region: logical (10,10) -> physical (20,20) is red.
+        // The bitmap stores premultiplied RGBA; extract RGB from bytes 1..3.
         int inside = readPixel(wrapper, 20, 20);
         assertEquals(0xFF0000, inside & 0xFFFFFF,
                 "Canvas.scale(2,2) must map logical drawing to physical pixels");

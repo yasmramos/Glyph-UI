@@ -245,8 +245,10 @@ public class Application {
         int logicalWidth = window.getWidth();
         int logicalHeight = window.getHeight();
 
-        // Create raster surface at physical resolution (no OpenGL context needed)
-        surface = Surface.makeRaster(ImageInfo.makeN32Premul(fbWidth, fbHeight));
+        // Create raster surface at physical resolution (no OpenGL context needed).
+        // Skija raster surfaces always store rows top-to-bottom, so pixel
+        // sampling matches the UI coordinate system without any flip.
+        surface = Surface.makeRasterN32Premul(fbWidth, fbHeight);
         
         if (surface == null) {
             throw new RuntimeException("Failed to create raster surface");
