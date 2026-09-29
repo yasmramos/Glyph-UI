@@ -77,36 +77,54 @@ src/main/java/com/glyphui/
 
 ## Usage Example
 
+`Application` implements `AutoCloseable`, so the recommended pattern is
+try-with-resources. Closing the application disposes the whole component tree
+in cascade (each widget releases its native paints/fonts), then frees the
+shared font cache, the Skija surface, the GPU context and finally the GLFW
+window - always in the correct dependency order:
+
 ```java
 import com.glyphui.core.Application;
 import com.glyphui.ui.Button;
 
 public class MyApp {
     public static void main(String[] args) {
-        Application app = new Application();
-        
-        if (!app.init("My App", 800, 600)) {
-            System.err.println("Failed to initialize");
-            return;
-        }
+        try (Application app = new Application()) {
 
-        // Create a button
-        Button button = new Button(100, 100, 150, 40, "Click Me!");
-        button.setOnClick(() -> {
-            System.out.println("Button clicked!");
-        });
+            if (!app.init("My App", 800, 600)) {
+                System.err.println("Failed to initialize");
+                return;
+            }
 
-        // Add to root panel
-        app.getRootPanel().add(button);
+            // Create a button
+            Button button = new Button(100, 100, 150, 40, "Click Me!");
+            button.setOnClick(() -> {
+                System.out.println("Button clicked!");
+            });
 
-        try {
+            // Add to root panel (ownership transfers to the panel)
+            app.getRootPanel().add(button);
+
             app.run();
-        } finally {
-            app.destroy();
         }
+        // app.close() ran automatically: components, fonts, surface,
+        // GPU context and window were released in order.
     }
 }
 ```
+
+Components (`Button`, `Label`, `Panel`, ...) also implement `AutoCloseable`;
+`close()` delegates to `dispose()` and `Panel` closes all of its children
+recursively, so standalone widgets can be managed with try-with-resources too:
+
+```java
+try (Button button = new Button("Click Me!")) {
+    // use the button...
+}   // native paints and font released here
+```
+
+For backward compatibility, `app.destroy()` still exists as an alias for
+`app.close()`.
 
 ## Dependencies
 

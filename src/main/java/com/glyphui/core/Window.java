@@ -12,8 +12,12 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 
 /**
  * Manages the application window and GLFW context.
+ *
+ * <p>{@code Window} owns the native GLFW window handle, so it implements
+ * {@link AutoCloseable}. {@link #close()} destroys the window and terminates
+ * GLFW; it is safe to call multiple times.</p>
  */
-public class Window {
+public class Window implements AutoCloseable {
     private long windowHandle;
     private int width;
     private int height;
@@ -230,12 +234,26 @@ public class Window {
     }
 
     /**
-     * Destroys the window and terminates GLFW.
+     * Destroys the window and terminates GLFW. Idempotent: subsequent calls
+     * are no-ops once the window handle has been released.
      */
     public void destroy() {
+        if (windowHandle == 0L) {
+            return; // already destroyed
+        }
         glfwFreeCallbacks(windowHandle);
         glfwDestroyWindow(windowHandle);
+        windowHandle = 0L;
         glfwTerminate();
         glfwSetErrorCallback(null).free();
+    }
+
+    /**
+     * Releases the native window resources. Equivalent to {@link #destroy()};
+     * provided so windows can be used with try-with-resources.
+     */
+    @Override
+    public void close() {
+        destroy();
     }
 }

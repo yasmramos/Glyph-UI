@@ -77,9 +77,8 @@ public class Button extends Component {
         this.borderColor = Color.makeARGB(255, 120, 120, 120);
         this.borderRadius = 8.0f;
 
-        // Initialize font
-        Typeface typeface = Typeface.makeFromName(null, FontStyle.NORMAL);
-        this.font = new Font(typeface, 16.0f);
+        // Initialize font from the shared cached typeface (cheap Font wrapper)
+        this.font = com.glyphui.graphics.Fonts.createDefaultFont(16.0f);
 
         // Initialize reusable Paint objects
         this.bgPaint = new Paint();
