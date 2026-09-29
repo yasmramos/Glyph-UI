@@ -8,11 +8,9 @@ import io.github.humbleui.skija.*;
 import org.lwjgl.glfw.GLFWKeyCallback;
 import org.lwjgl.glfw.GLFWMouseButtonCallback;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
-import org.lwjgl.glfw.GLFWFramebufferSizeCallback;
 import org.lwjgl.glfw.GLFWKeyCallbackI;
 import org.lwjgl.glfw.GLFWMouseButtonCallbackI;
 import org.lwjgl.glfw.GLFWCursorPosCallbackI;
-import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -56,6 +54,7 @@ public class Application implements AutoCloseable {
     private boolean running;
     private double lastFrameTime;
     private int targetFPS;
+    private boolean useRasterSurface;
 
     /** When true, the GPU backend is skipped and a raster surface is used directly. */
     private boolean forceRasterSurface;
@@ -122,6 +121,49 @@ public class Application implements AutoCloseable {
         this.forceRasterSurface = false;
         this.paintDirty = true; // first frame must always be painted
         this.rootPanel = new Panel(0, 0, 800, 600);
+        // Propagate component invalidations up to requestRepaint()
+        Component.setGlobalRepaintRequester(this::requestRepaint);
+    }
+
+    /**
+     * Marks the display dirty so the next loop iteration renders a new frame.
+     * Safe to call from other threads (e.g. from {@code invokeLater} tasks).
+     */
+    public void requestRepaint() {
+        synchronized (this) {
+            paintDirty = true;
+            // Wake up the loop if it is blocked in glfwWaitEvents()
+            if (window != null && running) {
+                window.postEmptyEvent();
+            }
+        }
+    }
+
+    /**
+     * Returns the current paint-dirty state (mainly for tests).
+     *
+     * @return true when a repaint has been requested but not yet performed
+     */
+    public boolean isPaintDirty() {
+        return paintDirty;
+    }
+
+    /**
+     * Installs a repaint requester as the global hook so that any component
+     * {@code invalidate()} reaching the root of the tree marks this
+     * application paint-dirty. {@link Component#invalidate()} propagates up
+     * the parent chain until it reaches the top-level panel, which then
+     * invokes this requester (see {@link #requestRepaint()}).
+     *
+     * <p>The {@link #Application()} constructor already installs this
+     * application as the global requester; this setter allows re-pointing the
+     * hook (e.g. when nesting applications in tests or restoring a previous
+     * requester).</p>
+     *
+     * @param requester the repaint requester (may be null to clear)
+     */
+    public void setRepaintRequester(RepaintRequester requester) {
+        Component.setGlobalRepaintRequester(requester);
     }
 
     /**
@@ -186,9 +228,9 @@ public class Application implements AutoCloseable {
             // Setup callbacks
             setupCallbacks();
 
-            // Set initial root panel size
-            rootPanel.setWidth(width);
-            rootPanel.setHeight(height);
+            // Set initial root panel size to the LOGICAL window size
+            rootPanel.setWidth(window.getWidth());
+            rootPanel.setHeight(window.getHeight());
 
             lastFrameTime = glfwGetTime();
             running = true;
@@ -204,10 +246,16 @@ public class Application implements AutoCloseable {
 
     /**
      * Initializes the Skija surface with GPU backend.
+     *
+     * <p>The {@link BackendRenderTarget} is created with the <b>physical</b>
+     * framebuffer dimensions; the {@link Canvas} wrapper (and therefore the
+     * component tree) uses the <b>logical</b> window dimensions.</p>
      */
     private void initSurface() {
-        int width = window.getWidth();
-        int height = window.getHeight();
+        int fbWidth = window.getFramebufferWidth();
+        int fbHeight = window.getFramebufferHeight();
+        int logicalWidth = window.getWidth();
+        int logicalHeight = window.getHeight();
 
         // Create OpenGL context is already current from Window.create()
         
@@ -222,11 +270,12 @@ public class Application implements AutoCloseable {
         GL11.glGetIntegerv(GL_FRAMEBUFFER_BINDING, fbIdArray);
         int fbId = fbIdArray[0];
         
-        // Create BackendRenderTarget for the OpenGL framebuffer
+        // Create BackendRenderTarget for the OpenGL framebuffer using the
+        // PHYSICAL (framebuffer) size — HiDPI: this is larger than logical
         // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
         BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
-            width, 
-            height, 
+            fbWidth, 
+            fbHeight, 
             0,      // samples
             0,      // stencil
             fbId, 
@@ -256,28 +305,38 @@ public class Application implements AutoCloseable {
             throw new RuntimeException("Failed to create Skija surface");
         }
 
-        // Create canvas wrapper
+        // Create canvas wrapper in LOGICAL coordinates; the content-scale
+        // transform is applied per-frame in render()
         io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
-        canvas = new Canvas(skijaCanvas, surface, width, height);
+        canvas = new Canvas(skijaCanvas, surface, logicalWidth, logicalHeight);
     }
 
     /**
      * Initializes the Skija surface with raster backend (for testing).
+     *
+     * <p>The raster surface is allocated at the <b>physical</b> framebuffer
+     * resolution; the canvas wrapper reports <b>logical</b> size and the
+     * content scale is applied per-frame in render(), exactly like the GPU
+     * path.</p>
      */
     private void initRasterSurface() {
-        int width = window.getWidth();
-        int height = window.getHeight();
+        int fbWidth = window.getFramebufferWidth();
+        int fbHeight = window.getFramebufferHeight();
+        int logicalWidth = window.getWidth();
+        int logicalHeight = window.getHeight();
 
-        // Create raster surface (no OpenGL context needed)
-        surface = Surface.makeRaster(ImageInfo.makeN32Premul(width, height));
+        // Create raster surface at physical resolution (no OpenGL context needed).
+        // Skija raster surfaces always store rows top-to-bottom, so pixel
+        // sampling matches the UI coordinate system without any flip.
+        surface = Surface.makeRasterN32Premul(fbWidth, fbHeight);
         
         if (surface == null) {
             throw new RuntimeException("Failed to create raster surface");
         }
 
-        // Create canvas wrapper
+        // Create canvas wrapper in LOGICAL coordinates
         io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
-        canvas = new Canvas(skijaCanvas, surface, width, height);
+        canvas = new Canvas(skijaCanvas, surface, logicalWidth, logicalHeight);
     }
 
     /**
@@ -313,6 +372,11 @@ public class Application implements AutoCloseable {
 
     /**
      * Sets up GLFW callbacks for events with HiDPI support.
+     *
+     * <p>Coordinate policy: mouse/cursor coordinates from GLFW are in the
+     * logical window space and are propagated unchanged to the component
+     * tree (which is also in logical space thanks to the content-scale
+     * canvas transform). No manual fb/window ratio conversion is needed.</p>
      */
     private void setupCallbacks() {
         long windowHandle = window.getWindowHandle();
@@ -325,49 +389,30 @@ public class Application implements AutoCloseable {
         };
         GLFWFramebufferSizeCallback.create(framebufferCallback).set(windowHandle);
 
-        // Mouse button callback with HiDPI coordinate conversion
+        // Content scale (DPI) change — e.g. window moved across monitors:
+        // only the per-frame scale factor changes; render() reads it live,
+        // so we just need a repaint.
+        window.setContentScaleListener((w, xscale, yscale) -> requestRepaint());
+
+        // Mouse button callback — coordinates stay in LOGICAL space
         GLFWMouseButtonCallbackI mouseButtonCallback = (w, button, action, mods) -> {
             MouseButton glyphButton = convertMouseButton(button);
             MouseEventType type = (action == GLFW_PRESS) ? MouseEventType.PRESS : MouseEventType.RELEASE;
             
             mouseButtons[button] = (action == GLFW_PRESS);
-            
-            // Convert screen coordinates to framebuffer coordinates for HiDPI displays
-            int[] fbWidth = new int[1];
-            int[] fbHeight = new int[1];
-            glfwGetFramebufferSize(windowHandle, fbWidth, fbHeight);
-            int[] winWidth = new int[1];
-            int[] winHeight = new int[1];
-            glfwGetWindowSize(windowHandle, winWidth, winHeight);
-            
-            float scaleX = (float) fbWidth[0] / winWidth[0];
-            float scaleY = (float) fbHeight[0] / winHeight[0];
-            
-            int fbX = (int) (mouseX * scaleX);
-            int fbY = (int) (mouseY * scaleY);
-            
-            MouseEvent event = new MouseEvent(type, fbX, fbY, glyphButton, 1);
+
+            MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, glyphButton, 1);
             rootPanel.onMouseEvent(event);
             requestRepaint();
         };
         GLFWMouseButtonCallback.create(mouseButtonCallback).set(windowHandle);
 
-        // Cursor position callback with HiDPI coordinate conversion
+        // Cursor position callback — GLFW reports LOGICAL coordinates, which
+        // match the logical-space component tree directly (HiDPI-safe)
         GLFWCursorPosCallbackI cursorCallback = (w, xpos, ypos) -> {
-            // Convert screen coordinates to framebuffer coordinates for HiDPI displays
-            int[] fbWidth = new int[1];
-            int[] fbHeight = new int[1];
-            glfwGetFramebufferSize(windowHandle, fbWidth, fbHeight);
-            int[] winWidth = new int[1];
-            int[] winHeight = new int[1];
-            glfwGetWindowSize(windowHandle, winWidth, winHeight);
-            
-            float scaleX = (float) fbWidth[0] / winWidth[0];
-            float scaleY = (float) fbHeight[0] / winHeight[0];
-            
-            mouseX = xpos * scaleX;
-            mouseY = ypos * scaleY;
-            
+            mouseX = xpos;
+            mouseY = ypos;
+
             MouseEvent event = new MouseEvent(MouseEventType.MOVE, (int) mouseX, (int) mouseY, MouseButton.LEFT, 0);
             rootPanel.onMouseEvent(event);
             requestRepaint();
@@ -396,10 +441,10 @@ public class Application implements AutoCloseable {
      * Branches on the active backend: raster surfaces are recreated with
      * {@code Surface.makeRaster}, GPU surfaces wrap the window framebuffer.
      *
-     * @param width  the new width
-     * @param height the new height
+     * @param fbWidth  the new physical framebuffer width
+     * @param fbHeight the new physical framebuffer height
      */
-    private void recreateSurface(int width, int height) {
+    private void recreateSurface(int fbWidth, int fbHeight) {
         if (surface != null) {
             surface.close();
             surface = null;
@@ -918,8 +963,20 @@ public class Application implements AutoCloseable {
         // Clear canvas with background color
         canvas.clear(Color.makeARGB(255, 30, 30, 30));
 
-        // Render root panel and all children
-        rootPanel.render(canvas);
+        io.github.humbleui.skija.Canvas nativeCanvas = canvas.getNativeCanvas();
+        int saveCount = nativeCanvas.save();
+        try {
+            // Clear canvas with background color (covers full physical surface)
+            nativeCanvas.clear(Color.makeARGB(255, 30, 30, 30));
+
+            // HiDPI: map logical UI coordinates to physical device pixels
+            nativeCanvas.scale(contentScaleX, contentScaleY);
+
+            // Render root panel and all children (in logical coordinates)
+            rootPanel.render(canvas);
+        } finally {
+            nativeCanvas.restoreToCount(saveCount);
+        }
 
         // Flush drawing commands to the backend
         canvas.flush();
