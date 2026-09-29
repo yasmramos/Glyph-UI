@@ -1,9 +1,23 @@
-```
 # Build artifacts
 target/
+
 # Maven-specific
-target/maven-status/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
 
 # Keep screenshot test results (allow PNG files in screenshots directory)
 !screenshots/*.png
-```
