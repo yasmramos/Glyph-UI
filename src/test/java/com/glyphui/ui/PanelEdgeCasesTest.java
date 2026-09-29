@@ -33,10 +33,11 @@ public class PanelEdgeCasesTest {
         }
 
         @Override
-        public void onMouseEvent(MouseEvent event) {
+        public boolean onMouseEvent(MouseEvent event) {
             super.onMouseEvent(event);
             lastMouseEvent = event;
             mouseEventCount++;
+            return false;
         }
 
         @Override
@@ -129,14 +130,16 @@ public class PanelEdgeCasesTest {
         StringBuilder order = new StringBuilder();
         RecordingComponent first = new RecordingComponent(0, 0, 10, 10) {
             @Override
-            public void onMouseEvent(MouseEvent event) {
+            public boolean onMouseEvent(MouseEvent event) {
                 order.append("A");
+                return false;
             }
         };
         RecordingComponent second = new RecordingComponent(0, 0, 10, 10) {
             @Override
-            public void onMouseEvent(MouseEvent event) {
+            public boolean onMouseEvent(MouseEvent event) {
                 order.append("B");
+                return false;
             }
         };
         Panel p2 = new Panel(0, 0, 100, 100);

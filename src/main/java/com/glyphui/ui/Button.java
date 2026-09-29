@@ -346,9 +346,9 @@ public class Button extends Component {
     }
 
     @Override
-    public void onMouseEvent(MouseEvent event) {
+    public boolean onMouseEvent(MouseEvent event) {
         if (!visible || !enabled) {
-            return;
+            return false;
         }
 
         boolean isInside = contains(event.getX(), event.getY());
@@ -386,10 +386,13 @@ public class Button extends Component {
                 break;
         }
 
-        // Request a repaint only when the visual state actually changed
+        // Request a repaint only when the visual state actually changed.
+        // Events inside the button bounds are consumed so they do not reach
+        // components underneath.
         if (state != oldState) {
             requestRepaint();
         }
+        return isInside;
     }
 
     @Override

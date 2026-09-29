@@ -43,8 +43,9 @@ class RepaintRequesterTest {
         }
 
         @Override
-        public void onMouseEvent(com.glyphui.events.MouseEvent event) {
+        public boolean onMouseEvent(com.glyphui.events.MouseEvent event) {
             // Not exercised by these tests.
+            return false;
         }
 
         @Override
