@@ -14,7 +14,10 @@ import org.lwjgl.glfw.GLFWCursorPosCallbackI;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
@@ -23,14 +26,26 @@ import static org.lwjgl.opengl.GL30.*;
 /**
  * Main application class that manages the event loop, rendering, and window lifecycle.
  *
- * <p>HiDPI: the GPU render target ({@link BackendRenderTarget}) uses the
- * <b>physical</b> framebuffer size, while the {@link Canvas} wrapper and the
- * {@code rootPanel} live in <b>logical</b> coordinates. Before each paint the
- * native canvas is scaled by the window content scale (inside save/restore),
- * so logical units map to physical pixels and GLFW mouse coordinates (which
- * are logical) match the component tree without any conversion.</p>
+ * <p>{@code Application} owns every native resource created during
+ * {@link #init()} (Skija surface, GPU context and GLFW window), so it
+ * implements {@link AutoCloseable} and is intended to be used with
+ * try-with-resources:</p>
+ *
+ * <pre>{@code
+ * try (Application app = new Application()) {
+ *     if (app.init("Glyph UI", 800, 600)) {
+ *         app.getRootPanel().add(new Button("Click here!"));
+ *         app.run();
+ *     }
+ * }
+ * }</pre>
+ *
+ * <p>{@link #close()} releases resources in dependency order: the component
+ * tree first (widgets close their paints/fonts), then the shared font cache,
+ * then the Skija surface, then the DirectContext that created it, and finally
+ * the GLFW window.</p>
  */
-public class Application {
+public class Application implements AutoCloseable {
     private Window window;
     private Surface surface;
     private Canvas canvas;
@@ -41,17 +56,61 @@ public class Application {
     private int targetFPS;
     private boolean useRasterSurface;
 
-    /**
-     * Paint-dirty flag: when true the next loop iteration renders a frame.
-     * Set via {@link #requestRepaint()} (e.g. from {@code Component.invalidate()}).
-     * Guarded by this Application instance as monitor.
-     */
-    private volatile boolean paintDirty = true;
+    /** When true, the GPU backend is skipped and a raster surface is used directly. */
+    private boolean forceRasterSurface;
 
-    // Mouse state (logical/window coordinates, as reported by GLFW)
+    /**
+     * On-demand rendering flag: true when something changed (events, component
+     * mutations, resize) and the next loop iteration should repaint.
+     */
+    private volatile boolean paintDirty;
+
+    /**
+     * Optional animation callback. While it returns true, the event loop keeps
+     * repainting every frame (continuous animations). May be null.
+     */
+    private Runnable animationCallback;
+
+    /** Sleep interval for the raster backend idle wait (no hardware vsync there). */
+    private static final long RASTER_IDLE_SLEEP_MS = 16;
+
+    /**
+     * The UI thread: the thread that called {@link #run()}. All widget state
+     * changes, layout and rendering happen on this thread. Null before the
+     * loop starts.
+     */
+    private volatile Thread uiThread;
+
+    /**
+     * Queue of tasks posted from other threads via
+     * {@link #invokeLater(Runnable)}. Consumed by the UI thread on every
+     * event-loop iteration.
+     */
+    private final ConcurrentLinkedQueue<Runnable> uiTaskQueue = new ConcurrentLinkedQueue<>();
+
+    // Mouse state
     private double mouseX;
     private double mouseY;
     private boolean[] mouseButtons = new boolean[10];
+
+    /**
+     * The most recently started application instance, used by widgets to
+     * obtain the UI-thread marshalling target lazily (properties are created
+     * on first access, which may happen before {@code init()} completes).
+     * Cleared when the application closes. package-private for tests.
+     */
+    static volatile Application current;
+
+    /**
+     * Returns the currently running application instance, or {@code null} in
+     * headless/test contexts where no application has been started. Widget
+     * properties use this to marshal cross-thread sets automatically.
+     *
+     * @return the current application, or null
+     */
+    public static Application getCurrent() {
+        return current;
+    }
 
     /**
      * Creates a new Application.
@@ -59,6 +118,8 @@ public class Application {
     public Application() {
         this.targetFPS = 60;
         this.running = false;
+        this.forceRasterSurface = false;
+        this.paintDirty = true; // first frame must always be painted
         this.rootPanel = new Panel(0, 0, 800, 600);
         // Propagate component invalidations up to requestRepaint()
         Component.setGlobalRepaintRequester(this::requestRepaint);
@@ -132,24 +193,37 @@ public class Application {
      * @param title  the window title
      * @param width  the window width
      * @param height the window height
-     * @param useRasterSurface if true, uses a raster surface instead of GPU backend (for testing)
+     * @param useRasterSurface if true, forces the raster backend and skips the GPU
+     *                         initialization attempt entirely (for testing)
      * @return true if initialization was successful
      */
     public boolean init(String title, int width, int height, boolean useRasterSurface) {
         try {
-            this.useRasterSurface = useRasterSurface;
+            this.forceRasterSurface = useRasterSurface;
+
             // Create window
             window = new Window(title, width, height);
             if (!window.create()) {
                 return false;
             }
 
-            // Initialize Skija surface
+            // Initialize Skija surface: try GPU first, automatically degrade to
+            // raster when the GPU backend is unavailable (headless / no driver).
             if (useRasterSurface) {
                 initRasterSurface();
             } else {
-                initSurface();
+                try {
+                    initSurface();
+                } catch (Throwable gpuFailure) {
+                    System.err.println("Warning: GPU backend unavailable ("
+                        + gpuFailure.getMessage() + "). Falling back to raster surface.");
+                    this.forceRasterSurface = true;
+                    initRasterSurface();
+                }
             }
+
+            // Route repaint requests from components to this application
+            Component.setRepaintRequester(this::requestRepaint);
 
             // Setup callbacks
             setupCallbacks();
@@ -160,7 +234,7 @@ public class Application {
 
             lastFrameTime = glfwGetTime();
             running = true;
-            paintDirty = true;
+            paintDirty = true; // always paint the first frame
 
             return true;
         } catch (Exception e) {
@@ -212,14 +286,20 @@ public class Application {
             throw new RuntimeException("Failed to create BackendRenderTarget");
         }
 
-        // Create surface wrapping the OpenGL framebuffer (physical pixels)
-        surface = Surface.wrapBackendRenderTarget(
-            directContext,
-            renderTarget,
-            SurfaceOrigin.BOTTOM_LEFT,
-            SurfaceColorFormat.RGBA_8888,
-            ColorSpace.getSRGB()
-        );
+        // Create surface wrapping the OpenGL framebuffer.
+        // Skija throws IllegalStateException when the GL context is not usable,
+        // so wrap it to allow callers to fall back to raster.
+        try {
+            surface = Surface.wrapBackendRenderTarget(
+                directContext,
+                renderTarget,
+                SurfaceOrigin.BOTTOM_LEFT,
+                SurfaceColorFormat.RGBA_8888,
+                ColorSpace.getSRGB()
+            );
+        } catch (RuntimeException e) {
+            throw new RuntimeException("Failed to wrap backend render target: " + e.getMessage(), e);
+        }
 
         if (surface == null) {
             throw new RuntimeException("Failed to create Skija surface");
@@ -260,6 +340,37 @@ public class Application {
     }
 
     /**
+     * Recreates a CPU-backed raster surface at the given size and rebinds it
+     * to the existing canvas wrapper. Extracted from {@link #recreateSurface}
+     * so tests can exercise the raster resize path without a GL context.
+     *
+     * @param width  the new width
+     * @param height the new height
+     */
+    void recreateRasterSurface(int width, int height) {
+        if (canvas == null) {
+            throw new IllegalStateException("Canvas must be initialized before recreating a raster surface");
+        }
+
+        if (surface != null) {
+            surface.close();
+            surface = null;
+        }
+
+        surface = Surface.makeRaster(ImageInfo.makeN32Premul(width, height));
+
+        if (surface == null) {
+            throw new RuntimeException("Failed to recreate raster surface");
+        }
+
+        io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
+        canvas.setNativeCanvas(skijaCanvas, surface);
+        canvas.resize(width, height);
+
+        requestRepaint();
+    }
+
+    /**
      * Sets up GLFW callbacks for events with HiDPI support.
      *
      * <p>Coordinate policy: mouse/cursor coordinates from GLFW are in the
@@ -270,25 +381,13 @@ public class Application {
     private void setupCallbacks() {
         long windowHandle = window.getWindowHandle();
 
-        // Physical framebuffer resize: recreate the GPU surface with the new
-        // PHYSICAL sizes (Window already updated its cached values via its
-        // internal callback before this listener runs)
-        window.setFramebufferSizeListener((w, fbWidth, fbHeight) -> {
-            if (useRasterSurface) {
-                recreateRasterSurface();
-            } else {
-                recreateSurface(fbWidth, fbHeight);
-            }
+        // Framebuffer resize callback
+        GLFWFramebufferSizeCallbackI framebufferCallback = (w, width, height) -> {
+            window.updateDimensions(width, height);
+            recreateSurface(width, height);
             requestRepaint();
-        });
-
-        // Logical window resize: update rootPanel + canvas logical size only
-        window.setWindowSizeListener((w, width, height) -> {
-            canvas.resize(width, height);
-            rootPanel.setWidth(width);
-            rootPanel.setHeight(height);
-            requestRepaint();
-        });
+        };
+        GLFWFramebufferSizeCallback.create(framebufferCallback).set(windowHandle);
 
         // Content scale (DPI) change — e.g. window moved across monitors:
         // only the per-frame scale factor changes; render() reads it live,
@@ -304,6 +403,7 @@ public class Application {
 
             MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, glyphButton, 1);
             rootPanel.onMouseEvent(event);
+            requestRepaint();
         };
         GLFWMouseButtonCallback.create(mouseButtonCallback).set(windowHandle);
 
@@ -315,6 +415,7 @@ public class Application {
 
             MouseEvent event = new MouseEvent(MouseEventType.MOVE, (int) mouseX, (int) mouseY, MouseButton.LEFT, 0);
             rootPanel.onMouseEvent(event);
+            requestRepaint();
         };
         GLFWCursorPosCallback.create(cursorCallback).set(windowHandle);
 
@@ -330,14 +431,15 @@ public class Application {
             
             KeyEvent event = new KeyEvent(type, key, (char) 0, modifiers);
             rootPanel.onKeyEvent(event);
+            requestRepaint();
         };
         GLFWKeyCallback.create(keyCallback).set(windowHandle);
     }
 
     /**
-     * Recreates the GPU surface after a framebuffer (physical) resize.
-     * The render target uses the new PHYSICAL sizes; the canvas wrapper and
-     * root panel keep using the current LOGICAL sizes.
+     * Recreates the Skija surface after window resize.
+     * Branches on the active backend: raster surfaces are recreated with
+     * {@code Surface.makeRaster}, GPU surfaces wrap the window framebuffer.
      *
      * @param fbWidth  the new physical framebuffer width
      * @param fbHeight the new physical framebuffer height
@@ -345,84 +447,58 @@ public class Application {
     private void recreateSurface(int fbWidth, int fbHeight) {
         if (surface != null) {
             surface.close();
+            surface = null;
         }
 
-        // Get framebuffer ID (0 for default framebuffer)
-        int[] fbIdArray = new int[1];
-        GL11.glGetIntegerv(GL_FRAMEBUFFER_BINDING, fbIdArray);
-        int fbId = fbIdArray[0];
-        
-        // Create BackendRenderTarget for the OpenGL framebuffer with the new
-        // PHYSICAL size
-        // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
-        BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
-            fbWidth, 
-            fbHeight, 
-            0,      // samples
-            0,      // stencil
-            fbId, 
-            0x8058  // GL_RGBA8 constant
-        );
+        if (!isGpuBackend()) {
+            // Raster backend: allocate a fresh CPU-backed surface at the new size
+            recreateRasterSurface(width, height);
+        } else {
+            // GPU backend: wrap the window framebuffer in a new render target
+            int[] fbIdArray = new int[1];
+            GL11.glGetIntegerv(GL_FRAMEBUFFER_BINDING, fbIdArray);
+            int fbId = fbIdArray[0];
 
-        if (renderTarget == null) {
-            throw new RuntimeException("Failed to recreate BackendRenderTarget");
+            // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
+            BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
+                width,
+                height,
+                0,      // samples
+                0,      // stencil
+                fbId,
+                0x8058  // GL_RGBA8 constant
+            );
+
+            if (renderTarget == null) {
+                throw new RuntimeException("Failed to recreate BackendRenderTarget");
+            }
+
+            surface = Surface.wrapBackendRenderTarget(
+                directContext,
+                renderTarget,
+                SurfaceOrigin.BOTTOM_LEFT,
+                SurfaceColorFormat.RGBA_8888,
+                ColorSpace.getSRGB()
+            );
+
+            // The wrapped surface takes ownership of the render target
+            renderTarget.close();
+
+            if (surface == null) {
+                throw new RuntimeException("Failed to recreate Skija surface");
+            }
+
+            io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
+            canvas.setNativeCanvas(skijaCanvas);
         }
 
-        // Create surface wrapping the OpenGL framebuffer
-        surface = Surface.wrapBackendRenderTarget(
-            directContext,
-            renderTarget,
-            SurfaceOrigin.BOTTOM_LEFT,
-            SurfaceColorFormat.RGBA_8888,
-            ColorSpace.getSRGB()
-        );
+        canvas.resize(width, height);
 
-        if (surface == null) {
-            throw new RuntimeException("Failed to recreate Skija surface");
-        }
+        // Update root panel size
+        rootPanel.setWidth(width);
+        rootPanel.setHeight(height);
 
-        io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
-        // Canvas wrapper stays in LOGICAL coordinates
-        int logicalWidth = window.getWidth();
-        int logicalHeight = window.getHeight();
-        canvas = new Canvas(skijaCanvas, surface, logicalWidth, logicalHeight);
-
-        // Update root panel size (logical)
-        rootPanel.setWidth(logicalWidth);
-        rootPanel.setHeight(logicalHeight);
-    }
-
-    /**
-     * Recreates the raster surface after a framebuffer (physical) resize.
-     * Same logical/physical split as the GPU path.
-     */
-    private void recreateRasterSurface() {
-        if (surface != null) {
-            surface.close();
-        }
-        initRasterSurface();
-
-        // Update root panel size (logical)
-        rootPanel.setWidth(window.getWidth());
-        rootPanel.setHeight(window.getHeight());
-    }
-
-    /**
-     * Test hook: recreates the raster surface so the render target picks up
-     * the window's current PHYSICAL framebuffer size (e.g. after simulating
-     * a HiDPI content-scale change headlessly).
-     */
-    public void recreateRasterSurfaceForTesting() {
-        recreateRasterSurface();
-    }
-
-    /**
-     * Gets the underlying GLFW window wrapper.
-     *
-     * @return the window, or null before {@link #init()} succeeds
-     */
-    public Window getWindow() {
-        return window;
+        requestRepaint();
     }
 
     /**
@@ -489,13 +565,7 @@ public class Application {
         render();
     }
 
-    /**
-     * Returns true if using GPU backend, false for raster.
-     * @return true if GPU backend is active
-     */
-    public boolean isGpuBackend() {
-        return directContext != null;
-    }
+
     
     /**
      * Flips an image vertically. Used for GPU backend where surface origin is BOTTOM_LEFT.
@@ -647,63 +717,251 @@ public class Application {
     }
 
     /**
-     * Runs the application main loop.
-     *
-     * <p>When nothing is dirty ({@code paintDirty == false}) the loop blocks
-     * in {@link Window#waitEvents()} instead of busy-polling, so an idle UI
-     * consumes zero CPU. Any OS event — or a {@code glfwPostEmptyEvent()}
-     * triggered by {@link #requestRepaint()} from another thread — wakes it.</p>
+     * Requests a repaint on the next event-loop iteration.
+     * Widgets call this after state changes; safe to call from any thread
+     * (the flag is volatile and setting it repeatedly is harmless).
      */
-    public void run() {
-        if (!running) {
+    public void requestRepaint() {
+        paintDirty = true;
+    }
+
+    /**
+     * Returns the thread that started {@link #run()} (the UI thread), or
+     * {@code null} if the event loop has not started yet.
+     *
+     * @return the UI thread, or null
+     */
+    public Thread getUiThread() {
+        return uiThread;
+    }
+
+    /**
+     * Returns true when the calling thread is the UI thread. Before
+     * {@link #run()} starts there is no UI thread yet, so widget mutation
+     * (building the initial tree) is also considered "on the UI thread".
+     *
+     * @return true if it is safe to mutate widgets directly from this thread
+     */
+    public boolean isUiThread() {
+        Thread thread = uiThread;
+        return thread == null || thread == Thread.currentThread();
+    }
+
+    /**
+     * Throws {@link IllegalStateException} when called from a thread other
+     * than the UI thread. Used by native-resource-owning APIs (fonts, paints)
+     * to fail fast instead of corrupting Skija state.
+     */
+    public void checkThread() {
+        if (!isUiThread()) {
+            throw new IllegalStateException(
+                "Operation must run on the Glyph UI thread; use Application.invokeLater(...) "
+                + "or Property.set(...) which marshals automatically.");
+        }
+    }
+
+    /**
+     * Schedules a task to run on the UI thread during the next event-loop
+     * iteration. If called from the UI thread the task runs immediately.
+     *
+     * <p>This is the escape hatch for composite operations that cannot be
+     * expressed as a single property change. Most callers do not need it:
+     * {@link com.glyphui.graphics.Property#set(Object)} marshals through this
+     * method automatically.</p>
+     *
+     * <p>The posted task marks the frame dirty and wakes up a UI thread
+     * blocked in {@code glfwWaitEvents()} via {@code glfwPostEmptyEvent()},
+     * so it executes promptly even when the window is idle.</p>
+     *
+     * @param task the runnable to execute on the UI thread
+     */
+    public void invokeLater(Runnable task) {
+        if (task == null) {
             return;
         }
+        if (isUiThread()) {
+            task.run();
+            return;
+        }
+        uiTaskQueue.add(task);
+        requestRepaint();
+        // Wake the UI thread if it is blocked waiting for events. Only valid
+        // once GLFW is initialized; before that the queue is drained on the
+        // first run() iteration anyway.
+        if (window != null) {
+            glfwPostEmptyEvent();
+        }
+    }
 
-        while (!window.shouldClose()) {
-            // Calculate delta time
-            double currentTime = glfwGetTime();
-            double deltaTime = currentTime - lastFrameTime;
-            double targetFrameTime = 1.0 / targetFPS;
-
-            // Frame rate limiting
-            if (deltaTime < targetFrameTime) {
-                try {
-                    Thread.sleep((long) ((targetFrameTime - deltaTime) * 1000));
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-                continue;
+    /**
+     * Drains the UI task queue on the UI thread. Exceptions from user tasks
+     * are reported but do not stop the loop or the remaining tasks.
+     */
+    /**
+     * Package-private test hook: drains the posted-task queue on the calling
+     * thread and returns how many tasks ran. Used by unit tests that simulate
+     * the UI loop without GLFW/Skija initialization.
+     *
+     * @return number of tasks executed
+     */
+    public int drainUiTasksForTests() {
+        int count = 0;
+        Runnable task;
+        while ((task = uiTaskQueue.poll()) != null) {
+            count++;
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                System.err.println("Exception in posted UI task: " + e.getMessage());
             }
+        }
+        return count;
+    }
 
-            lastFrameTime = currentTime;
-
-            // Process events: block when there is nothing to repaint (zero
-            // CPU at rest); poll normally when a repaint is pending.
-            if (paintDirty) {
-                window.pollEvents();
-            } else {
-                window.waitEvents();
-                window.pollEvents();
+    private void drainUiTasks() {
+        Runnable task;
+        while ((task = uiTaskQueue.poll()) != null) {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                System.err.println("Exception in UI task: " + e.getMessage());
+                e.printStackTrace();
             }
-
-            // Render only when something changed
-            if (paintDirty) {
-                render();
-                paintDirty = false;
+        }
+    }
+    /**
+     * Runs all tasks queued on the static current-application reference.
+     * This lets widgets whose properties were created before {@code run()}
+     * (and therefore captured a null application) still marshal background
+     * property sets onto the UI thread through {@link #invokeOnCurrent}.
+     */
+    private static void drainCurrent() {
+        Application app = current;
+        if (app == null) {
+            return;
+        }
+        Runnable task;
+        while ((task = app.uiTaskQueue.poll()) != null) {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                System.err.println("Exception in posted UI task: " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }
 
     /**
-     * Renders the current frame.
+     * Queues a task on the current application's UI-thread queue and wakes up
+     * its event loop. Used by {@link com.glyphui.graphics.Property} when the
+     * widget captured no application instance at creation time. A no-op when
+     * no application is running (headless/test contexts).
      *
-     * <p>HiDPI: the surface covers the physical framebuffer, so before
-     * painting the (logical-coordinate) component tree the native canvas is
-     * scaled by the window content scale, wrapped in save/restore.</p>
+     * @param task the runnable to execute on the UI thread
+     */
+    public static void invokeOnCurrent(Runnable task) {
+        if (task == null) {
+            return;
+        }
+        Application app = current;
+        if (app != null) {
+            app.invokeLater(task);
+        }
+    }
+
+
+    /**
+     * Returns the current on-demand rendering state for testing/diagnostics.
+     *
+     * @return true if a repaint is pending
+     */
+    public boolean isPaintDirty() {
+        return paintDirty;
+    }
+
+    /**
+     * Sets an animation callback that keeps the loop repainting every frame.
+     * Pass null to disable animations and return to pure on-demand rendering.
+     *
+     * @param animationCallback callback advanced once per loop iteration while set
+     */
+    public void setAnimationCallback(Runnable animationCallback) {
+        this.animationCallback = animationCallback;
+        if (animationCallback != null) {
+            requestRepaint();
+        }
+    }
+
+    /**
+     * Returns true when the GPU (OpenGL) backend is active, false for raster.
+     * The raster backend never creates a DirectContext, so a null context
+     * identifies it reliably.
+     *
+     * @return true if GPU backend is active
+     */
+    public boolean isGpuBackend() {
+        return directContext != null;
+    }
+
+    /**
+     * Runs the application main loop with on-demand rendering:
+     * frames are only produced when something changed (input events, component
+     * mutations, resize) or an animation is active. On the GPU path there is no
+     * manual FPS cap because glfwSwapInterval(1) in Window.create() provides
+     * vsync; the raster path sleeps briefly while idle to avoid busy-waiting.
+     */
+    public void run() {
+        if (!running) {
+            return;
+        }
+        uiThread = Thread.currentThread();
+        // Publish this instance so lazily created widget properties can find
+        // the marshalling target (see Application.getCurrent()).
+        current = this;
+
+        while (!window.shouldClose()) {
+            // Poll events (callbacks may mark paintDirty)
+            window.pollEvents();
+
+            // Run tasks posted from other threads via invokeLater(...)
+            drainUiTasks();
+            drainCurrent();
+
+            // Advance animation while one is registered (continuous repainting)
+            boolean animating = (animationCallback != null);
+            if (animating) {
+                animationCallback.run();
+            }
+
+            if (paintDirty || animating) {
+                lastFrameTime = glfwGetTime();
+                render();
+            } else if (!isGpuBackend()) {
+                // Raster backend has no hardware vsync: sleep a short interval
+                // so the loop does not consume CPU while idle.
+                try {
+                    Thread.sleep(RASTER_IDLE_SLEEP_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            } else {
+                // GPU backend with a clean frame: block in glfwWaitEvents()
+                // instead of busy-polling. The loop is woken up by real input
+                // events or by glfwPostEmptyEvent() from invokeLater(...).
+                window.waitEvents();
+            }
+        }
+    }
+
+    /**
+     * Renders the current frame and consumes the repaint request.
      */
     private void render() {
-        float contentScaleX = window != null ? window.getContentScaleX() : 1.0f;
-        float contentScaleY = window != null ? window.getContentScaleY() : 1.0f;
+        paintDirty = false;
+
+        // Clear canvas with background color
+        canvas.clear(Color.makeARGB(255, 30, 30, 30));
 
         io.github.humbleui.skija.Canvas nativeCanvas = canvas.getNativeCanvas();
         int saveCount = nativeCanvas.save();
@@ -720,16 +978,15 @@ public class Application {
             nativeCanvas.restoreToCount(saveCount);
         }
 
-        // Flush drawing commands to GPU
+        // Flush drawing commands to the backend
         canvas.flush();
 
-        // Flush DirectContext if available
-        if (directContext != null) {
+        if (isGpuBackend()) {
+            // Flush DirectContext and present the frame via buffer swap
             directContext.flush();
+            window.swapBuffers();
         }
-
-        // Swap buffers to present the frame
-        window.swapBuffers();
+        // Raster backend draws into a CPU surface; no presentation needed.
     }
 
     /**
@@ -741,26 +998,49 @@ public class Application {
 
     /**
      * Cleans up resources and destroys the application.
+     *
+     * <p>Release order follows native-resource ownership: the component tree
+     * first (widgets close their paints/fonts), then the shared font cache,
+     * then the Skija surface, then the {@code DirectContext} that created it,
+     * and finally the GLFW window. This method is idempotent.</p>
      */
-    public void destroy() {
-        // Dispose all components in the root panel
+    @Override
+    public void close() {
+        running = false;
+        if (current == this) {
+            current = null;
+        }
+
+        // Dispose all components in the root panel (cascades to children)
         if (rootPanel != null) {
             rootPanel.dispose();
         }
-        
-        // Close Skija DirectContext
-        if (directContext != null) {
-            directContext.close();
-        }
-        
-        // Close Skija surface
+
+        // Release the shared typeface cache after every widget font is closed
+        com.glyphui.graphics.Fonts.close();
+
+        // Close the surface before the context that owns it
         if (surface != null) {
             surface.close();
+            surface = null;
         }
-        
-        // Destroy window
+
+        if (directContext != null) {
+            directContext.close();
+            directContext = null;
+        }
+
+        // Destroy window (GLFW) last
         if (window != null) {
             window.destroy();
         }
+    }
+
+    /**
+     * Legacy alias for {@link #close()}, kept for backward compatibility.
+     * New code should prefer try-with-resources on {@code Application}.
+     */
+    public void destroy() {
+        close();
     }
 }
