@@ -1,7 +1,13 @@
 package com.glyphui.core;
 
+import org.lwjgl.glfw.GLFWWindowContentScaleCallback;
+import org.lwjgl.glfw.GLFWWindowContentScaleCallbackI;
 import org.lwjgl.glfw.GLFWErrorCallback;
+import org.lwjgl.glfw.GLFWFramebufferSizeCallback;
+import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI;
 import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.glfw.GLFWWindowSizeCallback;
+import org.lwjgl.glfw.GLFWWindowSizeCallbackI;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryUtil;
 
@@ -12,25 +18,60 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 
 /**
  * Manages the application window and GLFW context.
+ *
+ * <p>HiDPI support: logical (window) coordinates and physical (framebuffer)
+ * coordinates are kept separate:
+ * <ul>
+ *   <li>{@code windowWidth/windowHeight}: logical size reported by
+ *       {@code glfwGetWindowSize}. This is the coordinate space in which GLFW
+ *       delivers mouse cursor positions and in which the UI tree lives.</li>
+ *   <li>{@code framebufferWidth/framebufferHeight}: physical pixel size
+ *       reported by {@code glfwGetFramebufferSize}. This is the size of the
+ *       GPU render target.</li>
+ * </ul>
+ * {@link #getWidth()} / {@link #getHeight()} return the <b>logical</b> size;
+ * use {@link #getFramebufferWidth()} / {@link #getFramebufferHeight()} for the
+ * render target dimensions.</p>
  */
 public class Window {
     private long windowHandle;
-    private int width;
-    private int height;
+    /** Logical window width (glfwGetWindowSize). */
+    private int windowWidth;
+    /** Logical window height (glfwGetWindowSize). */
+    private int windowHeight;
+    /** Physical framebuffer width in pixels (glfwGetFramebufferSize). */
+    private int framebufferWidth;
+    /** Physical framebuffer height in pixels (glfwGetFramebufferSize). */
+    private int framebufferHeight;
+    /** Cached content scale X (DPI factor), updated via callback. */
+    private float contentScaleX = 1.0f;
+    /** Cached content scale Y (DPI factor), updated via callback. */
+    private float contentScaleY = 1.0f;
     private String title;
     private boolean shouldClose;
+
+    // User-facing resize/scale listeners (invoked from GLFW callbacks)
+    private GLFWWindowSizeCallbackI windowSizeListener;
+    private GLFWFramebufferSizeCallbackI framebufferSizeListener;
+    private GLFWWindowContentScaleCallbackI contentScaleListener;
+    private GLFWWindowSizeCallback windowSizeCbRef;
+    private GLFWFramebufferSizeCallback framebufferSizeCbRef;
+    private GLFWWindowContentScaleCallback contentScaleCbRef;
 
     /**
      * Creates a new Window.
      *
      * @param title  the window title
-     * @param width  the window width
-     * @param height the window height
+     * @param width  the window width (logical)
+     * @param height the window height (logical)
      */
     public Window(String title, int width, int height) {
         this.title = title;
-        this.width = width;
-        this.height = height;
+        this.windowWidth = width;
+        this.windowHeight = height;
+        // Until the real framebuffer size is queried, assume 1:1 scaling
+        this.framebufferWidth = width;
+        this.framebufferHeight = height;
         this.shouldClose = false;
     }
 
@@ -62,7 +103,7 @@ public class Window {
         glfwWindowHint(GLFW_SAMPLES, 4); // MSAA
 
         // Create the window
-        windowHandle = glfwCreateWindow(width, height, title, MemoryUtil.NULL, MemoryUtil.NULL);
+        windowHandle = glfwCreateWindow(windowWidth, windowHeight, title, MemoryUtil.NULL, MemoryUtil.NULL);
         if (windowHandle == MemoryUtil.NULL) {
             System.err.println("Failed to create GLFW window");
             glfwTerminate();
@@ -78,20 +119,61 @@ public class Window {
         // Initialize LWJGL OpenGL capabilities
         GL.createCapabilities();
 
-        // Get actual window size (may differ on HiDPI displays)
-        int[] actualWidth = new int[1];
-        int[] actualHeight = new int[1];
-        glfwGetFramebufferSize(windowHandle, actualWidth, actualHeight);
-        this.width = actualWidth[0];
-        this.height = actualHeight[0];
+        // Get actual logical window size and physical framebuffer size
+        int[] lw = new int[1];
+        int[] lh = new int[1];
+        glfwGetWindowSize(windowHandle, lw, lh);
+        this.windowWidth = lw[0];
+        this.windowHeight = lh[0];
+
+        int[] fbw = new int[1];
+        int[] fbh = new int[1];
+        glfwGetFramebufferSize(windowHandle, fbw, fbh);
+        this.framebufferWidth = fbw[0];
+        this.framebufferHeight = fbh[0];
+
+        float[] xs = new float[1];
+        float[] ys = new float[1];
+        glfwGetWindowContentScale(windowHandle, xs, ys);
+        this.contentScaleX = xs[0];
+        this.contentScaleY = ys[0];
+
+        // Install internal GLFW callbacks that keep cached state in sync and
+        // forward to user listeners. These are registered before any user
+        // callback so that getWidth()/getFramebufferWidth() already reflect
+        // the new sizes when Application's listeners run.
+        windowSizeCbRef = GLFWWindowSizeCallback.create((w, width, height) -> {
+            Window.this.windowWidth = width;
+            Window.this.windowHeight = height;
+            if (windowSizeListener != null) {
+                windowSizeListener.invoke(w, width, height);
+            }
+        }).set(windowHandle);
+
+        framebufferSizeCbRef = GLFWFramebufferSizeCallback.create((w, width, height) -> {
+            Window.this.framebufferWidth = width;
+            Window.this.framebufferHeight = height;
+            if (framebufferSizeListener != null) {
+                framebufferSizeListener.invoke(w, width, height);
+            }
+        }).set(windowHandle);
+
+        contentScaleCbRef = GLFWWindowContentScaleCallback.create((w, xscale, yscale) -> {
+            // DPI change (e.g. window moved between monitors with different scale)
+            Window.this.contentScaleX = xscale;
+            Window.this.contentScaleY = yscale;
+            if (contentScaleListener != null) {
+                contentScaleListener.invoke(w, xscale, yscale);
+            }
+        }).set(windowHandle);
 
         // Center the window
         GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
         if (vidmode != null) {
             glfwSetWindowPos(
                 windowHandle,
-                (vidmode.width() - width) / 2,
-                (vidmode.height() - height) / 2
+                (vidmode.width() - windowWidth) / 2,
+                (vidmode.height() - windowHeight) / 2
             );
         }
 
@@ -135,6 +217,23 @@ public class Window {
     }
 
     /**
+     * Waits for window events (blocking). Used when there is nothing to
+     * repaint so the event loop consumes zero CPU while idle. A pending
+     * {@link #postEmptyEvent()} (or any OS event) wakes it up.
+     */
+    public void waitEvents() {
+        glfwWaitEvents();
+    }
+
+    /**
+     * Posts an empty event so that a thread blocked in {@link #waitEvents()}
+     * wakes up (e.g. from {@code Application.invokeLater} on another thread).
+     */
+    public void postEmptyEvent() {
+        glfwPostEmptyEvent();
+    }
+
+    /**
      * Gets the window handle.
      *
      * @return the GLFW window handle
@@ -144,21 +243,43 @@ public class Window {
     }
 
     /**
-     * Gets the window width.
+     * Gets the logical window width (glfwGetWindowSize coordinate space).
+     * This matches the space of mouse coordinates and the UI component tree.
      *
-     * @return the width
+     * @return the logical width
      */
     public int getWidth() {
-        return width;
+        return windowWidth;
     }
 
     /**
-     * Gets the window height.
+     * Gets the logical window height (glfwGetWindowSize coordinate space).
+     * This matches the space of mouse coordinates and the UI component tree.
      *
-     * @return the height
+     * @return the logical height
      */
     public int getHeight() {
-        return height;
+        return windowHeight;
+    }
+
+    /**
+     * Gets the physical framebuffer width in pixels. Use this for the GPU
+     * render target ({@code BackendRenderTarget.makeGL}) size.
+     *
+     * @return the physical (framebuffer) width
+     */
+    public int getFramebufferWidth() {
+        return framebufferWidth;
+    }
+
+    /**
+     * Gets the physical framebuffer height in pixels. Use this for the GPU
+     * render target ({@code BackendRenderTarget.makeGL}) size.
+     *
+     * @return the physical (framebuffer) height
+     */
+    public int getFramebufferHeight() {
+        return framebufferHeight;
     }
 
     /**
@@ -171,14 +292,45 @@ public class Window {
     }
 
     /**
-     * Updates the window dimensions after resize.
+     * Updates the cached <b>logical</b> window dimensions after a resize.
+     * The framebuffer dimensions are queried from GLFW since they scale
+     * with the DPI factor.
      *
-     * @param width  the new width
-     * @param height the new height
+     * @param width  the new logical width
+     * @param height the new logical height
      */
     public void updateDimensions(int width, int height) {
-        this.width = width;
-        this.height = height;
+        this.windowWidth = width;
+        this.windowHeight = height;
+        if (windowHandle != MemoryUtil.NULL) {
+            int[] fbw = new int[1];
+            int[] fbh = new int[1];
+            glfwGetFramebufferSize(windowHandle, fbw, fbh);
+            this.framebufferWidth = fbw[0];
+            this.framebufferHeight = fbh[0];
+        } else {
+            // No live GLFW window (unit tests): derive physical from scale
+            this.framebufferWidth = Math.round(width * getContentScale());
+            this.framebufferHeight = Math.round(height * getContentScale());
+        }
+    }
+
+    /**
+     * Updates both the logical and physical (framebuffer) dimensions
+     * explicitly. Intended for tests and for platforms where the values
+     * come straight from GLFW callbacks.
+     *
+     * @param windowWidth      the new logical width
+     * @param windowHeight     the new logical height
+     * @param framebufferWidth the new physical width
+     * @param framebufferHeight the new physical height
+     */
+    public void setSizes(int windowWidth, int windowHeight,
+                         int framebufferWidth, int framebufferHeight) {
+        this.windowWidth = windowWidth;
+        this.windowHeight = windowHeight;
+        this.framebufferWidth = framebufferWidth;
+        this.framebufferHeight = framebufferHeight;
     }
 
     /**
@@ -187,10 +339,7 @@ public class Window {
      * @return the X scale factor
      */
     public float getContentScaleX() {
-        float[] xScale = new float[1];
-        float[] yScale = new float[1];
-        glfwGetWindowContentScale(windowHandle, xScale, yScale);
-        return xScale[0];
+        return contentScaleX;
     }
 
     /**
@@ -199,34 +348,86 @@ public class Window {
      * @return the Y scale factor
      */
     public float getContentScaleY() {
-        float[] xScale = new float[1];
-        float[] yScale = new float[1];
-        glfwGetWindowContentScale(windowHandle, xScale, yScale);
-        return yScale[0];
+        return contentScaleY;
+    }
+
+    /**
+     * Gets the window content scale (DPI factor). Assumes uniform scaling
+     * (x == y), as is the case on all mainstream platforms; returns the X
+     * factor. Use {@link #getContentScaleX()}/{@link #getContentScaleY()}
+     * if non-uniform scaling must be handled.
+     *
+     * @return the content scale factor
+     */
+    public float getContentScale() {
+        return contentScaleX;
+    }
+
+    /**
+     * Sets the cached content scale factors. Normally updated via the
+     * {@code glfwSetWindowContentScaleCallback}; exposed for headless
+     * simulation/testing (e.g. simulating a 2.0 HiDPI display).
+     *
+     * @param scaleX the X DPI factor
+     * @param scaleY the Y DPI factor
+     */
+    public void setContentScale(float scaleX, float scaleY) {
+        this.contentScaleX = scaleX;
+        this.contentScaleY = scaleY;
+        if (contentScaleListener != null) {
+            contentScaleListener.invoke(windowHandle, scaleX, scaleY);
+        }
+    }
+
+    /**
+     * Registers a listener for logical window-size changes
+     * ({@code glfwSetWindowSizeCallback}).
+     *
+     * @param listener the listener (may be null to remove)
+     */
+    public void setWindowSizeListener(GLFWWindowSizeCallbackI listener) {
+        this.windowSizeListener = listener;
+    }
+
+    /**
+     * Registers a listener for physical framebuffer-size changes
+     * ({@code glfwSetFramebufferSizeCallback}).
+     *
+     * @param listener the listener (may be null to remove)
+     */
+    public void setFramebufferSizeListener(GLFWFramebufferSizeCallbackI listener) {
+        this.framebufferSizeListener = listener;
+    }
+
+    /**
+     * Registers a listener for content-scale (DPI) changes
+     * ({@code glfwSetWindowContentScaleCallback}), fired when the window
+     * moves between monitors with different DPI.
+     *
+     * @param listener the listener (may be null to remove)
+     */
+    public void setContentScaleListener(GLFWWindowContentScaleCallbackI listener) {
+        this.contentScaleListener = listener;
     }
 
     /**
      * Gets the window width in screen coordinates (not framebuffer pixels).
+     * Alias of {@link #getWidth()}.
      *
      * @return the width in screen coordinates
      */
     public int getWindowWidth() {
-        int[] w = new int[1];
-        int[] h = new int[1];
-        glfwGetWindowSize(windowHandle, w, h);
-        return w[0];
+        return windowWidth;
     }
 
     /**
      * Gets the window height in screen coordinates (not framebuffer pixels).
+     * Alias of {@link #getHeight()}.
      *
      * @return the height in screen coordinates
      */
     public int getWindowHeight() {
-        int[] w = new int[1];
-        int[] h = new int[1];
-        glfwGetWindowSize(windowHandle, w, h);
-        return h[0];
+        return windowHeight;
     }
 
     /**
@@ -235,6 +436,7 @@ public class Window {
     public void destroy() {
         glfwFreeCallbacks(windowHandle);
         glfwDestroyWindow(windowHandle);
+        windowHandle = MemoryUtil.NULL;
         glfwTerminate();
         glfwSetErrorCallback(null).free();
     }
