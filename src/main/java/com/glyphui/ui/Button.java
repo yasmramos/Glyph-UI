@@ -79,6 +79,7 @@ public class Button extends Component {
      */
     public void setText(String text) {
         this.text = text;
+        invalidate();
     }
 
     /**
@@ -115,6 +116,7 @@ public class Button extends Component {
      */
     public void setNormalColor(int normalColor) {
         this.normalColor = normalColor;
+        invalidate();
     }
 
     /**
@@ -133,6 +135,7 @@ public class Button extends Component {
      */
     public void setHoverColor(int hoverColor) {
         this.hoverColor = hoverColor;
+        invalidate();
     }
 
     /**
@@ -151,6 +154,7 @@ public class Button extends Component {
      */
     public void setPressedColor(int pressedColor) {
         this.pressedColor = pressedColor;
+        invalidate();
     }
 
     /**
@@ -169,6 +173,7 @@ public class Button extends Component {
      */
     public void setTextColor(int textColor) {
         this.textColor = textColor;
+        invalidate();
     }
 
     /**
@@ -187,6 +192,7 @@ public class Button extends Component {
      */
     public void setBorderColor(int borderColor) {
         this.borderColor = borderColor;
+        invalidate();
     }
 
     /**
@@ -205,6 +211,7 @@ public class Button extends Component {
      */
     public void setBorderRadius(float borderRadius) {
         this.borderRadius = borderRadius;
+        invalidate();
     }
 
     /**
@@ -269,16 +276,16 @@ public class Button extends Component {
             case MOVE:
                 if (isInside) {
                     if (state != ComponentState.PRESSED) {
-                        state = ComponentState.HOVER;
+                        setState(ComponentState.HOVER);
                     }
                 } else {
-                    state = ComponentState.IDLE;
+                    setState(ComponentState.IDLE);
                 }
                 break;
 
             case PRESS:
                 if (isInside && event.getButton() == com.glyphui.events.MouseButton.LEFT) {
-                    state = ComponentState.PRESSED;
+                    setState(ComponentState.PRESSED);
                 }
                 break;
 
@@ -289,7 +296,7 @@ public class Button extends Component {
                         onClick.run();
                     }
                 }
-                state = isInside ? ComponentState.HOVER : ComponentState.IDLE;
+                setState(isInside ? ComponentState.HOVER : ComponentState.IDLE);
                 break;
 
             default:

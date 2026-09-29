@@ -59,6 +59,7 @@ public class Label extends Component {
      */
     public void setText(String text) {
         this.text = text;
+        invalidate();
     }
 
     /**
@@ -77,6 +78,7 @@ public class Label extends Component {
      */
     public void setTextColor(int textColor) {
         this.textColor = textColor;
+        invalidate();
     }
 
     /**
@@ -106,6 +108,7 @@ public class Label extends Component {
      */
     public void setAlignment(TextAlignment alignment) {
         this.alignment = alignment;
+        invalidate();
     }
 
     /**
@@ -125,6 +128,7 @@ public class Label extends Component {
     public void setFontSize(float size) {
         Typeface typeface = font.getTypeface();
         this.font = new Font(typeface, size);
+        invalidate();
     }
 
     @Override

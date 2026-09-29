@@ -19,6 +19,37 @@ public abstract class Component {
     protected ComponentState state;
 
     /**
+     * Global repaint hook. When set (typically by {@code Application}), any
+     * component mutation that calls {@link #invalidate()} propagates up the
+     * parent chain until it reaches this requester, marking the application
+     * paint-dirty. Kept as a static so plain components work even when no
+     * Application is running (e.g. unit tests).
+     */
+    private static com.glyphui.core.RepaintRequester globalRepaintRequester;
+
+    /** Number of times invalidate() has been called on this component. */
+    private int invalidateCount;
+
+    /**
+     * Installs the global repaint requester used to propagate invalidations
+     * that reach the root of the component tree.
+     *
+     * @param requester the repaint requester (may be null to clear)
+     */
+    public static void setGlobalRepaintRequester(com.glyphui.core.RepaintRequester requester) {
+        globalRepaintRequester = requester;
+    }
+
+    /**
+     * Gets the currently installed global repaint requester.
+     *
+     * @return the requester or null
+     */
+    public static com.glyphui.core.RepaintRequester getGlobalRepaintRequester() {
+        return globalRepaintRequester;
+    }
+
+    /**
      * Creates a new Component.
      *
      * @param x      the x-coordinate of the component
@@ -39,6 +70,49 @@ public abstract class Component {
     }
 
     /**
+     * Marks this component as needing a repaint and propagates the
+     * invalidation up the parent chain. When the top of the tree is reached,
+     * the global {@link com.glyphui.core.RepaintRequester} (installed by
+     * {@code Application}) is invoked, which sets the application's
+     * {@code paintDirty} flag so the next frame is rendered.
+     *
+     * <p>All visual mutators ({@code setText}, {@code setWidth},
+     * {@code setVisible}, ...) call this automatically.</p>
+     */
+    public void invalidate() {
+        invalidateCount++;
+        Panel p = parent;
+        if (p != null) {
+            // Propagate upward through the tree until the root is reached
+            p.invalidate();
+        } else {
+            // Root of the tree: ask the application to repaint
+            com.glyphui.core.RepaintRequester requester = globalRepaintRequester;
+            if (requester != null) {
+                requester.requestRepaint();
+            }
+        }
+    }
+
+    /**
+     * Gets how many times this component has been invalidated. Useful for
+     * tests and diagnostics.
+     *
+     * @return the invalidate count
+     */
+    public int getInvalidateCount() {
+        return invalidateCount;
+    }
+
+    /**
+     * Resets the invalidate counter back to zero. Intended for tests and
+     * diagnostics.
+     */
+    public void resetInvalidateCount() {
+        invalidateCount = 0;
+    }
+
+    /**
      * Gets the x-coordinate of the component.
      *
      * @return the x-coordinate
@@ -54,6 +128,7 @@ public abstract class Component {
      */
     public void setX(float x) {
         this.x = x;
+        invalidate();
     }
 
     /**
@@ -72,6 +147,7 @@ public abstract class Component {
      */
     public void setY(float y) {
         this.y = y;
+        invalidate();
     }
 
     /**
@@ -90,6 +166,7 @@ public abstract class Component {
      */
     public void setWidth(float width) {
         this.width = width;
+        invalidate();
     }
 
     /**
@@ -108,6 +185,7 @@ public abstract class Component {
      */
     public void setHeight(float height) {
         this.height = height;
+        invalidate();
     }
 
     /**
@@ -126,6 +204,7 @@ public abstract class Component {
      */
     public void setVisible(boolean visible) {
         this.visible = visible;
+        invalidate();
     }
 
     /**
@@ -144,6 +223,7 @@ public abstract class Component {
      */
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+        invalidate();
     }
 
     /**
@@ -198,6 +278,7 @@ public abstract class Component {
      */
     public void setState(ComponentState state) {
         this.state = state;
+        invalidate();
     }
 
     /**
