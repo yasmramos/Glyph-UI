@@ -6,8 +6,13 @@ import com.glyphui.events.KeyEvent;
 
 /**
  * Abstract base class for all UI components.
+ *
+ * <p>Components that own native resources (paints, fonts) should release them
+ * in {@link #dispose()}. {@code Component} implements {@link AutoCloseable} so
+ * widgets can also be used with try-with-resources; {@link #close()} simply
+ * delegates to {@link #dispose()}.</p>
  */
-public abstract class Component {
+public abstract class Component implements AutoCloseable {
 
     /**
      * Callback used to notify the application that a component's visual state
@@ -353,7 +358,17 @@ public abstract class Component {
     public void dispose() {
         // Default implementation does nothing
     }
-    
+
+    /**
+     * Releases resources held by this component by delegating to
+     * {@link #dispose()}. Provided so components can be used with
+     * try-with-resources statements.
+     */
+    @Override
+    public void close() {
+        dispose();
+    }
+
     /**
      * Gets the preferred width of this component.
      * The base implementation returns the user-provided width when bounds were
