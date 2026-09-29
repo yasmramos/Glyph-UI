@@ -1,6 +1,8 @@
 package com.glyphui.ui;
 
+import com.glyphui.core.Application;
 import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Property;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 import io.github.humbleui.skija.*;
@@ -15,6 +17,8 @@ public class Label extends Component {
     private TextAlignment alignment;
     /** Reusable text paint: created once, reused every frame, closed in dispose(). */
     private Paint textPaint;
+    /** Observable text property (lazily created). */
+    private Property<String> textProperty;
 
     /**
      * Text alignment options.
@@ -80,15 +84,29 @@ public class Label extends Component {
     }
 
     /**
-     * Sets the label text.
+     * Returns the observable text property. Setting it from a background
+     * thread marshals the change onto the UI thread automatically.
+     *
+     * @return the text property (never null after first access)
+     */
+    public Property<String> textProperty() {
+        if (textProperty == null) {
+            textProperty = new Property<>(Application.getCurrent(), text, newText -> {
+                this.text = newText;
+                requestRepaint();
+            });
+        }
+        return textProperty;
+    }
+
+    /**
+     * Sets the label text. Delegates to {@link #textProperty()} for
+     * backward compatibility and cross-thread safety.
      *
      * @param text the new text
      */
     public void setText(String text) {
-        if (!java.util.Objects.equals(this.text, text)) {
-            this.text = text;
-            requestRepaint();
-        }
+        textProperty().set(text);
     }
 
     /**

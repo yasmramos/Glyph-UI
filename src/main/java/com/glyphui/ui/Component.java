@@ -1,6 +1,8 @@
 package com.glyphui.ui;
 
+import com.glyphui.core.Application;
 import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Property;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 
@@ -11,6 +13,15 @@ import com.glyphui.events.KeyEvent;
  * in {@link #dispose()}. {@code Component} implements {@link AutoCloseable} so
  * widgets can also be used with try-with-resources; {@link #close()} simply
  * delegates to {@link #dispose()}.</p>
+ *
+ * <h2>Threading</h2>
+ * <p>The geometric/visibility state is exposed as observable
+ * {@link Property} objects ({@link #xProperty()}, {@link #yProperty()},
+ * {@link #widthProperty()}, {@link #heightProperty()},
+ * {@link #visibleProperty()}, {@link #enabledProperty()}). Calling
+ * {@code Property.set(...)} from a background thread marshals the change onto
+ * the UI thread automatically; the classic setters ({@link #setX(float)}, etc.)
+ * delegate to those properties and are therefore equally safe.</p>
  */
 public abstract class Component implements AutoCloseable {
 
@@ -72,6 +83,116 @@ public abstract class Component implements AutoCloseable {
      */
     protected boolean sizeExplicitlySet;
 
+    // --- Observable properties (lazily created, marshalled via Application.invokeLater) ---
+
+    private Property<Float> xProperty;
+    private Property<Float> yProperty;
+    private Property<Float> widthProperty;
+    private Property<Float> heightProperty;
+    private Property<Boolean> visibleProperty;
+    private Property<Boolean> enabledProperty;
+
+    /** Applies a user-set width: marks bounds as explicit and repaints. */
+    private void applyWidthExplicit(float newWidth) {
+        this.width = newWidth;
+        this.sizeExplicitlySet = true;
+        requestRepaint();
+    }
+
+    /** Applies a user-set height: marks bounds as explicit and repaints. */
+    private void applyHeightExplicit(float newHeight) {
+        this.height = newHeight;
+        this.sizeExplicitlySet = true;
+        requestRepaint();
+    }
+
+    /**
+     * Returns the observable x-coordinate property. Setting it from a
+     * background thread marshals the change onto the UI thread.
+     *
+     * @return the x property (never null after first access)
+     */
+    public Property<Float> xProperty() {
+        if (xProperty == null) {
+            xProperty = new Property<>(Application.getCurrent(), x, v -> { this.x = v; requestRepaint(); });
+        }
+        return xProperty;
+    }
+
+    /**
+     * Returns the observable y-coordinate property.
+     *
+     * @return the y property (never null after first access)
+     */
+    public Property<Float> yProperty() {
+        if (yProperty == null) {
+            yProperty = new Property<>(Application.getCurrent(), y, v -> { this.y = v; requestRepaint(); });
+        }
+        return yProperty;
+    }
+
+    /**
+     * Returns the observable width property. Changes applied through the
+     * property do not mark the bounds as explicitly user-set; use
+     * {@link #setWidth(float)} for that.
+     *
+     * @return the width property (never null after first access)
+     */
+    public Property<Float> widthProperty() {
+        if (widthProperty == null) {
+            widthProperty = new Property<>(Application.getCurrent(), width, this::applyWidthExplicit);
+        }
+        return widthProperty;
+    }
+
+    /**
+     * Returns the observable height property. Changes applied through the
+     * property do not mark the bounds as explicitly user-set; use
+     * {@link #setHeight(float)} for that.
+     *
+     * @return the height property (never null after first access)
+     */
+    public Property<Float> heightProperty() {
+        if (heightProperty == null) {
+            heightProperty = new Property<>(Application.getCurrent(), height, this::applyHeightExplicit);
+        }
+        return heightProperty;
+    }
+
+    /**
+     * Returns the observable visibility property.
+     *
+     * @return the visible property (never null after first access)
+     */
+    public Property<Boolean> visibleProperty() {
+        if (visibleProperty == null) {
+            visibleProperty = new Property<>(Application.getCurrent(), visible, v -> {
+                if (this.visible != v) {
+                    this.visible = v;
+                    requestRepaint();
+                }
+            });
+        }
+        return visibleProperty;
+    }
+
+    /**
+     * Returns the observable enabled property.
+     *
+     * @return the enabled property (never null after first access)
+     */
+    public Property<Boolean> enabledProperty() {
+        if (enabledProperty == null) {
+            enabledProperty = new Property<>(Application.getCurrent(), enabled, v -> {
+                if (this.enabled != v) {
+                    this.enabled = v;
+                    requestRepaint();
+                }
+            });
+        }
+        return enabledProperty;
+    }
+
     /**
      * Creates a new Component with default (unset) bounds.
      * The resulting component has zero geometry until a layout manager assigns
@@ -118,10 +239,7 @@ public abstract class Component implements AutoCloseable {
      * @param x the new x-coordinate
      */
     public void setX(float x) {
-        if (this.x != x) {
-            this.x = x;
-            requestRepaint();
-        }
+        xProperty().set(x);
     }
 
     /**
@@ -139,10 +257,7 @@ public abstract class Component implements AutoCloseable {
      * @param y the new y-coordinate
      */
     public void setY(float y) {
-        if (this.y != y) {
-            this.y = y;
-            requestRepaint();
-        }
+        yProperty().set(y);
     }
 
     /**
@@ -160,11 +275,9 @@ public abstract class Component implements AutoCloseable {
      * @param width the new width
      */
     public void setWidth(float width) {
-        if (this.width != width) {
-            this.width = width;
-            this.sizeExplicitlySet = true;
-            requestRepaint();
-        }
+        // Single source of truth: the observable property applies the value,
+        // notifies listeners and requests a repaint via its change hook.
+        widthProperty().set(width);
     }
 
     /**
@@ -182,11 +295,9 @@ public abstract class Component implements AutoCloseable {
      * @param height the new height
      */
     public void setHeight(float height) {
-        if (this.height != height) {
-            this.height = height;
-            this.sizeExplicitlySet = true;
-            requestRepaint();
-        }
+        // Single source of truth: the observable property applies the value,
+        // notifies listeners and requests a repaint via its change hook.
+        heightProperty().set(height);
     }
 
     /**
@@ -238,10 +349,7 @@ public abstract class Component implements AutoCloseable {
      * @param visible true to make visible, false to hide
      */
     public void setVisible(boolean visible) {
-        if (this.visible != visible) {
-            this.visible = visible;
-            requestRepaint();
-        }
+        visibleProperty().set(visible);
     }
 
     /**
@@ -259,10 +367,7 @@ public abstract class Component implements AutoCloseable {
      * @param enabled true to enable, false to disable
      */
     public void setEnabled(boolean enabled) {
-        if (this.enabled != enabled) {
-            this.enabled = enabled;
-            requestRepaint();
-        }
+        enabledProperty().set(enabled);
     }
 
     /**

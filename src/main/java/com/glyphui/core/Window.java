@@ -139,6 +139,19 @@ public class Window implements AutoCloseable {
     }
 
     /**
+     * Waits until one or more events have been received and then polls them.
+     *
+     * <p>This is the blocking counterpart of {@link #pollEvents()} used by the
+     * on-demand event loop: the UI thread sleeps here instead of busy-waiting,
+     * and another thread can wake it up promptly with
+     * {@code glfwPostEmptyEvent()} (see
+     * {@link Application#invokeLater(Runnable)}).</p>
+     */
+    public void waitEvents() {
+        glfwWaitEvents();
+    }
+
+    /**
      * Gets the window handle.
      *
      * @return the GLFW window handle
