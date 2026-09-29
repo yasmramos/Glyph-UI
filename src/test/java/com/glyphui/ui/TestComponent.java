@@ -17,6 +17,15 @@ public class TestComponent extends Component {
     private boolean renderCalled = false;
     private boolean mouseEventHandled = false;
     private boolean keyEventHandled = false;
+    private boolean consumeMouseEvents = false;
+
+    /**
+     * Controls whether this test component reports mouse events as consumed,
+     * which stops propagation to sibling components in a parent panel.
+     */
+    public void setConsumeMouseEvents(boolean consumeMouseEvents) {
+        this.consumeMouseEvents = consumeMouseEvents;
+    }
     
     public TestComponent(int x, int y, int width, int height) {
         super(x, y, width, height);
@@ -46,8 +55,9 @@ public class TestComponent extends Component {
     }
     
     @Override
-    public void onMouseEvent(MouseEvent event) {
+    public boolean onMouseEvent(MouseEvent event) {
         mouseEventHandled = true;
+        return consumeMouseEvents;
     }
     
     @Override

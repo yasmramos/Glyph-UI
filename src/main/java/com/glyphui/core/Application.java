@@ -16,7 +16,10 @@ import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
@@ -72,10 +75,43 @@ public class Application implements AutoCloseable {
     /** Sleep interval for the raster backend idle wait (no hardware vsync there). */
     private static final long RASTER_IDLE_SLEEP_MS = 16;
 
+    /**
+     * The UI thread: the thread that called {@link #run()}. All widget state
+     * changes, layout and rendering happen on this thread. Null before the
+     * loop starts.
+     */
+    private volatile Thread uiThread;
+
+    /**
+     * Queue of tasks posted from other threads via
+     * {@link #invokeLater(Runnable)}. Consumed by the UI thread on every
+     * event-loop iteration.
+     */
+    private final ConcurrentLinkedQueue<Runnable> uiTaskQueue = new ConcurrentLinkedQueue<>();
+
     // Mouse state
     private double mouseX;
     private double mouseY;
     private boolean[] mouseButtons = new boolean[10];
+
+    /**
+     * The most recently started application instance, used by widgets to
+     * obtain the UI-thread marshalling target lazily (properties are created
+     * on first access, which may happen before {@code init()} completes).
+     * Cleared when the application closes. package-private for tests.
+     */
+    static volatile Application current;
+
+    /**
+     * Returns the currently running application instance, or {@code null} in
+     * headless/test contexts where no application has been started. Widget
+     * properties use this to marshal cross-thread sets automatically.
+     *
+     * @return the current application, or null
+     */
+    public static Application getCurrent() {
+        return current;
+    }
 
     /**
      * Creates a new Application.
@@ -645,6 +681,151 @@ public class Application implements AutoCloseable {
     }
 
     /**
+     * Returns the thread that started {@link #run()} (the UI thread), or
+     * {@code null} if the event loop has not started yet.
+     *
+     * @return the UI thread, or null
+     */
+    public Thread getUiThread() {
+        return uiThread;
+    }
+
+    /**
+     * Returns true when the calling thread is the UI thread. Before
+     * {@link #run()} starts there is no UI thread yet, so widget mutation
+     * (building the initial tree) is also considered "on the UI thread".
+     *
+     * @return true if it is safe to mutate widgets directly from this thread
+     */
+    public boolean isUiThread() {
+        Thread thread = uiThread;
+        return thread == null || thread == Thread.currentThread();
+    }
+
+    /**
+     * Throws {@link IllegalStateException} when called from a thread other
+     * than the UI thread. Used by native-resource-owning APIs (fonts, paints)
+     * to fail fast instead of corrupting Skija state.
+     */
+    public void checkThread() {
+        if (!isUiThread()) {
+            throw new IllegalStateException(
+                "Operation must run on the Glyph UI thread; use Application.invokeLater(...) "
+                + "or Property.set(...) which marshals automatically.");
+        }
+    }
+
+    /**
+     * Schedules a task to run on the UI thread during the next event-loop
+     * iteration. If called from the UI thread the task runs immediately.
+     *
+     * <p>This is the escape hatch for composite operations that cannot be
+     * expressed as a single property change. Most callers do not need it:
+     * {@link com.glyphui.graphics.Property#set(Object)} marshals through this
+     * method automatically.</p>
+     *
+     * <p>The posted task marks the frame dirty and wakes up a UI thread
+     * blocked in {@code glfwWaitEvents()} via {@code glfwPostEmptyEvent()},
+     * so it executes promptly even when the window is idle.</p>
+     *
+     * @param task the runnable to execute on the UI thread
+     */
+    public void invokeLater(Runnable task) {
+        if (task == null) {
+            return;
+        }
+        if (isUiThread()) {
+            task.run();
+            return;
+        }
+        uiTaskQueue.add(task);
+        requestRepaint();
+        // Wake the UI thread if it is blocked waiting for events. Only valid
+        // once GLFW is initialized; before that the queue is drained on the
+        // first run() iteration anyway.
+        if (window != null) {
+            glfwPostEmptyEvent();
+        }
+    }
+
+    /**
+     * Drains the UI task queue on the UI thread. Exceptions from user tasks
+     * are reported but do not stop the loop or the remaining tasks.
+     */
+    /**
+     * Package-private test hook: drains the posted-task queue on the calling
+     * thread and returns how many tasks ran. Used by unit tests that simulate
+     * the UI loop without GLFW/Skija initialization.
+     *
+     * @return number of tasks executed
+     */
+    public int drainUiTasksForTests() {
+        int count = 0;
+        Runnable task;
+        while ((task = uiTaskQueue.poll()) != null) {
+            count++;
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                System.err.println("Exception in posted UI task: " + e.getMessage());
+            }
+        }
+        return count;
+    }
+
+    private void drainUiTasks() {
+        Runnable task;
+        while ((task = uiTaskQueue.poll()) != null) {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                System.err.println("Exception in UI task: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+    /**
+     * Runs all tasks queued on the static current-application reference.
+     * This lets widgets whose properties were created before {@code run()}
+     * (and therefore captured a null application) still marshal background
+     * property sets onto the UI thread through {@link #invokeOnCurrent}.
+     */
+    private static void drainCurrent() {
+        Application app = current;
+        if (app == null) {
+            return;
+        }
+        Runnable task;
+        while ((task = app.uiTaskQueue.poll()) != null) {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                System.err.println("Exception in posted UI task: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * Queues a task on the current application's UI-thread queue and wakes up
+     * its event loop. Used by {@link com.glyphui.graphics.Property} when the
+     * widget captured no application instance at creation time. A no-op when
+     * no application is running (headless/test contexts).
+     *
+     * @param task the runnable to execute on the UI thread
+     */
+    public static void invokeOnCurrent(Runnable task) {
+        if (task == null) {
+            return;
+        }
+        Application app = current;
+        if (app != null) {
+            app.invokeLater(task);
+        }
+    }
+
+
+    /**
      * Returns the current on-demand rendering state for testing/diagnostics.
      *
      * @return true if a repaint is pending
@@ -688,10 +869,18 @@ public class Application implements AutoCloseable {
         if (!running) {
             return;
         }
+        uiThread = Thread.currentThread();
+        // Publish this instance so lazily created widget properties can find
+        // the marshalling target (see Application.getCurrent()).
+        current = this;
 
         while (!window.shouldClose()) {
             // Poll events (callbacks may mark paintDirty)
             window.pollEvents();
+
+            // Run tasks posted from other threads via invokeLater(...)
+            drainUiTasks();
+            drainCurrent();
 
             // Advance animation while one is registered (continuous repainting)
             boolean animating = (animationCallback != null);
@@ -711,9 +900,12 @@ public class Application implements AutoCloseable {
                     Thread.currentThread().interrupt();
                     return;
                 }
+            } else {
+                // GPU backend with a clean frame: block in glfwWaitEvents()
+                // instead of busy-polling. The loop is woken up by real input
+                // events or by glfwPostEmptyEvent() from invokeLater(...).
+                window.waitEvents();
             }
-            // GPU backend with a clean frame: swapBuffers blocks on vsync during
-            // painted frames, so no additional pacing is required here.
         }
     }
 
@@ -757,6 +949,11 @@ public class Application implements AutoCloseable {
      */
     @Override
     public void close() {
+        running = false;
+        if (current == this) {
+            current = null;
+        }
+
         // Dispose all components in the root panel (cascades to children)
         if (rootPanel != null) {
             rootPanel.dispose();

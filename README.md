@@ -126,6 +126,49 @@ try (Button button = new Button("Click Me!")) {
 For backward compatibility, `app.destroy()` still exists as an alias for
 `app.close()`.
 
+## Threading
+
+Glyph UI runs all widget state changes, layout and rendering on a single UI
+thread - the thread that calls `Application.run()`. All user callbacks
+(`Button.setOnClick(...)`, key/mouse listeners dispatched from the event loop)
+therefore always execute **on the UI thread by construction**; you never need
+to synchronize inside them.
+
+**Mutating widgets from any other thread is safe via properties.** Each widget
+exposes observable properties (`button.textProperty().set(...)`,
+`label.textProperty()`, and on every component: `xProperty()`, `yProperty()`,
+`widthProperty()`, `heightProperty()`, `visibleProperty()`, `enabledProperty()`).
+When `Property.set(...)` is called from a background thread, the framework
+marshals the change onto the UI thread automatically (queue +
+`glfwPostEmptyEvent` wakeup), marks the frame dirty and notifies listeners on
+the UI thread. The classic setters (`setText`, `setVisible`, ...) delegate to
+these properties, so they are equally thread-safe:
+
+```java
+// From a worker thread - no synchronization needed:
+Thread.ofVirtual().start(() -> {
+    button.textProperty().set("Loaded!");   // marshalled to the UI thread
+});
+```
+
+Properties also support listeners and one-way bindings:
+
+```java
+Property<String> model = Property.of("");
+label.textProperty().bind(model);           // label mirrors the model
+model.addListener((p, oldV, newV) -> System.out.println(oldV + " -> " + newV));
+```
+
+Use `Application.invokeLater(Runnable)` only for **composite operations** that
+cannot be expressed as a single property change (e.g. add several children and
+re-layout atomically). It is also the escape hatch used internally by
+properties. `Application.isUiThread()` / `checkThread()` let you assert or
+detect the current thread when writing custom components.
+
+The event loop blocks in `glfwWaitEvents()` while idle (GPU backend), so
+cross-thread updates applied through properties wake it up immediately instead
+of waiting for the next poll tick.
+
 ## Dependencies
 
 - **Skija** (io.github.humbleui:skija-*) - Skia graphics library for Java
