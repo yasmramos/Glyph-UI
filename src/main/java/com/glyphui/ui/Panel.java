@@ -45,6 +45,7 @@ public class Panel extends Component {
         children.add(component);
         component.setParent(this);
         markLayoutDirty();
+        invalidate();
     }
 
     /**
@@ -57,6 +58,7 @@ public class Panel extends Component {
         component.setParent(null);
         component.close();
         markLayoutDirty();
+        invalidate();
     }
 
     /**
@@ -69,6 +71,7 @@ public class Panel extends Component {
         }
         children.clear();
         markLayoutDirty();
+        invalidate();
     }
 
     /**

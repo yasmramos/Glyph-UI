@@ -382,16 +382,16 @@ public class Button extends Component {
             case MOVE:
                 if (isInside) {
                     if (state != ComponentState.PRESSED) {
-                        state = ComponentState.HOVER;
+                        setState(ComponentState.HOVER);
                     }
                 } else {
-                    state = ComponentState.IDLE;
+                    setState(ComponentState.IDLE);
                 }
                 break;
 
             case PRESS:
                 if (isInside && event.getButton() == com.glyphui.events.MouseButton.LEFT) {
-                    state = ComponentState.PRESSED;
+                    setState(ComponentState.PRESSED);
                 }
                 break;
 
@@ -402,7 +402,7 @@ public class Button extends Component {
                         onClick.run();
                     }
                 }
-                state = isInside ? ComponentState.HOVER : ComponentState.IDLE;
+                setState(isInside ? ComponentState.HOVER : ComponentState.IDLE);
                 break;
 
             default:

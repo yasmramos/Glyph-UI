@@ -116,6 +116,59 @@ public class Canvas {
     }
 
     /**
+     * Saves the current canvas matrix/clip state. Pair with
+     * {@link #restoreToCount(int)}.
+     *
+     * @return a save count to pass to {@link #restoreToCount(int)}
+     */
+    public int save() {
+        return canvas.save();
+    }
+
+    /**
+     * Restores the canvas state to the given save count.
+     *
+     * @param saveCount the count returned by {@link #save()}
+     */
+    public void restoreToCount(int saveCount) {
+        canvas.restoreToCount(saveCount);
+    }
+
+    /**
+     * Scales the canvas CTM. Used for HiDPI rendering: the surface covers
+     * the physical framebuffer, so the logical-coordinate UI tree is drawn
+     * under a {@code contentScale} transform.
+     *
+     * @param sx the horizontal scale factor
+     * @param sy the vertical scale factor
+     */
+    public void scale(float sx, float sy) {
+        canvas.scale(sx, sy);
+    }
+
+    /**
+     * Translates the canvas CTM.
+     *
+     * @param dx the horizontal translation
+     * @param dy the vertical translation
+     */
+    public void translate(float dx, float dy) {
+        canvas.translate(dx, dy);
+    }
+
+    /**
+     * Gets the total device matrix of the canvas (useful to verify that the
+     * HiDPI content scale was applied: scaleX/scaleY will equal the content
+     * scale after {@link #scale(float, float)}).
+     *
+     * @return the current canvas matrix as a 9-element array [a,b,c, d,e,f, g,h,i]
+     */
+    public float[] getMatrixArray() {
+        io.github.humbleui.skija.Matrix33 m = canvas.getLocalToDeviceAsMatrix33();
+        return m.getMat();
+    }
+
+    /**
      * Draws a rectangle.
      *
      * @param x      the x-coordinate of the top-left corner
