@@ -24,8 +24,27 @@ import static org.lwjgl.opengl.GL30.*;
 
 /**
  * Main application class that manages the event loop, rendering, and window lifecycle.
+ *
+ * <p>{@code Application} owns every native resource created during
+ * {@link #init()} (Skija surface, GPU context and GLFW window), so it
+ * implements {@link AutoCloseable} and is intended to be used with
+ * try-with-resources:</p>
+ *
+ * <pre>{@code
+ * try (Application app = new Application()) {
+ *     if (app.init("Glyph UI", 800, 600)) {
+ *         app.getRootPanel().add(new Button("Click here!"));
+ *         app.run();
+ *     }
+ * }
+ * }</pre>
+ *
+ * <p>{@link #close()} releases resources in dependency order: the component
+ * tree first (widgets close their paints/fonts), then the shared font cache,
+ * then the Skija surface, then the DirectContext that created it, and finally
+ * the GLFW window.</p>
  */
-public class Application {
+public class Application implements AutoCloseable {
     private Window window;
     private Surface surface;
     private Canvas canvas;
@@ -730,26 +749,44 @@ public class Application {
 
     /**
      * Cleans up resources and destroys the application.
+     *
+     * <p>Release order follows native-resource ownership: the component tree
+     * first (widgets close their paints/fonts), then the shared font cache,
+     * then the Skija surface, then the {@code DirectContext} that created it,
+     * and finally the GLFW window. This method is idempotent.</p>
      */
-    public void destroy() {
-        // Dispose all components in the root panel
+    @Override
+    public void close() {
+        // Dispose all components in the root panel (cascades to children)
         if (rootPanel != null) {
             rootPanel.dispose();
         }
-        
-        // Close Skija DirectContext
-        if (directContext != null) {
-            directContext.close();
-        }
-        
-        // Close Skija surface
+
+        // Release the shared typeface cache after every widget font is closed
+        com.glyphui.graphics.Fonts.close();
+
+        // Close the surface before the context that owns it
         if (surface != null) {
             surface.close();
+            surface = null;
         }
-        
-        // Destroy window
+
+        if (directContext != null) {
+            directContext.close();
+            directContext = null;
+        }
+
+        // Destroy window (GLFW) last
         if (window != null) {
             window.destroy();
         }
+    }
+
+    /**
+     * Legacy alias for {@link #close()}, kept for backward compatibility.
+     * New code should prefer try-with-resources on {@code Application}.
+     */
+    public void destroy() {
+        close();
     }
 }

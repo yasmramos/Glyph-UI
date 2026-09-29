@@ -6,6 +6,13 @@ import io.github.humbleui.types.RRect;
 
 /**
  * Canvas wrapper that provides drawing methods using Skija.
+ *
+ * <p><strong>Ownership:</strong> this class is NOT the owner of the native
+ * {@code io.github.humbleui.skija.Canvas} or {@code Surface} it references.
+ * Both are created and owned by {@link com.glyphui.core.Application}, which
+ * closes them during {@code Application.close()}. This wrapper never closes
+ * them; it only holds references and rebinds them when the application
+ * recreates its surface (e.g. on window resize).</p>
  */
 public class Canvas {
     private io.github.humbleui.skija.Canvas canvas;
