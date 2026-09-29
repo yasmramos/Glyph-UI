@@ -8,8 +8,8 @@ import io.github.humbleui.types.RRect;
  * Canvas wrapper that provides drawing methods using Skija.
  */
 public class Canvas {
-    private final io.github.humbleui.skija.Canvas canvas;
-    private final Surface surface;
+    private io.github.humbleui.skija.Canvas canvas;
+    private Surface surface;
     private int width;
     private int height;
 
@@ -44,6 +44,30 @@ public class Canvas {
      */
     public Surface getSurface() {
         return surface;
+    }
+
+    /**
+     * Replaces the underlying native canvas and surface.
+     * Used when the application recreates its surface (e.g. after a window
+     * resize on the raster backend) so wrappers keep drawing to the new target.
+     *
+     * @param newCanvas the new Skija canvas
+     * @param newSurface the new Skija surface owning the canvas
+     */
+    public void setNativeCanvas(io.github.humbleui.skija.Canvas newCanvas, Surface newSurface) {
+        this.canvas = newCanvas;
+        if (newSurface != null) {
+            this.surface = newSurface;
+        }
+    }
+
+    /**
+     * Replaces the underlying native canvas, keeping the current surface reference.
+     *
+     * @param newCanvas the new Skija canvas
+     */
+    public void setNativeCanvas(io.github.humbleui.skija.Canvas newCanvas) {
+        setNativeCanvas(newCanvas, null);
     }
 
     /**

@@ -100,7 +100,8 @@ class WidgetRasterTest {
         @Test
         @DisplayName("setFontSize updates preferred height accordingly")
         void fontSizeAffectsPreferredHeight() {
-            Label label = new Label(0, 0, 100, 20, "a");
+            // No explicit bounds: preferred height must follow the font size.
+            Label label = new Label("a");
             float h16 = label.getPreferredHeight();
             label.setFontSize(30.0f);
             assertEquals(30.0f, label.getFontSize(), 1e-6);

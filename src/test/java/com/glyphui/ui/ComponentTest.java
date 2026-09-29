@@ -114,11 +114,58 @@ public class ComponentTest {
     }
 
     @Test
-    public void testGetPreferredHeightDefaultsToHeight() {
+    public void testGetPreferredHeightWithExplicitBoundsReturnsHeight() {
         TestComponent comp = new TestComponent(0, 0, 50, 22);
 
+        assertTrue(comp.isSizeExplicitlySet(),
+                "Bounds-carrying constructor must mark the size as explicitly set");
         assertEquals(22f, comp.getPreferredHeight(),
-                "Default preferred height should equal the component height");
+                "Preferred height should equal the component height when bounds are explicit");
+        assertEquals(50f, comp.getPreferredWidth(),
+                "Preferred width should equal the component width when bounds are explicit");
+    }
+
+    @Test
+    public void testGetPreferredSizeFallsBackToDefaultsWithoutBounds() {
+        // Plain base component (no overrides): preferred size falls back to the
+        // Component.DEFAULT_WIDTH / DEFAULT_HEIGHT constants.
+        TestComponent comp = new TestComponent();
+
+        assertFalse(comp.isSizeExplicitlySet(),
+                "No-arg constructor must leave the size unset");
+        assertEquals(0f, comp.getWidth());
+        assertEquals(0f, comp.getHeight());
+        // TestComponent declares its own fixed preferred size constants.
+        assertEquals(TestComponent.PREFERRED_WIDTH, comp.getPreferredWidth(),
+                "Preferred width should fall back to the component default");
+        assertEquals(TestComponent.PREFERRED_HEIGHT, comp.getPreferredHeight(),
+                "Preferred height should fall back to the component default");
+    }
+
+    @Test
+    public void testApplyLayoutSizeDoesNotMarkExplicit() {
+        TestComponent comp = new TestComponent();
+
+        comp.applyLayoutSize(80f, 24f);
+
+        assertEquals(80f, comp.getWidth());
+        assertEquals(24f, comp.getHeight());
+        assertFalse(comp.isSizeExplicitlySet(),
+                "Layout-assigned sizes must not count as user-explicit bounds");
+    }
+
+    @Test
+    public void testSetWidthAndSetHeightMarkSizeExplicit() {
+        TestComponent comp = new TestComponent();
+
+        comp.setWidth(77f);
+        assertTrue(comp.isSizeExplicitlySet(),
+                "setWidth is a user mutation and must mark the size explicit");
+
+        TestComponent other = new TestComponent();
+        other.setHeight(33f);
+        assertTrue(other.isSizeExplicitlySet(),
+                "setHeight is a user mutation and must mark the size explicit");
     }
 
     @Test

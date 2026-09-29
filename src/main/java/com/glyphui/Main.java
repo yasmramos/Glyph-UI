@@ -21,10 +21,11 @@ public class Main {
         // Set FlowLayout on root panel
         app.getRootPanel().setLayoutManager(new FlowLayout());
 
-        // Create buttons
-        Button button1 = new Button(0, 0, 200, 50, "Click here!");
-        Button button2 = new Button(0, 0, 200, 50, "Second button");
-        Button button3 = new Button(0, 0, 200, 50, "Third button");
+        // Create buttons. Preferred sizes are derived from the measured text,
+        // so no explicit bounds are needed when using FlowLayout.
+        Button button1 = new Button("Click here!");
+        Button button2 = new Button("Second button");
+        Button button3 = new Button(0, 0, 200, 50, "Fixed size button");
         
         // Set click handler
         button1.setOnClick(() -> {
