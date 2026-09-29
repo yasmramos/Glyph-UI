@@ -39,6 +39,7 @@ public class Panel extends Component {
         children.add(component);
         component.setParent(this);
         markLayoutDirty();
+        invalidate();
     }
 
     /**
@@ -51,6 +52,7 @@ public class Panel extends Component {
         component.setParent(null);
         component.dispose();
         markLayoutDirty();
+        invalidate();
     }
 
     /**
@@ -63,6 +65,7 @@ public class Panel extends Component {
         }
         children.clear();
         markLayoutDirty();
+        invalidate();
     }
 
     /**
@@ -140,6 +143,7 @@ public class Panel extends Component {
      */
     public void setBackgroundColor(int backgroundColor) {
         this.backgroundColor = backgroundColor;
+        invalidate();
     }
 
     @Override
