@@ -1,6 +1,8 @@
 package com.glyphui.ui;
 
+import com.glyphui.core.Application;
 import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Property;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 import io.github.humbleui.skija.*;
@@ -23,6 +25,8 @@ public class Button extends Component {
     private int borderColor;
     private float borderRadius;
     private Font font;
+    /** Observable text property (lazily created). */
+    private Property<String> textProperty;
     
     // Reusable Paint objects to avoid allocation per frame
     private Paint bgPaint;
@@ -103,15 +107,29 @@ public class Button extends Component {
     }
 
     /**
-     * Sets the button text.
+     * Returns the observable text property. Setting it from a background
+     * thread marshals the change onto the UI thread automatically.
+     *
+     * @return the text property (never null after first access)
+     */
+    public Property<String> textProperty() {
+        if (textProperty == null) {
+            textProperty = new Property<>(Application.getCurrent(), text, newText -> {
+                this.text = newText;
+                requestRepaint();
+            });
+        }
+        return textProperty;
+    }
+
+    /**
+     * Sets the button text. Delegates to {@link #textProperty()} for
+     * backward compatibility and cross-thread safety.
      *
      * @param text the new text
      */
     public void setText(String text) {
-        if (!java.util.Objects.equals(this.text, text)) {
-            this.text = text;
-            requestRepaint();
-        }
+        textProperty().set(text);
     }
 
     /**
@@ -162,6 +180,11 @@ public class Button extends Component {
 
     /**
      * Sets the click handler.
+     *
+     * <p>The handler is invoked from the GLFW event dispatch inside
+     * {@code Application.run()}, so it always executes on the UI thread by
+     * construction; widget mutations and repaint requests made from it need
+     * no synchronization.</p>
      *
      * @param onClick the runnable to execute on click
      */
@@ -346,9 +369,9 @@ public class Button extends Component {
     }
 
     @Override
-    public void onMouseEvent(MouseEvent event) {
+    public boolean onMouseEvent(MouseEvent event) {
         if (!visible || !enabled) {
-            return;
+            return false;
         }
 
         boolean isInside = contains(event.getX(), event.getY());
@@ -386,10 +409,13 @@ public class Button extends Component {
                 break;
         }
 
-        // Request a repaint only when the visual state actually changed
+        // Request a repaint only when the visual state actually changed.
+        // Events inside the button bounds are consumed so they do not reach
+        // components underneath.
         if (state != oldState) {
             requestRepaint();
         }
+        return isInside;
     }
 
     @Override

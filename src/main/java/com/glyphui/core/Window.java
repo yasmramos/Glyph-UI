@@ -139,6 +139,19 @@ public class Window implements AutoCloseable {
     }
 
     /**
+     * Waits until one or more events have been received and then polls them.
+     *
+     * <p>This is the blocking counterpart of {@link #pollEvents()} used by the
+     * on-demand event loop: the UI thread sleeps here instead of busy-waiting,
+     * and another thread can wake it up promptly with
+     * {@code glfwPostEmptyEvent()} (see
+     * {@link Application#invokeLater(Runnable)}).</p>
+     */
+    public void waitEvents() {
+        glfwWaitEvents();
+    }
+
+    /**
      * Gets the window handle.
      *
      * @return the GLFW window handle
@@ -236,6 +249,11 @@ public class Window implements AutoCloseable {
     /**
      * Destroys the window and terminates GLFW. Idempotent: subsequent calls
      * are no-ops once the window handle has been released.
+     *
+     * <p><strong>Note:</strong> {@code glfwTerminate()} releases process-wide
+     * GLFW state, not just this window's resources. Any other GLFW window in
+     * the same process becomes unusable after this call; Glyph-UI assumes a
+     * single owning {@code Window} per application.</p>
      */
     public void destroy() {
         if (windowHandle == 0L) {
@@ -245,7 +263,13 @@ public class Window implements AutoCloseable {
         glfwDestroyWindow(windowHandle);
         windowHandle = 0L;
         glfwTerminate();
-        glfwSetErrorCallback(null).free();
+        // glfwSetErrorCallback(null) uninstalls and returns the previously
+        // registered error callback; guard against a null return so we never
+        // dereference it, then free its native resources.
+        GLFWErrorCallback previousErrorCallback = glfwSetErrorCallback(null);
+        if (previousErrorCallback != null) {
+            previousErrorCallback.free();
+        }
     }
 
     /**
