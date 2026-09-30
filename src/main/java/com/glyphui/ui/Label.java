@@ -54,13 +54,26 @@ public class Label extends Component {
         return (base != null && !base.equals(getId())) ? base : text;
     }
 
+    @Override
+    protected String defaultStyleTag() {
+        return "label";
+    }
+
     /**
-     * Gets the font used by this label (shared theme BODY font — owned by
-     * {@code FontManager}, do not close).
+     * Gets the font used by this label. Resolution order: CSS
+     * {@code font-family}/{@code font-size} declarations (through
+     * {@link Component#resolveFont}), then the per-instance size override,
+     * then the shared theme BODY font — owned by {@code FontManager} or the
+     * style-font cache, do not close.
      *
      * @return the label font
      */
     private io.github.humbleui.skija.Font getFont() {
+        com.glyphui.style.Style s = getComputedStyle();
+        if (s.has(com.glyphui.style.StyleProperty.FONT_FAMILY)
+                || s.has(com.glyphui.style.StyleProperty.FONT_SIZE)) {
+            return resolveFont(com.glyphui.graphics.Theme.FontRole.BODY);
+        }
         if (fontSizeOverride != null) {
             return getTheme().getFont(com.glyphui.graphics.Theme.FontRole.BODY, fontSizeOverride);
         }
@@ -92,7 +105,8 @@ public class Label extends Component {
      * @return the text color (as ARGB int)
      */
     public int getTextColor() {
-        return textColorOverride != null ? textColorOverride : getTheme().getForegroundColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.COLOR, textColorOverride,
+                getTheme().getForegroundColor());
     }
 
     /**

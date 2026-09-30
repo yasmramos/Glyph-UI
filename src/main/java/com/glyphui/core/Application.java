@@ -47,6 +47,9 @@ public class Application {
     /** Keyboard focus tracker; owns Tab/Shift+Tab traversal. */
     private FocusManager focusManager;
 
+    /** Optional CSS style engine; when set, it re-cascades every frame. */
+    private com.glyphui.style.StyleEngine styleEngine;
+
     /**
      * Paint-dirty flag: when true the next loop iteration renders a frame.
      * Set via {@link #requestRepaint()} (e.g. from {@code Component.invalidate()}).
@@ -160,7 +163,12 @@ public class Application {
             // Setup callbacks
             setupCallbacks();
 
-            // Set initial root panel size to the LOGICAL window size
+            // Set initial root panel size to the LOGICAL window size. The
+            // default layout is FlowLayout, which only positions children at
+            // their preferred sizes; stretch the panel itself so CSS width /
+            // height:100% and flex containers have a real viewport to fill.
+            rootPanel.setLayoutManager(new com.glyphui.layout.FlexLayout(
+                    com.glyphui.layout.FlexLayout.Direction.ROW));
             rootPanel.setWidth(window.getWidth());
             rootPanel.setHeight(window.getHeight());
 
@@ -556,6 +564,51 @@ public class Application {
     }
 
     /**
+     * Gets the keyboard focus manager created during {@link #init()}.
+     *
+     * @return the focus manager, or null before init
+     */
+    public FocusManager getFocusManager() {
+        return focusManager;
+    }
+
+    /**
+     * Installs a CSS style engine for this application. When set, the
+     * engine re-cascades its stylesheet against the component tree at the
+     * start of every frame (so {@code :hover}/{@code :focus}/{@code
+     * :disabled}/{@code :active} rules track live component state). Pass
+     * null to disable styling.
+     *
+     * <p>Typical usage with a loaded markup document:</p>
+     * <pre>{@code
+     * StyleSheet sheet = StyleSheet.parse(cssText);
+     * StyleEngine engine = new StyleEngine();
+     * engine.setStyleSheet(sheet);
+     * app.setStyleEngine(engine);
+     * }</pre>
+     *
+     * @param styleEngine the engine to install, or null
+     */
+    public void setStyleEngine(com.glyphui.style.StyleEngine styleEngine) {
+        this.styleEngine = styleEngine;
+        requestRepaint();
+    }
+
+    /**
+     * Convenience: builds a {@link com.glyphui.style.StyleEngine} from the
+     * given stylesheet and installs it (see {@link #setStyleEngine}).
+     *
+     * @param styleSheet the stylesheet to apply each frame
+     * @return the installed engine
+     */
+    public com.glyphui.style.StyleEngine applyStyleSheet(
+            com.glyphui.style.StyleSheet styleSheet) {
+        com.glyphui.style.StyleEngine engine = new com.glyphui.style.StyleEngine(styleSheet);
+        setStyleEngine(engine);
+        return engine;
+    }
+
+    /**
      * Gets the canvas for rendering operations.
      *
      * @return the canvas
@@ -786,6 +839,13 @@ public class Application {
     private void render() {
         float contentScaleX = window != null ? window.getContentScaleX() : 1.0f;
         float contentScaleY = window != null ? window.getContentScaleY() : 1.0f;
+
+        // Re-cascade the stylesheet against the current tree state so that
+        // pseudo-classes (:hover, :focus, :disabled, :active) always reflect
+        // live component state before painting.
+        if (styleEngine != null) {
+            styleEngine.apply(rootPanel);
+        }
 
         io.github.humbleui.skija.Canvas nativeCanvas = canvas.getNativeCanvas();
         int saveCount = nativeCanvas.save();

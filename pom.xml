@@ -130,6 +130,20 @@
             <classifier>${lwjgl.natives}</classifier>
         </dependency>
 
+        <!-- ph-css: CSS parser used by the style subsystem -->
+        <dependency>
+            <groupId>com.helger</groupId>
+            <artifactId>ph-css</artifactId>
+            <version>6.2.3</version>
+        </dependency>
+
+        <!-- jsoup: HTML/XML parser used by the declarative markup loader -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.18.3</version>
+        </dependency>
+
         <!-- JUnit 5 for testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
