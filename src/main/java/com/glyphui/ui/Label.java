@@ -1,6 +1,10 @@
 package com.glyphui.ui;
 
+import com.glyphui.core.Application;
 import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Property;
+import com.glyphui.style.Style;
+import com.glyphui.style.StyleProperty;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 import io.github.humbleui.skija.*;
@@ -14,6 +18,10 @@ public class Label extends Component {
     private Integer textColorOverride;
     private Float fontSizeOverride;
     private TextAlignment alignment;
+    /** Reusable text paint: created once, reused every frame, closed in dispose(). */
+    private Paint textPaint;
+    /** Observable text property (lazily created). */
+    private Property<String> textProperty;
 
     /**
      * Text alignment options.
@@ -36,15 +44,43 @@ public class Label extends Component {
     public Label(float x, float y, float width, float height, String text) {
         super(x, y, width, height);
         this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Label without explicit bounds. The size will be derived
+     * from the preferred (measured) text size when a layout manager runs.
+     *
+     * @param text the text to display
+     */
+    public Label(String text) {
+        super();
+        this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Label with default (unset) bounds and empty text.
+     */
+    public Label() {
+        this("");
+    }
+
+    /**
+     * Initializes default state: left alignment and no keyboard focus
+     * (labels are static, non-interactive widgets). Colors and fonts are
+     * resolved from the computed style / {@code Theme.current()} lazily at
+     * render time, so nothing native is allocated here.
+     */
+    private void initDefaults() {
         this.alignment = TextAlignment.LEFT;
         // Static labels do not accept keyboard focus
         setFocusable(false);
-        // Colors and fonts are resolved from Theme.current() at render time.
     }
 
     @Override
-    public com.glyphui.ui.AccessibleRole getAccessibleRole() {
-        return com.glyphui.ui.AccessibleRole.LABEL;
+    public AccessibleRole getAccessibleRole() {
+        return AccessibleRole.LABEL;
     }
 
     @Override
@@ -69,9 +105,8 @@ public class Label extends Component {
      * @return the label font
      */
     private io.github.humbleui.skija.Font getFont() {
-        com.glyphui.style.Style s = getComputedStyle();
-        if (s.has(com.glyphui.style.StyleProperty.FONT_FAMILY)
-                || s.has(com.glyphui.style.StyleProperty.FONT_SIZE)) {
+        Style s = getComputedStyle();
+        if (s.has(StyleProperty.FONT_FAMILY) || s.has(StyleProperty.FONT_SIZE)) {
             return resolveFont(com.glyphui.graphics.Theme.FontRole.BODY);
         }
         if (fontSizeOverride != null) {
@@ -90,22 +125,40 @@ public class Label extends Component {
     }
 
     /**
-     * Sets the label text.
+     * Returns the observable text property. Setting it from a background
+     * thread marshals the change onto the UI thread automatically.
+     *
+     * @return the text property (never null after first access)
+     */
+    public Property<String> textProperty() {
+        if (textProperty == null) {
+            textProperty = new Property<>(Application.getCurrent(), text, newText -> {
+                this.text = newText;
+                requestRepaint();
+                invalidate();
+            });
+        }
+        return textProperty;
+    }
+
+    /**
+     * Sets the label text. Delegates to {@link #textProperty()} for
+     * backward compatibility and cross-thread safety.
      *
      * @param text the new text
      */
     public void setText(String text) {
-        this.text = text;
-        invalidate();
+        textProperty().set(text);
     }
 
     /**
-     * Gets the text color (override or the theme's foreground color).
+     * Gets the text color (CSS {@code color}, then per-instance override,
+     * then the theme's foreground color).
      *
      * @return the text color (as ARGB int)
      */
     public int getTextColor() {
-        return resolveIntStyle(com.glyphui.style.StyleProperty.COLOR, textColorOverride,
+        return resolveIntStyle(StyleProperty.COLOR, textColorOverride,
                 getTheme().getForegroundColor());
     }
 
@@ -121,31 +174,37 @@ public class Label extends Component {
     }
 
     /**
-     * Gets the preferred height of this label: one line of the theme body
-     * font plus the theme padding (helper for the default measure path;
-     * prefer {@link #measure(float, float)}).
-     *
-     * @return the preferred height
-     */
-    @Override
-    public float getPreferredHeight() {
-        io.github.humbleui.skija.FontMetrics metrics = getFont().getMetrics();
-        return (metrics.getDescent() - metrics.getAscent()) + 2.0f * getTheme().getPadding();
-    }
-
-    /**
      * Gets the preferred width of this label: the measured caption width
-     * plus the theme padding.
+     * plus the theme padding. Falls back to the base defaults when the user
+     * provided explicit bounds.
      *
      * @return the preferred width
      */
     @Override
     public float getPreferredWidth() {
+        if (sizeExplicitlySet) {
+            return width;
+        }
         return getFont().measureTextWidth(text == null ? "" : text) + 2.0f * getTheme().getPadding();
     }
 
     /**
-     * Measures the label with its theme font plus padding, clamped to the
+     * Gets the preferred height of this label: one line of the resolved font
+     * plus the theme padding.
+     *
+     * @return the preferred height
+     */
+    @Override
+    public float getPreferredHeight() {
+        if (sizeExplicitlySet) {
+            return height;
+        }
+        FontMetrics metrics = getFont().getMetrics();
+        return (metrics.getDescent() - metrics.getAscent()) + 2.0f * getTheme().getPadding();
+    }
+
+    /**
+     * Measures the label with its resolved font plus padding, clamped to the
      * supplied maximums.
      *
      * @param maxWidth  the maximum available width
@@ -182,8 +241,11 @@ public class Label extends Component {
      * @param alignment the new alignment
      */
     public void setAlignment(TextAlignment alignment) {
-        this.alignment = alignment;
-        invalidate();
+        if (this.alignment != alignment) {
+            this.alignment = alignment;
+            requestRepaint();
+            invalidate();
+        }
     }
 
     /**
@@ -197,8 +259,8 @@ public class Label extends Component {
 
     /**
      * Overrides the font size for this label. Pass null to follow the
-     * current theme again. The previous font was shared through
-     * {@code FontManager} so nothing needs to be closed here.
+     * current theme again. Fonts are shared through {@code FontManager} /
+     * the style-font cache so nothing needs to be closed here.
      *
      * @param size the new font size or null
      */
@@ -218,7 +280,7 @@ public class Label extends Component {
         float textWidth = canvas.measureText(text, f);
         float textHeight = canvas.getTextHeight(f);
         float textX;
-        
+
         switch (alignment) {
             case CENTER:
                 textX = x + (width - textWidth) / 2.0f;
@@ -230,24 +292,48 @@ public class Label extends Component {
                 textX = x;
                 break;
         }
-        
+
         float textY = y + (height + textHeight) / 2.0f;
 
-        // Draw text (color comes from the theme unless overridden)
-        Paint textPaint = new Paint();
+        // Draw text using the reusable paint field (no per-frame allocations)
+        ensureTextPaint();
         textPaint.setColor(enabled ? getTextColor() : getTheme().getControlTextDisabledColor());
-        textPaint.setAntiAlias(true);
         canvas.drawString(text, textX, textY, textPaint, f);
-        textPaint.close();
+    }
+
+    /**
+     * Lazily creates the reusable text paint so {@link #render} never
+     * allocates native objects per frame.
+     */
+    private void ensureTextPaint() {
+        if (textPaint == null || textPaint.isClosed()) {
+            textPaint = new Paint();
+            textPaint.setAntiAlias(true);
+        }
     }
 
     @Override
-    public void onMouseEvent(MouseEvent event) {
-        // Labels typically don't handle mouse events
+    public boolean onMouseEvent(MouseEvent event) {
+        // Labels are inert: they never consume mouse events
+        return false;
     }
 
     @Override
     public void onKeyEvent(KeyEvent event) {
         // Labels typically don't handle key events
+    }
+
+    /**
+     * Releases the native Skija resources owned by this label (the text
+     * paint). The shared {@code Typeface}/{@code Font} instances are owned
+     * by {@link com.glyphui.graphics.Fonts} and the style-font cache and are
+     * intentionally NOT closed here.
+     */
+    @Override
+    public void dispose() {
+        if (textPaint != null) {
+            textPaint.close();
+            textPaint = null;
+        }
     }
 }
