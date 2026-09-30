@@ -3,6 +3,8 @@ package com.glyphui.ui;
 import com.glyphui.core.Application;
 import com.glyphui.graphics.Canvas;
 import com.glyphui.graphics.Property;
+import com.glyphui.style.Style;
+import com.glyphui.style.StyleProperty;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 import io.github.humbleui.skija.*;
@@ -65,14 +67,52 @@ public class Label extends Component {
     }
 
     /**
-     * Initializes default color, alignment and font.
+     * Initializes default state: left alignment and no keyboard focus
+     * (labels are static, non-interactive widgets). Colors and fonts are
+     * resolved from the computed style / {@code Theme.current()} lazily at
+     * render time, so nothing native is allocated here.
      */
     private void initDefaults() {
-        this.textColor = Color.makeARGB(255, 255, 255, 255);
         this.alignment = TextAlignment.LEFT;
+        // Static labels do not accept keyboard focus
+        setFocusable(false);
+    }
 
-        // Initialize font from the shared cached typeface (cheap Font wrapper)
-        this.font = com.glyphui.graphics.Fonts.createDefaultFont(14.0f);
+    @Override
+    public AccessibleRole getAccessibleRole() {
+        return AccessibleRole.LABEL;
+    }
+
+    @Override
+    public String getAccessibleName() {
+        // Labels are named by their caption unless explicitly overridden
+        String base = super.getAccessibleName();
+        return (base != null && !base.equals(getId())) ? base : text;
+    }
+
+    @Override
+    protected String defaultStyleTag() {
+        return "label";
+    }
+
+    /**
+     * Gets the font used by this label. Resolution order: CSS
+     * {@code font-family}/{@code font-size} declarations (through
+     * {@link Component#resolveFont}), then the per-instance size override,
+     * then the shared theme BODY font — owned by {@code FontManager} or the
+     * style-font cache, do not close.
+     *
+     * @return the label font
+     */
+    private io.github.humbleui.skija.Font getFont() {
+        Style s = getComputedStyle();
+        if (s.has(StyleProperty.FONT_FAMILY) || s.has(StyleProperty.FONT_SIZE)) {
+            return resolveFont(com.glyphui.graphics.Theme.FontRole.BODY);
+        }
+        if (fontSizeOverride != null) {
+            return getTheme().getFont(com.glyphui.graphics.Theme.FontRole.BODY, fontSizeOverride);
+        }
+        return getTheme().getFont(com.glyphui.graphics.Theme.FontRole.BODY);
     }
 
     /**
@@ -95,6 +135,7 @@ public class Label extends Component {
             textProperty = new Property<>(Application.getCurrent(), text, newText -> {
                 this.text = newText;
                 requestRepaint();
+                invalidate();
             });
         }
         return textProperty;
@@ -111,12 +152,14 @@ public class Label extends Component {
     }
 
     /**
-     * Gets the text color (override or the theme's foreground color).
+     * Gets the text color (CSS {@code color}, then per-instance override,
+     * then the theme's foreground color).
      *
      * @return the text color (as ARGB int)
      */
     public int getTextColor() {
-        return textColorOverride != null ? textColorOverride : getTheme().getForegroundColor();
+        return resolveIntStyle(StyleProperty.COLOR, textColorOverride,
+                getTheme().getForegroundColor());
     }
 
     /**
@@ -125,16 +168,14 @@ public class Label extends Component {
      *
      * @param textColor the new text color (as ARGB int) or null
      */
-    public void setTextColor(int textColor) {
-        if (this.textColor != textColor) {
-            this.textColor = textColor;
-            requestRepaint();
-        }
+    public void setTextColor(Integer textColor) {
+        this.textColorOverride = textColor;
+        invalidate();
     }
 
     /**
-     * Gets the preferred width of this label: measured text width without any
-     * decorative padding. Falls back to the base defaults when the user
+     * Gets the preferred width of this label: the measured caption width
+     * plus the theme padding. Falls back to the base defaults when the user
      * provided explicit bounds.
      *
      * @return the preferred width
@@ -144,14 +185,12 @@ public class Label extends Component {
         if (sizeExplicitlySet) {
             return width;
         }
-        if (font == null || font.isClosed()) {
-            return DEFAULT_WIDTH;
-        }
-        return font.measureTextWidth(text == null ? "" : text);
+        return getFont().measureTextWidth(text == null ? "" : text) + 2.0f * getTheme().getPadding();
     }
 
     /**
-     * Gets the preferred height of this label based on its font size.
+     * Gets the preferred height of this label: one line of the resolved font
+     * plus the theme padding.
      *
      * @return the preferred height
      */
@@ -160,8 +199,31 @@ public class Label extends Component {
         if (sizeExplicitlySet) {
             return height;
         }
-        // Return font size plus some padding for proper spacing
-        return font.getSize() + 10.0f;
+        FontMetrics metrics = getFont().getMetrics();
+        return (metrics.getDescent() - metrics.getAscent()) + 2.0f * getTheme().getPadding();
+    }
+
+    /**
+     * Measures the label with its resolved font plus padding, clamped to the
+     * supplied maximums.
+     *
+     * @param maxWidth  the maximum available width
+     * @param maxHeight the maximum available height
+     * @return the measured dimension
+     */
+    @Override
+    public com.glyphui.graphics.Dimension measure(float maxWidth, float maxHeight) {
+        float w = getPreferredWidth();
+        float h = getPreferredHeight();
+        if (Float.isNaN(maxWidth) || maxWidth == Float.POSITIVE_INFINITY) {
+            maxWidth = Float.MAX_VALUE;
+        }
+        if (Float.isNaN(maxHeight) || maxHeight == Float.POSITIVE_INFINITY) {
+            maxHeight = Float.MAX_VALUE;
+        }
+        return new com.glyphui.graphics.Dimension(
+                Math.min(w, Math.max(0.0f, maxWidth)),
+                Math.min(h, Math.max(0.0f, maxHeight)));
     }
 
     /**
@@ -182,6 +244,7 @@ public class Label extends Component {
         if (this.alignment != alignment) {
             this.alignment = alignment;
             requestRepaint();
+            invalidate();
         }
     }
 
@@ -196,19 +259,14 @@ public class Label extends Component {
 
     /**
      * Overrides the font size for this label. Pass null to follow the
-     * current theme again. The previous font was shared through
-     * {@code FontManager} so nothing needs to be closed here.
+     * current theme again. Fonts are shared through {@code FontManager} /
+     * the style-font cache so nothing needs to be closed here.
      *
      * @param size the new font size or null
      */
-    public void setFontSize(float size) {
-        if (font.getSize() != size) {
-            Typeface typeface = font.getTypeface();
-            Font oldFont = this.font;
-            this.font = new Font(typeface, size);
-            oldFont.close();
-            requestRepaint();
-        }
+    public void setFontSize(Float size) {
+        this.fontSizeOverride = size;
+        invalidate();
     }
 
     @Override
@@ -222,7 +280,7 @@ public class Label extends Component {
         float textWidth = canvas.measureText(text, f);
         float textHeight = canvas.getTextHeight(f);
         float textX;
-        
+
         switch (alignment) {
             case CENTER:
                 textX = x + (width - textWidth) / 2.0f;
@@ -234,13 +292,13 @@ public class Label extends Component {
                 textX = x;
                 break;
         }
-        
+
         float textY = y + (height + textHeight) / 2.0f;
 
         // Draw text using the reusable paint field (no per-frame allocations)
         ensureTextPaint();
-        textPaint.setColor(textColor);
-        canvas.drawString(text, textX, textY, textPaint, font);
+        textPaint.setColor(enabled ? getTextColor() : getTheme().getControlTextDisabledColor());
+        canvas.drawString(text, textX, textY, textPaint, f);
     }
 
     /**
@@ -266,19 +324,16 @@ public class Label extends Component {
     }
 
     /**
-     * Releases the native Skija resources owned by this label (font and text
-     * paint). The shared {@code Typeface} from {@link com.glyphui.graphics.Fonts}
-     * is intentionally NOT closed here: it is owned by the cache.
+     * Releases the native Skija resources owned by this label (the text
+     * paint). The shared {@code Typeface}/{@code Font} instances are owned
+     * by {@link com.glyphui.graphics.Fonts} and the style-font cache and are
+     * intentionally NOT closed here.
      */
     @Override
     public void dispose() {
         if (textPaint != null) {
             textPaint.close();
             textPaint = null;
-        }
-        if (font != null) {
-            font.close();
-            font = null;
         }
     }
 }
