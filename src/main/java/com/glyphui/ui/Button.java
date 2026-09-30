@@ -13,6 +13,11 @@ public class Button extends Component {
     private String text;
     private Runnable onClick;
 
+    @Override
+    protected String defaultStyleTag() {
+        return "button";
+    }
+
     // Optional per-button color overrides; null means "use the Theme".
     private Integer normalColorOverride;
     private Integer hoverColorOverride;
@@ -101,8 +106,16 @@ public class Button extends Component {
      *
      * @return the normal color (as ARGB int)
      */
+    /**
+     * Gets the normal state color. Resolution order: matching CSS rule
+     * (e.g. {@code button:hover} when the state is HOVER) → per-instance
+     * override → theme default.
+     *
+     * @return the normal color (as ARGB int)
+     */
     public int getNormalColor() {
-        return normalColorOverride != null ? normalColorOverride : getTheme().getControlNormalColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
+                normalColorOverride, getTheme().getControlNormalColor());
     }
 
     /**
@@ -122,7 +135,8 @@ public class Button extends Component {
      * @return the hover color (as ARGB int)
      */
     public int getHoverColor() {
-        return hoverColorOverride != null ? hoverColorOverride : getTheme().getControlHoverColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
+                hoverColorOverride, getTheme().getControlHoverColor());
     }
 
     /**
@@ -142,7 +156,8 @@ public class Button extends Component {
      * @return the pressed color (as ARGB int)
      */
     public int getPressedColor() {
-        return pressedColorOverride != null ? pressedColorOverride : getTheme().getControlPressedColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
+                pressedColorOverride, getTheme().getControlPressedColor());
     }
 
     /**
@@ -162,7 +177,8 @@ public class Button extends Component {
      * @return the text color (as ARGB int)
      */
     public int getTextColor() {
-        return textColorOverride != null ? textColorOverride : getTheme().getControlTextColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.COLOR,
+                textColorOverride, getTheme().getControlTextColor());
     }
 
     /**
@@ -182,7 +198,8 @@ public class Button extends Component {
      * @return the border color (as ARGB int)
      */
     public int getBorderColor() {
-        return borderColorOverride != null ? borderColorOverride : getTheme().getBorderColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.BORDER_COLOR,
+                borderColorOverride, getTheme().getBorderColor());
     }
 
     /**
@@ -202,7 +219,8 @@ public class Button extends Component {
      * @return the border radius
      */
     public float getBorderRadius() {
-        return borderRadiusOverride != null ? borderRadiusOverride : getTheme().getControlCornerRadius();
+        return resolveFloatStyle(com.glyphui.style.StyleProperty.BORDER_RADIUS,
+                borderRadiusOverride, getTheme().getControlCornerRadius());
     }
 
     /**
@@ -217,13 +235,14 @@ public class Button extends Component {
     }
 
     /**
-     * Gets the font used by this button (the shared theme BUTTON font; do
-     * not close it — it is owned by {@code FontManager}).
+     * Gets the font used by this button: a CSS-resolved font when
+     * {@code font-*} declarations apply, otherwise the shared theme BUTTON
+     * font (owned by the caches/{@code FontManager}; do not close).
      *
      * @return the button font
      */
-    private io.github.humbleui.skija.Font getFont() {
-        return getTheme().getFont(com.glyphui.graphics.Theme.FontRole.BUTTON);
+    io.github.humbleui.skija.Font getFont() {
+        return resolveFont(com.glyphui.graphics.Theme.FontRole.BUTTON);
     }
 
     @Override
@@ -259,13 +278,25 @@ public class Button extends Component {
      */
     @Override
     public com.glyphui.graphics.Dimension measure(float maxWidth, float maxHeight) {
-        io.github.humbleui.skija.Font f = getFont();
+        // An explicit CSS width/height (or one set through the base
+        // measurement path) wins over text-based intrinsic sizing.
+        com.glyphui.style.Style s = getComputedStyle();
+        if (s != null && (s.has(com.glyphui.style.StyleProperty.WIDTH)
+                || s.has(com.glyphui.style.StyleProperty.HEIGHT))) {
+            return super.measure(maxWidth, maxHeight);
+        }
+        io.github.humbleui.skija.Font f = resolveFont(com.glyphui.graphics.Theme.FontRole.BUTTON);
         float textWidth = f.measureTextWidth(text == null ? "" : text);
         io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
         float lineHeight = metrics.getDescent() - metrics.getAscent();
         com.glyphui.graphics.Theme theme = getTheme();
-        float w = textWidth + 2.0f * theme.getButtonPaddingHorizontal();
-        float h = lineHeight + 2.0f * theme.getButtonPaddingVertical();
+        // CSS padding (when declared) overrides the theme's button padding.
+        float padH = resolveFloatStyle(com.glyphui.style.StyleProperty.PADDING, null,
+                theme != null ? theme.getButtonPaddingHorizontal() : 8f);
+        float padV = resolveFloatStyle(com.glyphui.style.StyleProperty.PADDING, null,
+                theme != null ? theme.getButtonPaddingVertical() : 4f);
+        float w = textWidth + 2.0f * padH;
+        float h = lineHeight + 2.0f * padV;
         return new com.glyphui.graphics.Dimension(
                 Math.min(w, sanitizeConstraint(maxWidth)),
                 Math.min(h, sanitizeConstraint(maxHeight)));
@@ -377,6 +408,21 @@ public class Button extends Component {
             default:
                 break;
         }
+    }
+
+    /**
+     * Programmatically performs a click: runs the registered onClick handler
+     * if present. Useful for tests, keyboard shortcuts and event wiring from
+     * markup controllers.
+     *
+     * @return true if a handler was invoked, false if none is registered
+     */
+    public boolean performClick() {
+        if (onClick != null) {
+            onClick.run();
+            return true;
+        }
+        return false;
     }
 
     /** GLFW key codes handled without importing LWJGL into the widget layer. */
