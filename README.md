@@ -77,36 +77,97 @@ src/main/java/com/glyphui/
 
 ## Usage Example
 
+`Application` implements `AutoCloseable`, so the recommended pattern is
+try-with-resources. Closing the application disposes the whole component tree
+in cascade (each widget releases its native paints/fonts), then frees the
+shared font cache, the Skija surface, the GPU context and finally the GLFW
+window - always in the correct dependency order:
+
 ```java
 import com.glyphui.core.Application;
 import com.glyphui.ui.Button;
 
 public class MyApp {
     public static void main(String[] args) {
-        Application app = new Application();
-        
-        if (!app.init("My App", 800, 600)) {
-            System.err.println("Failed to initialize");
-            return;
-        }
+        try (Application app = new Application()) {
 
-        // Create a button
-        Button button = new Button(100, 100, 150, 40, "Click Me!");
-        button.setOnClick(() -> {
-            System.out.println("Button clicked!");
-        });
+            if (!app.init("My App", 800, 600)) {
+                System.err.println("Failed to initialize");
+                return;
+            }
 
-        // Add to root panel
-        app.getRootPanel().add(button);
+            // Create a button
+            Button button = new Button(100, 100, 150, 40, "Click Me!");
+            button.setOnClick(() -> {
+                System.out.println("Button clicked!");
+            });
 
-        try {
+            // Add to root panel (ownership transfers to the panel)
+            app.getRootPanel().add(button);
+
             app.run();
-        } finally {
-            app.destroy();
         }
+        // app.close() ran automatically: components, fonts, surface,
+        // GPU context and window were released in order.
     }
 }
 ```
+
+Components (`Button`, `Label`, `Panel`, ...) also implement `AutoCloseable`;
+`close()` delegates to `dispose()` and `Panel` closes all of its children
+recursively, so standalone widgets can be managed with try-with-resources too:
+
+```java
+try (Button button = new Button("Click Me!")) {
+    // use the button...
+}   // native paints and font released here
+```
+
+For backward compatibility, `app.destroy()` still exists as an alias for
+`app.close()`.
+
+## Threading
+
+Glyph UI runs all widget state changes, layout and rendering on a single UI
+thread - the thread that calls `Application.run()`. All user callbacks
+(`Button.setOnClick(...)`, key/mouse listeners dispatched from the event loop)
+therefore always execute **on the UI thread by construction**; you never need
+to synchronize inside them.
+
+**Mutating widgets from any other thread is safe via properties.** Each widget
+exposes observable properties (`button.textProperty().set(...)`,
+`label.textProperty()`, and on every component: `xProperty()`, `yProperty()`,
+`widthProperty()`, `heightProperty()`, `visibleProperty()`, `enabledProperty()`).
+When `Property.set(...)` is called from a background thread, the framework
+marshals the change onto the UI thread automatically (queue +
+`glfwPostEmptyEvent` wakeup), marks the frame dirty and notifies listeners on
+the UI thread. The classic setters (`setText`, `setVisible`, ...) delegate to
+these properties, so they are equally thread-safe:
+
+```java
+// From a worker thread - no synchronization needed:
+Thread.ofVirtual().start(() -> {
+    button.textProperty().set("Loaded!");   // marshalled to the UI thread
+});
+```
+
+Properties also support listeners and one-way bindings:
+
+```java
+Property<String> model = Property.of("");
+label.textProperty().bind(model);           // label mirrors the model
+model.addListener((p, oldV, newV) -> System.out.println(oldV + " -> " + newV));
+```
+
+Use `Application.invokeLater(Runnable)` only for **composite operations** that
+cannot be expressed as a single property change (e.g. add several children and
+re-layout atomically). It is also the escape hatch used internally by
+properties. `Application.isUiThread()` / `checkThread()` let you assert or
+detect the current thread when writing custom components.
+
+The event loop blocks in `glfwWaitEvents()` while idle (GPU backend), so
+cross-thread updates applied through properties wake it up immediately instead
+of waiting for the next poll tick.
 
 ## Dependencies
 
