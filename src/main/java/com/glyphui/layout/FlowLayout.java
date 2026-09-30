@@ -78,30 +78,34 @@ public class FlowLayout extends LayoutManager {
                 continue;
             }
 
-            // Get the preferred size of the component. When the user did not
-            // provide explicit bounds, the layout assigns the preferred size
-            // so widgets fit their content (e.g. measured button text).
-            float preferredWidth = component.getPreferredWidth();
-            float preferredHeight = component.getPreferredHeight();
-            if (!component.isSizeExplicitlySet()) {
-                component.applyLayoutSize(preferredWidth, preferredHeight);
-            }
+            // Preferred (unconstrained) size first, used for line wrapping.
+            Dimension preferred = component.measure(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY);
 
-            // Check if component fits in current row (using local coordinates)
-            if (currentX + component.getWidth() > panelWidth - padding) {
-                // Move to next row
+            // If the preferred width no longer fits in the current row, wrap
+            // to a new row before placing the component.
+            float remainingWidth = Math.max(0.0f, panelWidth - padding - currentX);
+            if (currentX > padding && preferred.getWidth() > remainingWidth) {
                 currentX = padding;
                 currentY = maxY + gap;
                 remainingWidth = Math.max(0.0f, panelWidth - padding - currentX);
             }
+
+            // Re-measure under the actual available constraints so that
+            // components which adapt their size to the given width
+            // (word-wrapping labels, etc.) are laid out with their true size.
+            Dimension size = component.measure(remainingWidth, Float.POSITIVE_INFINITY);
+
+            // Apply the measured size to the component
+            component.setWidth(size.getWidth());
+            component.setHeight(size.getHeight());
 
             // Position the component in local coordinates
             component.setX(currentX);
             component.setY(currentY);
 
             // Update position for next component
-            currentX += component.getWidth() + gap;
-            maxY = Math.max(maxY, currentY + preferredHeight);
+            currentX += size.getWidth() + gap;
+            maxY = Math.max(maxY, currentY + size.getHeight());
         }
     }
 }

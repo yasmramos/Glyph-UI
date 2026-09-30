@@ -27,6 +27,11 @@ import io.github.humbleui.skija.Paint;
  */
 public class TextField extends Component {
 
+    @Override
+    protected String defaultStyleTag() {
+        return "input";
+    }
+
     /** GLFW key codes used here without importing LWJGL into the widget layer. */
     private static final int KEY_BACKSPACE = 259; // GLFW_KEY_BACKSPACE
     private static final int KEY_DELETE = 261;    // GLFW_KEY_DELETE
@@ -136,10 +141,49 @@ public class TextField extends Component {
      * @param text the new text (null becomes "")
      */
     public void setText(String text) {
+        setText(text, true);
+    }
+
+    /**
+     * Replaces the whole text. When {@code notify} is true and the content
+     * actually changed, the {@code onTextChanged} handler fires (used by the
+     * markup loader's {@code onchange} attribute). Programmatic initialisation
+     * (e.g. loading a value from markup) should pass {@code false}.
+     *
+     * @param text   the new text (null becomes "")
+     * @param notify whether to fire the change handler
+     */
+    public void setText(String text, boolean notify) {
+        String old = this.text;
         this.text = (text == null) ? "" : text;
         this.caret = this.text.length();
         this.selectionAnchor = this.caret;
         invalidate();
+        if (notify && !old.equals(this.text) && onTextChanged != null) {
+            onTextChanged.run();
+        }
+    }
+
+    /** Per-field change listener fired when the text content changes. */
+    private Runnable onTextChanged;
+
+    /**
+     * Registers a handler invoked whenever the field's text changes through
+     * user editing or {@link #setText(String)}.
+     *
+     * @param onTextChanged the handler (may be null to clear)
+     */
+    public void setOnTextChanged(Runnable onTextChanged) {
+        this.onTextChanged = onTextChanged;
+    }
+
+    /**
+     * Gets the registered change handler.
+     *
+     * @return the handler or null
+     */
+    public Runnable getOnTextChanged() {
+        return onTextChanged;
     }
 
     /**

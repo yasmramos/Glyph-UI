@@ -1,0 +1,192 @@
+package com.glyphui.markup;
+
+import com.glyphui.layout.FlexLayout;
+import com.glyphui.layout.FlowLayout;
+import com.glyphui.style.StyleProperty;
+import com.glyphui.ui.Button;
+import com.glyphui.ui.Component;
+import com.glyphui.ui.ImageView;
+import com.glyphui.ui.Label;
+import com.glyphui.ui.Panel;
+import com.glyphui.ui.TextField;
+
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Tests for the declarative markup loader: tag mapping, attribute handling,
+ * controller event binding and stylesheet extraction.
+ */
+class UiLoaderTest {
+
+    /** Controller used to verify onclick/onchange reflection binding. */
+    public static class DemoController {
+        int clicks;
+        int changes;
+
+        public void increment() {
+            clicks++;
+        }
+
+        public void onChanged() {
+            changes++;
+        }
+    }
+
+    @Test
+    void mapsTagsToWidgets() {
+        String html = """
+                <body>
+                  <div id="root-panel" class="card toolbar">
+                    <button id="ok">OK</button>
+                    <label>Name</label>
+                    <p>A paragraph</p>
+                    <input id="name-field" value="Ada"/>
+                    <img src="logo.png"/>
+                  </div>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(html);
+
+        assertTrue(root instanceof Panel);
+        Panel container = (Panel) UiLoader.findById(root, "root-panel");
+        assertNotNull(container, "div should map to Panel and be findable by id");
+        assertEquals("div", container.getStyleTag());
+        assertTrue(container.hasStyleClass("card"));
+        assertTrue(container.hasStyleClass("toolbar"));
+
+        Button button = (Button) UiLoader.findById(root, "ok");
+        assertNotNull(button, "button tag must map to Button");
+        assertEquals("OK", buttonText(button));
+
+        TextField field = (TextField) UiLoader.findById(root, "name-field");
+        assertNotNull(field, "input tag must map to TextField");
+        assertEquals("Ada", field.getText());
+
+        // Count children: 5 widgets inside the div.
+        assertEquals(5, container.getChildren().size());
+
+        // p -> Label, label -> Label, img -> ImageView somewhere in the tree.
+        int labels = countByType(root, Label.class);
+        int images = countByType(root, ImageView.class);
+        assertEquals(2, labels, "<label> and <p> both map to Label");
+        assertEquals(1, images, "<img> maps to ImageView even without a provider");
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("ImageProvider")),
+                "missing image provider should produce a warning");
+    }
+
+    @Test
+    void unknownTagBecomesGenericPanelWithWarning() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString("<body><marquee>x</marquee></body>");
+        Panel panel = (Panel) ((Panel) root).getChildren().get(0);
+        assertEquals("marquee", panel.getStyleTag(),
+                "unknown tags keep their name so type selectors still match");
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("marquee")));
+    }
+
+    @Test
+    void inlineStyleAndNumericAttributesAreApplied() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString("""
+                <body>
+                  <button id="b" x="10" y="20" width="150" height="40"
+                          style="padding: 7px; color: #FF0000;">Hi</button>
+                </body>
+                """);
+        Button b = (Button) UiLoader.findById(root, "b");
+        assertEquals(10f, b.getX(), 1e-6);
+        assertEquals(20f, b.getY(), 1e-6);
+        assertEquals(150f, b.getWidth(), 1e-6);
+        assertEquals(40f, b.getHeight(), 1e-6);
+        assertEquals(7f, b.getInlineStyle().getFloat(StyleProperty.PADDING, 0f), 1e-6);
+        assertEquals(0xFFFF0000, b.getInlineStyle().getInt(StyleProperty.COLOR, 0));
+    }
+
+    @Test
+    void layoutAttributeInstallsLayoutManagers() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString("""
+                <body>
+                  <div id="f" layout="flex"></div>
+                  <div id="w" layout="flow"></div>
+                  <div id="z" layout="grid"></div>
+                </body>
+                """);
+        assertInstanceOf(FlexLayout.class,
+                ((Panel) UiLoader.findById(root, "f")).getLayoutManager());
+        assertInstanceOf(FlowLayout.class,
+                ((Panel) UiLoader.findById(root, "w")).getLayoutManager());
+        assertNull(((Panel) UiLoader.findById(root, "z")).getLayoutManager());
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("grid")),
+                "unknown layout value warns");
+    }
+
+    @Test
+    void onclickIsBoundToControllerByReflection() {
+        DemoController controller = new DemoController();
+        UiLoader loader = new UiLoader(controller);
+        Component root = loader.loadFromString(
+                "<body><button id=\"go\" onclick=\"increment()\">Go</button></body>");
+        Button go = (Button) UiLoader.findById(root, "go");
+        assertNotNull(go);
+        go.performClick();
+        assertEquals(1, controller.clicks, "onclick handler must run through the controller");
+    }
+
+    @Test
+    void onchangeIsBoundForTextFields() {
+        DemoController controller = new DemoController();
+        UiLoader loader = new UiLoader(controller);
+        Component root = loader.loadFromString(
+                "<body><input id=\"t\" onchange=\"onChanged\"/></body>");
+        TextField t = (TextField) UiLoader.findById(root, "t");
+        t.setText("typed");
+        assertEquals(1, controller.changes, "onchange fires when the text changes");
+    }
+
+    @Test
+    void missingHandlerMethodWarnsAndDoesNotBind() {
+        UiLoader loader = new UiLoader(new DemoController());
+        Component root = loader.loadFromString(
+                "<body><button id=\"nope\" onclick=\"ghostMethod()\">x</button></body>");
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("ghostMethod")));
+        // No exception thrown; the app simply has no click behavior bound.
+        Button b = (Button) UiLoader.findById(root, "nope");
+        assertNotNull(b);
+    }
+
+    @Test
+    void embeddedStyleElementIsExtractedIntoStyleSheet() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString("""
+                <html><head>
+                  <style>#hit { padding: 3px; }</style>
+                </head>
+                <body><button id="hit">x</button></body></html>
+                """);
+        assertNotNull(loader.getLastStyleSheet());
+        assertEquals(1, loader.getLastStyleSheet().getRules().size());
+    }
+
+    private static int countByType(Component c, Class<?> type) {
+        int n = type.isInstance(c) ? 1 : 0;
+        if (c instanceof Panel p) {
+            for (Component child : p.getChildren()) {
+                n += countByType(child, type);
+            }
+        }
+        return n;
+    }
+
+    private static String buttonText(Button b) {
+        try {
+            java.lang.reflect.Method m = Button.class.getMethod("getText");
+            return (String) m.invoke(b);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+}

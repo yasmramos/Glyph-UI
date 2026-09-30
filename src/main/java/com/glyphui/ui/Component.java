@@ -5,9 +5,20 @@ import com.glyphui.graphics.Canvas;
 import com.glyphui.graphics.Property;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
+import com.glyphui.style.Style;
+import com.glyphui.style.StyleNode;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * Abstract base class for all UI components.
+ *
+ * <p>Components implement {@link StyleNode} so the style subsystem
+ * ({@code StyleSheet}/{@code StyleEngine}) can match CSS selectors against
+ * the live widget tree.</p>
  *
  * <p>Components that own native resources (paints, fonts) should release them
  * in {@link #dispose()}. {@code Component} implements {@link AutoCloseable} so
@@ -23,7 +34,7 @@ import com.glyphui.events.KeyEvent;
  * the UI thread automatically; the classic setters ({@link #setX(float)}, etc.)
  * delegate to those properties and are therefore equally safe.</p>
  */
-public abstract class Component implements AutoCloseable {
+public abstract class Component implements StyleNode, AutoCloseable {
 
     /** Monotonic counter used to generate unique component IDs. */
     private static final java.util.concurrent.atomic.AtomicLong ID_COUNTER =
@@ -92,18 +103,22 @@ public abstract class Component implements AutoCloseable {
     private Property<Boolean> visibleProperty;
     private Property<Boolean> enabledProperty;
 
-    /** Applies a user-set width: marks bounds as explicit and repaints. */
+    /** Applies a user-set width: marks bounds as explicit, repaints and invalidates. */
     private void applyWidthExplicit(float newWidth) {
         this.width = newWidth;
         this.sizeExplicitlySet = true;
         requestRepaint();
+        applyExplicitSize();
+        invalidate();
     }
 
-    /** Applies a user-set height: marks bounds as explicit and repaints. */
+    /** Applies a user-set height: marks bounds as explicit, repaints and invalidates. */
     private void applyHeightExplicit(float newHeight) {
         this.height = newHeight;
         this.sizeExplicitlySet = true;
         requestRepaint();
+        applyExplicitSize();
+        invalidate();
     }
 
     /**
@@ -230,6 +245,22 @@ public abstract class Component implements AutoCloseable {
     /** Number of times invalidate() has been called on this component. */
     private int invalidateCount;
 
+    // ------------------------------------------------------------------
+    // Style subsystem hooks (CSS subset)
+    // ------------------------------------------------------------------
+
+    /** Style class names carried by this component (like HTML {@code class}). */
+    private final List<String> styleClasses = new ArrayList<>();
+
+    /** Inline style declarations (like HTML {@code style="..."}). Highest cascade priority. */
+    private Style inlineStyle = Style.EMPTY;
+
+    /** The last computed style produced by the {@code StyleEngine} for this component. */
+    private Style computedStyle = Style.EMPTY;
+
+    /** Explicit HTML-equivalent tag override; null means use {@link #defaultStyleTag()}. */
+    private String styleTagOverride;
+
     /**
      * Installs the global repaint requester used to propagate invalidations
      * that reach the root of the component tree.
@@ -323,6 +354,274 @@ public abstract class Component implements AutoCloseable {
         invalidateCount = 0;
     }
 
+    // ------------------------------------------------------------------
+    // Style API (CSS subset integration)
+    // ------------------------------------------------------------------
+
+    /**
+     * The default HTML-equivalent tag name for this component class, used by
+     * CSS type selectors. Subclasses override it (Button → "button",
+     * Label → "label", TextField → "input", ...). Panels return "div".
+     *
+     * @return a lower-case tag name
+     */
+    protected String defaultStyleTag() {
+        return "div";
+    }
+
+    /**
+     * Gets the effective style tag: the per-instance override when set,
+     * otherwise {@link #defaultStyleTag()}.
+     *
+     * @return the tag name matched by type selectors
+     */
+    public String getStyleTag() {
+        return styleTagOverride != null ? styleTagOverride : defaultStyleTag();
+    }
+
+    /**
+     * Overrides the HTML-equivalent tag for this instance (used by the
+     * markup loader for unknown tags and by tests).
+     *
+     * @param styleTag the tag name (null restores the class default)
+     */
+    public void setStyleTag(String styleTag) {
+        this.styleTagOverride = styleTag == null
+                ? null : styleTag.toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * Adds a style class to this component (ignored when already present).
+     * Invalidates the component so the repaint re-runs style resolution.
+     *
+     * @param className the class name without the leading dot
+     */
+    public void addStyleClass(String className) {
+        if (className != null && !className.isBlank()
+                && !styleClasses.contains(className)) {
+            styleClasses.add(className);
+            invalidate();
+        }
+    }
+
+    /**
+     * Removes a style class from this component.
+     *
+     * @param className the class name without the leading dot
+     */
+    public void removeStyleClass(String className) {
+        if (styleClasses.remove(className)) {
+            invalidate();
+        }
+    }
+
+    /**
+     * Whether this component carries the given style class.
+     *
+     * @param className the class name
+     * @return true when present
+     */
+    public boolean hasStyleClass(String className) {
+        return styleClasses.contains(className);
+    }
+
+    /**
+     * The style classes of this component, in insertion order.
+     *
+     * @return an unmodifiable list
+     */
+    public List<String> getStyleClasses() {
+        return Collections.unmodifiableList(styleClasses);
+    }
+
+    /**
+     * Sets the inline style (equivalent of {@code style="..."} in HTML).
+     * Inline declarations have the highest cascade priority.
+     *
+     * @param style the inline style (null clears it)
+     */
+    public void setInlineStyle(Style style) {
+        this.inlineStyle = style == null ? Style.EMPTY : style;
+        invalidate();
+    }
+
+    /**
+     * Gets the inline style of this component.
+     *
+     * @return the inline style, never null
+     */
+    public Style getInlineStyle() {
+        return inlineStyle;
+    }
+
+    /**
+     * Gets the computed style produced by the last {@code StyleEngine} pass,
+     * with the inline style merged on top. Widgets consult this in
+     * {@code render} before falling back to {@link Theme} defaults.
+     *
+     * @return the computed style, never null (empty before any engine pass)
+     */
+    public Style getComputedStyle() {
+        // Inline style has the highest cascade priority. overrideWith() also
+        // strips the synthetic RAW_VALUES var() carrier from the computed
+        // style before returning it to callers.
+        return inlineStyle.isEmpty()
+                ? computedStyle.withoutRawValues()
+                : computedStyle.overrideWith(inlineStyle);
+    }
+
+    /**
+     * Stores the computed style. Called by the style engine; not part of the
+     * public widget API.
+     *
+     * @param computed the computed (cascaded + inherited) style
+     */
+    public void setComputedStyle(Style computed) {
+        this.computedStyle = computed == null ? Style.EMPTY : computed;
+    }
+
+    // ------------------------------------------------- Style resolution
+    // Protected helpers widgets consult in render()/measure(): a value from
+    // the computed style wins over the explicit override, which in turn wins
+    // over the theme default. Order matches CSS intuition: stylesheet rule →
+    // programmatic setter → inline style is highest via getComputedStyle().
+
+    /**
+     * Resolves an integer (color/weight) style property for the current
+     * component state. Pseudo-class rules already re-cascaded by the
+     * {@code StyleEngine} are reflected here automatically.
+     *
+     * @param property       the style property
+     * @param explicitOverride the per-instance setter value (may be null)
+     * @param themeDefault   fallback taken from the active theme
+     * @return the winning value
+     */
+    protected int resolveIntStyle(com.glyphui.style.StyleProperty property,
+                                  Integer explicitOverride, int themeDefault) {
+        com.glyphui.style.Style s = getComputedStyle();
+        if (s.has(property)) {
+            return s.getInt(property, themeDefault);
+        }
+        return explicitOverride != null ? explicitOverride : themeDefault;
+    }
+
+    /**
+     * Float variant of {@link #resolveIntStyle}.
+     *
+     * @param property         the style property
+     * @param explicitOverride per-instance setter value (may be null)
+     * @param themeDefault     fallback from the theme
+     * @return the winning value
+     */
+    protected float resolveFloatStyle(com.glyphui.style.StyleProperty property,
+                                      Float explicitOverride, float themeDefault) {
+        com.glyphui.style.Style s = getComputedStyle();
+        if (s.has(property)) {
+            return s.getFloat(property, themeDefault);
+        }
+        return explicitOverride != null ? explicitOverride : themeDefault;
+    }
+
+    /**
+     * Resolves the Skia font for this component: when the computed style
+     * declares {@code font-family} and/or {@code font-size}, a font is built
+     * through {@link com.glyphui.graphics.FontManager}'s typeface resolution
+     * (cached per family/size); otherwise the theme font for the given role
+     * is returned.
+     *
+     * <p>The returned font is owned by the caches below or by
+     * {@code FontManager} — callers must not close it.</p>
+     *
+     * @param role the theme font role to fall back to
+     * @return the resolved font, never null
+     */
+    protected io.github.humbleui.skija.Font resolveFont(Theme.FontRole role) {
+        com.glyphui.style.Style s = getComputedStyle();
+        boolean hasFamily = s.has(com.glyphui.style.StyleProperty.FONT_FAMILY);
+        boolean hasSize = s.has(com.glyphui.style.StyleProperty.FONT_SIZE);
+        if (!hasFamily && !hasSize) {
+            Theme theme = getTheme();
+            return theme != null ? theme.getFont(role) : com.glyphui.graphics.FontManager.getFont(role);
+        }
+        String family = hasFamily
+                ? s.getString(com.glyphui.style.StyleProperty.FONT_FAMILY, null)
+                : null;
+        float size = hasSize
+                ? s.getFloat(com.glyphui.style.StyleProperty.FONT_SIZE, 0f)
+                : com.glyphui.graphics.FontManager.getDefaultFontSize(role);
+        if (size <= 0f || Float.isNaN(size)) {
+            size = com.glyphui.graphics.FontManager.getDefaultFontSize(role);
+        }
+        int weight = s.getInt(com.glyphui.style.StyleProperty.FONT_WEIGHT, 400);
+        io.github.humbleui.skija.FontStyle style = weight >= 600
+                ? io.github.humbleui.skija.FontStyle.BOLD
+                : io.github.humbleui.skija.FontStyle.NORMAL;
+        String key = (family == null ? "*" : family.toLowerCase(java.util.Locale.ROOT))
+                + '|' + size + '|' + style.hashCode();
+        io.github.humbleui.skija.Font cached = STYLE_FONTS.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        io.github.humbleui.skija.Typeface face = family != null
+                ? com.glyphui.graphics.FontManager.resolveTypeface(family, style)
+                : com.glyphui.graphics.FontManager.resolveTypeface(null, style);
+        io.github.humbleui.skija.Font font = new io.github.humbleui.skija.Font(face, size);
+        STYLE_FONTS.put(key, font);
+        return font;
+    }
+
+    /** Cache of fonts created from CSS font-* declarations (keyed family|size|style). */
+    private static final java.util.Map<String, io.github.humbleui.skija.Font> STYLE_FONTS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Releases every cached style-derived font. Called from
+     * {@code Application.close()}; theme/registered typefaces are owned by
+     * {@code FontManager} and closed there.
+     */
+    public static void disposeStyleFonts() {
+        for (io.github.humbleui.skija.Font f : STYLE_FONTS.values()) {
+            try {
+                f.close();
+            } catch (Exception ignored) {
+                // already closed
+            }
+        }
+        STYLE_FONTS.clear();
+    }
+
+    // ------------------------------------------------ StyleNode adapters
+
+    @Override
+    public String styleTag() {
+        return getStyleTag();
+    }
+
+    @Override
+    public String id() {
+        return getId();
+    }
+
+    @Override
+    public boolean hasClass(String className) {
+        return hasStyleClass(className);
+    }
+
+    @Override
+    public boolean matchesPseudo(com.glyphui.style.Selector.PseudoClass pseudo) {
+        return switch (pseudo) {
+            case HOVER -> state == ComponentState.HOVER;
+            case FOCUS -> isFocused();
+            case DISABLED -> !isEnabled();
+            case ACTIVE -> state == ComponentState.PRESSED;
+        };
+    }
+
+    @Override
+    public StyleNode parent() {
+        return parent;
+    }
+
     /**
      * Gets the x-coordinate of the component.
      *
@@ -375,7 +674,7 @@ public abstract class Component implements AutoCloseable {
      */
     public void setWidth(float width) {
         // Single source of truth: the observable property applies the value,
-        // notifies listeners and requests a repaint via its change hook.
+        // marks the bounds as explicit, syncs inline width and invalidates.
         widthProperty().set(width);
     }
 
@@ -395,7 +694,7 @@ public abstract class Component implements AutoCloseable {
      */
     public void setHeight(float height) {
         // Single source of truth: the observable property applies the value,
-        // notifies listeners and requests a repaint via its change hook.
+        // marks the bounds as explicit, syncs inline height and invalidates.
         heightProperty().set(height);
     }
 
@@ -431,6 +730,28 @@ public abstract class Component implements AutoCloseable {
      */
     public boolean isSizeExplicitlySet() {
         return sizeExplicitlySet;
+    }
+
+    /**
+     * Keeps the {@code width}/{@code height} CSS properties in sync with
+     * programmatic size setters: an explicit {@code setWidth}/{@code
+     * setHeight} call is recorded as a highest-priority inline style value,
+     * mirroring how inline styles override stylesheet rules. Called from
+     * {@link #setWidth(float)} and {@link #setHeight(float)}; no-op when no
+     * inline style exists yet (the plain fields remain authoritative).
+     */
+    private void applyExplicitSize() {
+        if (inlineStyle != null && !inlineStyle.isEmpty()) {
+            com.glyphui.style.Style.Builder b = com.glyphui.style.Style.builder()
+                    .putAll(inlineStyle);
+            if (inlineStyle.has(com.glyphui.style.StyleProperty.WIDTH)) {
+                b.length(com.glyphui.style.StyleProperty.WIDTH, width);
+            }
+            if (inlineStyle.has(com.glyphui.style.StyleProperty.HEIGHT)) {
+                b.length(com.glyphui.style.StyleProperty.HEIGHT, height);
+            }
+            inlineStyle = b.build();
+        }
     }
 
     /**
@@ -564,6 +885,18 @@ public abstract class Component implements AutoCloseable {
      * @return the measured dimension, never negative
      */
     public Dimension measure(float maxWidth, float maxHeight) {
+        com.glyphui.style.Style s = getComputedStyle();
+        if (s != null) {
+            // Explicit CSS width/height win over the intrinsic preferred size.
+            float explicitW = s.getFloat(com.glyphui.style.StyleProperty.WIDTH, -1f);
+            float explicitH = s.getFloat(com.glyphui.style.StyleProperty.HEIGHT, -1f);
+            if (explicitW >= 0f || explicitH >= 0f) {
+                float w = explicitW >= 0f ? explicitW : getPreferredWidth();
+                float h = explicitH >= 0f ? explicitH : getPreferredHeight();
+                return new Dimension(Math.min(w, sanitize(maxWidth)),
+                        Math.min(h, sanitize(maxHeight)));
+            }
+        }
         float w = Math.min(getPreferredWidth(), sanitize(maxWidth));
         float h = Math.min(getPreferredHeight(), sanitize(maxHeight));
         return new Dimension(w, h);

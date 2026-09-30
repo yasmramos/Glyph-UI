@@ -181,6 +181,63 @@ of waiting for the next poll tick.
 
 This project is open source. See the LICENSE file for details.
 
+## Declarative UI: HTML-like markup + CSS subset
+
+Glyph-UI lets you declare interfaces in an HTML-like markup file and style them
+with a CSS subset, resolved against the live widget tree.
+
+> **This is NOT a browser.** There is no JavaScript engine, no DOM, and only a
+> documented subset of CSS is supported. Unknown properties/selectors are
+> ignored with a warning.
+
+### Markup (`UiLoader`)
+
+```java
+StyleSheet sheet = StyleSheet.fromResource("/demo/app.css");
+Panel root = UiLoader.loadFromResource("/demo/ui.html", new MyController());
+StyleEngine.apply(root, sheet);
+```
+
+Supported tags (unknown tags become a generic `Panel` with a warning):
+
+| Tag        | Widget      | Notes                                        |
+|------------|-------------|----------------------------------------------|
+| `div`      | `Panel`     | container; supports `layout="flex"/"flow"`   |
+| `button`   | `Button`    | text from tag body; `onclick="methodName"`   |
+| `label`, `p` | `Label`   | text from tag body                           |
+| `input`    | `TextField` | `value` attribute; `onchange="methodName"`   |
+| `img`      | `ImageView` | `src` resolved via classpath resource        |
+
+Attributes: `class`, `id`, `style="..."` (inline CSS), `layout="flex"` /
+`layout="flow"` on containers, and `onclick`/`onchange` which are resolved by
+name against a registered controller object via reflection (no-arg or
+component-arg public methods).
+
+### CSS subset
+
+Selectors supported: type (`button`), class (`.primary`), id (`#header`),
+descendant (`panel .item`), and pseudo-classes `:hover`, `:focus`,
+`:disabled`, `:active` — mapped to the widget's runtime `ComponentState`.
+Cascade order: inline > id > class > type. Textual properties (`font-*`,
+`color`) inherit down the tree. Custom variables `var(--name)` resolve against
+the active `Theme` (`--bg`, `--fg`, `--accent`, `--border`) plus any custom
+properties declared in the sheet.
+
+Supported properties:
+
+- `color`, `background` / `background-color` (hex #rgb/#rrggbb, rgb(), named)
+- `opacity`
+- `padding`, `margin` (single value or shorthand)
+- `border-width`, `border-color`, `border-radius`
+- `width`, `height`
+- `font-family`, `font-size`, `font-weight`
+- Flexbox layout subset on `layout="flex"` containers: `flex-direction`,
+  `justify-content`, `align-items`, `gap`, `flex-grow`
+
+Not supported (ignored with warning): positioning (`position`, `top/left`),
+`grid`, animations/transitions, `float`, media queries, pseudo-elements,
+shorthand `border`/`font` composites beyond the listed longhands.
+
 ## Testing
 
 ### Running Tests

@@ -19,16 +19,25 @@ public class Button extends Component {
 
     private String text;
     private Runnable onClick;
-    private int normalColor;
-    private int hoverColor;
-    private int pressedColor;
-    private int textColor;
-    private int borderColor;
-    private float borderRadius;
-    private Font font;
+
     /** Observable text property (lazily created). */
     private Property<String> textProperty;
-    
+
+    @Override
+    protected String defaultStyleTag() {
+        return "button";
+    }
+
+    // Optional per-button color overrides; null means "use the computed
+    // style / theme". The primitive setters keep the legacy API and store
+    // into these boxed fields.
+    private Integer normalColorOverride;
+    private Integer hoverColorOverride;
+    private Integer pressedColorOverride;
+    private Integer textColorOverride;
+    private Integer borderColorOverride;
+    private Float borderRadiusOverride;
+
     // Reusable Paint objects to avoid allocation per frame
     private Paint bgPaint;
     private Paint borderPaint;
@@ -73,21 +82,12 @@ public class Button extends Component {
     }
 
     /**
-     * Initializes default colors, font and reusable paint objects.
+     * Initializes default paint objects. Colors and fonts are not stored
+     * here: they resolve lazily through the computed style / theme so that
+     * CSS rules and theme switches apply without re-touching each widget.
      */
     private void initDefaults() {
         this.onClick = null;
-
-        // Default colors
-        this.normalColor = Color.makeARGB(255, 60, 60, 60);
-        this.hoverColor = Color.makeARGB(255, 80, 80, 80);
-        this.pressedColor = Color.makeARGB(255, 100, 100, 100);
-        this.textColor = Color.makeARGB(255, 255, 255, 255);
-        this.borderColor = Color.makeARGB(255, 120, 120, 120);
-        this.borderRadius = 8.0f;
-
-        // Initialize font from the shared cached typeface (cheap Font wrapper)
-        this.font = com.glyphui.graphics.Fonts.createDefaultFont(16.0f);
 
         // Initialize reusable Paint objects
         this.bgPaint = new Paint();
@@ -138,43 +138,6 @@ public class Button extends Component {
     }
 
     /**
-     * Gets the preferred width of this button: measured text width plus
-     * horizontal padding on both sides. Falls back to the base defaults when
-     * the user provided explicit bounds.
-     *
-     * @return the preferred width
-     */
-    @Override
-    public float getPreferredWidth() {
-        if (sizeExplicitlySet) {
-            return width;
-        }
-        if (font == null || font.isClosed()) {
-            return Math.max(DEFAULT_WIDTH, HORIZONTAL_PADDING * 2);
-        }
-        return font.measureTextWidth(text == null ? "" : text) + HORIZONTAL_PADDING * 2;
-    }
-
-    /**
-     * Gets the preferred height of this button: measured text height plus
-     * vertical padding. Falls back to the base defaults when the user provided
-     * explicit bounds.
-     *
-     * @return the preferred height
-     */
-    @Override
-    public float getPreferredHeight() {
-        if (sizeExplicitlySet) {
-            return height;
-        }
-        if (font == null || font.isClosed()) {
-            return DEFAULT_HEIGHT;
-        }
-        FontMetrics metrics = font.getMetrics();
-        return (metrics.getDescent() - metrics.getAscent()) + VERTICAL_PADDING;
-    }
-
-    /**
      * Gets the click handler.
      *
      * @return the onClick runnable
@@ -198,12 +161,15 @@ public class Button extends Component {
     }
 
     /**
-     * Gets the normal state color (override or theme value).
+     * Gets the normal state color. Resolution order: matching CSS rule
+     * (e.g. {@code button:hover} when the state is HOVER) → per-instance
+     * override → theme default.
      *
      * @return the normal color (as ARGB int)
      */
     public int getNormalColor() {
-        return normalColorOverride != null ? normalColorOverride : getTheme().getControlNormalColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
+                normalColorOverride, getTheme().getControlNormalColor());
     }
 
     /**
@@ -212,20 +178,21 @@ public class Button extends Component {
      *
      * @param normalColor the new normal color (as ARGB int) or null
      */
-    public void setNormalColor(int normalColor) {
-        if (this.normalColor != normalColor) {
-            this.normalColor = normalColor;
+    public void setNormalColor(Integer normalColor) {
+        if (!java.util.Objects.equals(this.normalColorOverride, normalColor)) {
+            this.normalColorOverride = normalColor;
             requestRepaint();
         }
     }
 
     /**
-     * Gets the hover state color (override or theme value).
+     * Gets the hover state color (CSS rule → override → theme default).
      *
      * @return the hover color (as ARGB int)
      */
     public int getHoverColor() {
-        return hoverColorOverride != null ? hoverColorOverride : getTheme().getControlHoverColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
+                hoverColorOverride, getTheme().getControlHoverColor());
     }
 
     /**
@@ -234,20 +201,21 @@ public class Button extends Component {
      *
      * @param hoverColor the new hover color (as ARGB int) or null
      */
-    public void setHoverColor(int hoverColor) {
-        if (this.hoverColor != hoverColor) {
-            this.hoverColor = hoverColor;
+    public void setHoverColor(Integer hoverColor) {
+        if (!java.util.Objects.equals(this.hoverColorOverride, hoverColor)) {
+            this.hoverColorOverride = hoverColor;
             requestRepaint();
         }
     }
 
     /**
-     * Gets the pressed state color (override or theme value).
+     * Gets the pressed state color (CSS rule → override → theme default).
      *
      * @return the pressed color (as ARGB int)
      */
     public int getPressedColor() {
-        return pressedColorOverride != null ? pressedColorOverride : getTheme().getControlPressedColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
+                pressedColorOverride, getTheme().getControlPressedColor());
     }
 
     /**
@@ -256,20 +224,21 @@ public class Button extends Component {
      *
      * @param pressedColor the new pressed color (as ARGB int) or null
      */
-    public void setPressedColor(int pressedColor) {
-        if (this.pressedColor != pressedColor) {
-            this.pressedColor = pressedColor;
+    public void setPressedColor(Integer pressedColor) {
+        if (!java.util.Objects.equals(this.pressedColorOverride, pressedColor)) {
+            this.pressedColorOverride = pressedColor;
             requestRepaint();
         }
     }
 
     /**
-     * Gets the text color (override or theme value).
+     * Gets the text color (CSS rule → override → theme default).
      *
      * @return the text color (as ARGB int)
      */
     public int getTextColor() {
-        return textColorOverride != null ? textColorOverride : getTheme().getControlTextColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.COLOR,
+                textColorOverride, getTheme().getControlTextColor());
     }
 
     /**
@@ -278,20 +247,21 @@ public class Button extends Component {
      *
      * @param textColor the new text color (as ARGB int) or null
      */
-    public void setTextColor(int textColor) {
-        if (this.textColor != textColor) {
-            this.textColor = textColor;
+    public void setTextColor(Integer textColor) {
+        if (!java.util.Objects.equals(this.textColorOverride, textColor)) {
+            this.textColorOverride = textColor;
             requestRepaint();
         }
     }
 
     /**
-     * Gets the border color (override or theme value).
+     * Gets the border color (CSS rule → override → theme default).
      *
      * @return the border color (as ARGB int)
      */
     public int getBorderColor() {
-        return borderColorOverride != null ? borderColorOverride : getTheme().getBorderColor();
+        return resolveIntStyle(com.glyphui.style.StyleProperty.BORDER_COLOR,
+                borderColorOverride, getTheme().getBorderColor());
     }
 
     /**
@@ -300,20 +270,21 @@ public class Button extends Component {
      *
      * @param borderColor the new border color (as ARGB int) or null
      */
-    public void setBorderColor(int borderColor) {
-        if (this.borderColor != borderColor) {
-            this.borderColor = borderColor;
+    public void setBorderColor(Integer borderColor) {
+        if (!java.util.Objects.equals(this.borderColorOverride, borderColor)) {
+            this.borderColorOverride = borderColor;
             requestRepaint();
         }
     }
 
     /**
-     * Gets the border radius (override or theme value).
+     * Gets the border radius (CSS rule → override → theme default).
      *
      * @return the border radius
      */
     public float getBorderRadius() {
-        return borderRadiusOverride != null ? borderRadiusOverride : getTheme().getControlCornerRadius();
+        return resolveFloatStyle(com.glyphui.style.StyleProperty.BORDER_RADIUS,
+                borderRadiusOverride, getTheme().getControlCornerRadius());
     }
 
     /**
@@ -322,21 +293,22 @@ public class Button extends Component {
      *
      * @param borderRadius the new border radius or null
      */
-    public void setBorderRadius(float borderRadius) {
-        if (this.borderRadius != borderRadius) {
-            this.borderRadius = borderRadius;
+    public void setBorderRadius(Float borderRadius) {
+        if (!java.util.Objects.equals(this.borderRadiusOverride, borderRadius)) {
+            this.borderRadiusOverride = borderRadius;
             requestRepaint();
         }
     }
 
     /**
-     * Gets the font used by this button (the shared theme BUTTON font; do
-     * not close it — it is owned by {@code FontManager}).
+     * Gets the font used by this button: a CSS-resolved font when
+     * {@code font-*} declarations apply, otherwise the shared theme BUTTON
+     * font (owned by the caches/{@code FontManager}; do not close).
      *
      * @return the button font
      */
-    private io.github.humbleui.skija.Font getFont() {
-        return getTheme().getFont(com.glyphui.graphics.Theme.FontRole.BUTTON);
+    io.github.humbleui.skija.Font getFont() {
+        return resolveFont(com.glyphui.graphics.Theme.FontRole.BUTTON);
     }
 
     @Override
@@ -372,13 +344,25 @@ public class Button extends Component {
      */
     @Override
     public com.glyphui.graphics.Dimension measure(float maxWidth, float maxHeight) {
-        io.github.humbleui.skija.Font f = getFont();
+        // An explicit CSS width/height (or one set through the base
+        // measurement path) wins over text-based intrinsic sizing.
+        com.glyphui.style.Style s = getComputedStyle();
+        if (s != null && (s.has(com.glyphui.style.StyleProperty.WIDTH)
+                || s.has(com.glyphui.style.StyleProperty.HEIGHT))) {
+            return super.measure(maxWidth, maxHeight);
+        }
+        io.github.humbleui.skija.Font f = resolveFont(com.glyphui.graphics.Theme.FontRole.BUTTON);
         float textWidth = f.measureTextWidth(text == null ? "" : text);
         io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
         float lineHeight = metrics.getDescent() - metrics.getAscent();
         com.glyphui.graphics.Theme theme = getTheme();
-        float w = textWidth + 2.0f * theme.getButtonPaddingHorizontal();
-        float h = lineHeight + 2.0f * theme.getButtonPaddingVertical();
+        // CSS padding (when declared) overrides the theme's button padding.
+        float padH = resolveFloatStyle(com.glyphui.style.StyleProperty.PADDING, null,
+                theme != null ? theme.getButtonPaddingHorizontal() : 8f);
+        float padV = resolveFloatStyle(com.glyphui.style.StyleProperty.PADDING, null,
+                theme != null ? theme.getButtonPaddingVertical() : 4f);
+        float w = textWidth + 2.0f * padH;
+        float h = lineHeight + 2.0f * padV;
         return new com.glyphui.graphics.Dimension(
                 Math.min(w, sanitizeConstraint(maxWidth)),
                 Math.min(h, sanitizeConstraint(maxHeight)));
@@ -500,6 +484,21 @@ public class Button extends Component {
             requestRepaint();
         }
         return isInside;
+    }
+
+    /**
+     * Programmatically performs a click: runs the registered onClick handler
+     * if present. Useful for tests, keyboard shortcuts and event wiring from
+     * markup controllers.
+     *
+     * @return true if a handler was invoked, false if none is registered
+     */
+    public boolean performClick() {
+        if (onClick != null) {
+            onClick.run();
+            return true;
+        }
+        return false;
     }
 
     /** GLFW key codes handled without importing LWJGL into the widget layer. */

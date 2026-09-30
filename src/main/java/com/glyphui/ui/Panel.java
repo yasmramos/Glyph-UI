@@ -38,6 +38,12 @@ public class Panel extends Component {
         setFocusable(false);
     }
 
+    /** Panels are the generic container element, equivalent to HTML {@code div}. */
+    @Override
+    protected String defaultStyleTag() {
+        return "div";
+    }
+
     @Override
     public com.glyphui.ui.AccessibleRole getAccessibleRole() {
         return com.glyphui.ui.AccessibleRole.PANEL;
@@ -179,13 +185,18 @@ public class Panel extends Component {
     }
 
     /**
-     * Gets the background color of this panel. When no explicit color was
-     * set (the transparent default), the current theme's window background
-     * is used so panels follow light/dark switching automatically.
+     * Gets the effective background color. Resolution order: matching CSS
+     * rule ({@code background} property) → explicit per-instance override →
+     * theme window background (when no explicit color was set, the
+     * transparent default, so panels follow light/dark switching).
      *
      * @return the effective background color (as ARGB int)
      */
     public int getBackgroundColor() {
+        com.glyphui.style.Style s = getComputedStyle();
+        if (s != null && s.has(com.glyphui.style.StyleProperty.BACKGROUND)) {
+            return s.getInt(com.glyphui.style.StyleProperty.BACKGROUND, 0xFF000000);
+        }
         if (backgroundColor == Color.makeARGB(0, 0, 0, 0)) {
             return com.glyphui.graphics.Theme.current().getBackgroundColor();
         }

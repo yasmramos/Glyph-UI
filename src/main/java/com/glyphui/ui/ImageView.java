@@ -16,6 +16,11 @@ import com.glyphui.events.MouseEvent;
  */
 public class ImageView extends Component {
 
+    @Override
+    protected String defaultStyleTag() {
+        return "img";
+    }
+
     private Image image;
 
     /**
