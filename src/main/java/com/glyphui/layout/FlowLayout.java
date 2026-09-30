@@ -1,5 +1,6 @@
 package com.glyphui.layout;
 
+import com.glyphui.graphics.Dimension;
 import com.glyphui.ui.Component;
 import com.glyphui.ui.Panel;
 
@@ -7,8 +8,8 @@ import com.glyphui.ui.Panel;
  * A flow layout manager that arranges components in a left-to-right flow.
  */
 public class FlowLayout extends LayoutManager {
-    private int gap;
-    private int padding;
+    private float gap;
+    private float padding;
 
     /**
      * Creates a new FlowLayout.
@@ -16,7 +17,7 @@ public class FlowLayout extends LayoutManager {
      * @param gap     the gap between components
      * @param padding the padding around the panel
      */
-    public FlowLayout(int gap, int padding) {
+    public FlowLayout(float gap, float padding) {
         this.gap = gap;
         this.padding = padding;
     }
@@ -33,7 +34,7 @@ public class FlowLayout extends LayoutManager {
      *
      * @return the gap
      */
-    public int getGap() {
+    public float getGap() {
         return gap;
     }
 
@@ -42,7 +43,7 @@ public class FlowLayout extends LayoutManager {
      *
      * @param gap the new gap
      */
-    public void setGap(int gap) {
+    public void setGap(float gap) {
         this.gap = gap;
     }
 
@@ -51,7 +52,7 @@ public class FlowLayout extends LayoutManager {
      *
      * @return the padding
      */
-    public int getPadding() {
+    public float getPadding() {
         return padding;
     }
 
@@ -60,7 +61,7 @@ public class FlowLayout extends LayoutManager {
      *
      * @param padding the new padding
      */
-    public void setPadding(int padding) {
+    public void setPadding(float padding) {
         this.padding = padding;
     }
 
@@ -77,26 +78,34 @@ public class FlowLayout extends LayoutManager {
                 continue;
             }
 
-            // Get the preferred height of the component
-            float componentHeight = component.getPreferredHeight();
-            
-            // Check if component fits in current row (using local coordinates)
-            if (currentX + component.getWidth() > panelWidth - padding) {
-                // Move to next row
+            // Preferred (unconstrained) size first, used for line wrapping.
+            Dimension preferred = component.measure(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY);
+
+            // If the preferred width no longer fits in the current row, wrap
+            // to a new row before placing the component.
+            float remainingWidth = Math.max(0.0f, panelWidth - padding - currentX);
+            if (currentX > padding && preferred.getWidth() > remainingWidth) {
                 currentX = padding;
                 currentY = maxY + gap;
+                remainingWidth = Math.max(0.0f, panelWidth - padding - currentX);
             }
 
-            // Set the component height to its preferred height
-            component.setHeight(componentHeight);
+            // Re-measure under the actual available constraints so that
+            // components which adapt their size to the given width
+            // (word-wrapping labels, etc.) are laid out with their true size.
+            Dimension size = component.measure(remainingWidth, Float.POSITIVE_INFINITY);
+
+            // Apply the measured size to the component
+            component.setWidth(size.getWidth());
+            component.setHeight(size.getHeight());
 
             // Position the component in local coordinates
             component.setX(currentX);
             component.setY(currentY);
 
             // Update position for next component
-            currentX += component.getWidth() + gap;
-            maxY = Math.max(maxY, currentY + componentHeight);
+            currentX += size.getWidth() + gap;
+            maxY = Math.max(maxY, currentY + size.getHeight());
         }
     }
 }

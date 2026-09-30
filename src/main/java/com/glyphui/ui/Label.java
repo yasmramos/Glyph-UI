@@ -10,8 +10,9 @@ import io.github.humbleui.skija.*;
  */
 public class Label extends Component {
     private String text;
-    private int textColor;
-    private Font font;
+    // Optional per-label color override; null means "use the Theme"
+    private Integer textColorOverride;
+    private Float fontSizeOverride;
     private TextAlignment alignment;
 
     /**
@@ -35,12 +36,35 @@ public class Label extends Component {
     public Label(float x, float y, float width, float height, String text) {
         super(x, y, width, height);
         this.text = text;
-        this.textColor = Color.makeARGB(255, 255, 255, 255);
         this.alignment = TextAlignment.LEFT;
-        
-        // Initialize font
-        Typeface typeface = Typeface.makeFromName(null, FontStyle.NORMAL);
-        this.font = new Font(typeface, 14.0f);
+        // Static labels do not accept keyboard focus
+        setFocusable(false);
+        // Colors and fonts are resolved from Theme.current() at render time.
+    }
+
+    @Override
+    public com.glyphui.ui.AccessibleRole getAccessibleRole() {
+        return com.glyphui.ui.AccessibleRole.LABEL;
+    }
+
+    @Override
+    public String getAccessibleName() {
+        // Labels are named by their caption unless explicitly overridden
+        String base = super.getAccessibleName();
+        return (base != null && !base.equals(getId())) ? base : text;
+    }
+
+    /**
+     * Gets the font used by this label (shared theme BODY font — owned by
+     * {@code FontManager}, do not close).
+     *
+     * @return the label font
+     */
+    private io.github.humbleui.skija.Font getFont() {
+        if (fontSizeOverride != null) {
+            return getTheme().getFont(com.glyphui.graphics.Theme.FontRole.BODY, fontSizeOverride);
+        }
+        return getTheme().getFont(com.glyphui.graphics.Theme.FontRole.BODY);
     }
 
     /**
@@ -63,33 +87,70 @@ public class Label extends Component {
     }
 
     /**
-     * Gets the text color.
+     * Gets the text color (override or the theme's foreground color).
      *
      * @return the text color (as ARGB int)
      */
     public int getTextColor() {
-        return textColor;
+        return textColorOverride != null ? textColorOverride : getTheme().getForegroundColor();
     }
 
     /**
-     * Sets the text color.
+     * Overrides the text color for this label. Pass null to follow the
+     * current theme again.
      *
-     * @param textColor the new text color (as ARGB int)
+     * @param textColor the new text color (as ARGB int) or null
      */
-    public void setTextColor(int textColor) {
-        this.textColor = textColor;
+    public void setTextColor(Integer textColor) {
+        this.textColorOverride = textColor;
         invalidate();
     }
 
     /**
-     * Gets the preferred height of this label based on its font size.
-     * 
+     * Gets the preferred height of this label: one line of the theme body
+     * font plus the theme padding (helper for the default measure path;
+     * prefer {@link #measure(float, float)}).
+     *
      * @return the preferred height
      */
     @Override
     public float getPreferredHeight() {
-        // Return font size plus some padding for proper spacing
-        return font.getSize() + 10.0f;
+        io.github.humbleui.skija.FontMetrics metrics = getFont().getMetrics();
+        return (metrics.getDescent() - metrics.getAscent()) + 2.0f * getTheme().getPadding();
+    }
+
+    /**
+     * Gets the preferred width of this label: the measured caption width
+     * plus the theme padding.
+     *
+     * @return the preferred width
+     */
+    @Override
+    public float getPreferredWidth() {
+        return getFont().measureTextWidth(text == null ? "" : text) + 2.0f * getTheme().getPadding();
+    }
+
+    /**
+     * Measures the label with its theme font plus padding, clamped to the
+     * supplied maximums.
+     *
+     * @param maxWidth  the maximum available width
+     * @param maxHeight the maximum available height
+     * @return the measured dimension
+     */
+    @Override
+    public com.glyphui.graphics.Dimension measure(float maxWidth, float maxHeight) {
+        float w = getPreferredWidth();
+        float h = getPreferredHeight();
+        if (Float.isNaN(maxWidth) || maxWidth == Float.POSITIVE_INFINITY) {
+            maxWidth = Float.MAX_VALUE;
+        }
+        if (Float.isNaN(maxHeight) || maxHeight == Float.POSITIVE_INFINITY) {
+            maxHeight = Float.MAX_VALUE;
+        }
+        return new com.glyphui.graphics.Dimension(
+                Math.min(w, Math.max(0.0f, maxWidth)),
+                Math.min(h, Math.max(0.0f, maxHeight)));
     }
 
     /**
@@ -112,22 +173,23 @@ public class Label extends Component {
     }
 
     /**
-     * Gets the font size.
+     * Gets the font size (theme default unless overridden).
      *
      * @return the font size
      */
     public float getFontSize() {
-        return font.getSize();
+        return getFont().getSize();
     }
 
     /**
-     * Sets the font size.
+     * Overrides the font size for this label. Pass null to follow the
+     * current theme again. The previous font was shared through
+     * {@code FontManager} so nothing needs to be closed here.
      *
-     * @param size the new font size
+     * @param size the new font size or null
      */
-    public void setFontSize(float size) {
-        Typeface typeface = font.getTypeface();
-        this.font = new Font(typeface, size);
+    public void setFontSize(Float size) {
+        this.fontSizeOverride = size;
         invalidate();
     }
 
@@ -138,8 +200,9 @@ public class Label extends Component {
         }
 
         // Calculate text position based on alignment
-        float textWidth = canvas.measureText(text, font);
-        float textHeight = canvas.getTextHeight(font);
+        io.github.humbleui.skija.Font f = getFont();
+        float textWidth = canvas.measureText(text, f);
+        float textHeight = canvas.getTextHeight(f);
         float textX;
         
         switch (alignment) {
@@ -156,11 +219,11 @@ public class Label extends Component {
         
         float textY = y + (height + textHeight) / 2.0f;
 
-        // Draw text
+        // Draw text (color comes from the theme unless overridden)
         Paint textPaint = new Paint();
-        textPaint.setColor(textColor);
+        textPaint.setColor(enabled ? getTextColor() : getTheme().getControlTextDisabledColor());
         textPaint.setAntiAlias(true);
-        canvas.drawString(text, textX, textY, textPaint, font);
+        canvas.drawString(text, textX, textY, textPaint, f);
         textPaint.close();
     }
 
