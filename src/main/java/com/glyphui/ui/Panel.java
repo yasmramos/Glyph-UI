@@ -34,6 +34,13 @@ public class Panel extends Component {
         this.layoutManager = null;
         this.layoutDirty = false;
         this.backgroundColor = Color.makeARGB(0, 0, 0, 0); // Transparent by default
+        // Containers do not take keyboard focus unless a subclass opts in
+        setFocusable(false);
+    }
+
+    @Override
+    public com.glyphui.ui.AccessibleRole getAccessibleRole() {
+        return com.glyphui.ui.AccessibleRole.PANEL;
     }
 
     /**
@@ -172,11 +179,16 @@ public class Panel extends Component {
     }
 
     /**
-     * Gets the background color of this panel.
+     * Gets the background color of this panel. When no explicit color was
+     * set (the transparent default), the current theme's window background
+     * is used so panels follow light/dark switching automatically.
      *
-     * @return the background color (as ARGB int)
+     * @return the effective background color (as ARGB int)
      */
     public int getBackgroundColor() {
+        if (backgroundColor == Color.makeARGB(0, 0, 0, 0)) {
+            return com.glyphui.graphics.Theme.current().getBackgroundColor();
+        }
         return backgroundColor;
     }
 
@@ -275,11 +287,44 @@ public class Panel extends Component {
             return;
         }
 
-        // Propagate event to all children
+        com.glyphui.core.FocusManager fm = com.glyphui.core.FocusManager.getGlobalFocusManager();
+        Component focused = (fm != null) ? fm.getFocused() : null;
+
+        if (focused != null && isSelfOrDescendant(focused)) {
+            // Focus-driven routing: deliver the key to the focused widget
+            // (this panel included, e.g. a focusable custom container).
+            if (focused != this) {
+                focused.onKeyEvent(event);
+            }
+            // A plain Panel is not a key handler itself (Component's
+            // onKeyEvent is abstract); focusable subclasses override it.
+            return;
+        }
+
+        // Legacy fallback: no focus model active — broadcast to children as
+        // before so applications without a FocusManager keep working.
         for (Component child : children) {
             if (child.isVisible() && child.isEnabled()) {
                 child.onKeyEvent(event);
             }
         }
+    }
+
+    /**
+     * Checks whether the given component is this panel or one of its
+     * (transitively nested) descendants.
+     *
+     * @param component the candidate component
+     * @return true if it belongs to this subtree
+     */
+    protected boolean isSelfOrDescendant(Component component) {
+        Component c = component;
+        while (c != null) {
+            if (c == this) {
+                return true;
+            }
+            c = c.getParent();
+        }
+        return false;
     }
 }

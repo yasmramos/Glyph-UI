@@ -12,8 +12,9 @@ import io.github.humbleui.skija.*;
  */
 public class Label extends Component {
     private String text;
-    private int textColor;
-    private Font font;
+    // Optional per-label color override; null means "use the Theme"
+    private Integer textColorOverride;
+    private Float fontSizeOverride;
     private TextAlignment alignment;
     /** Reusable text paint: created once, reused every frame, closed in dispose(). */
     private Paint textPaint;
@@ -110,18 +111,19 @@ public class Label extends Component {
     }
 
     /**
-     * Gets the text color.
+     * Gets the text color (override or the theme's foreground color).
      *
      * @return the text color (as ARGB int)
      */
     public int getTextColor() {
-        return textColor;
+        return textColorOverride != null ? textColorOverride : getTheme().getForegroundColor();
     }
 
     /**
-     * Sets the text color.
+     * Overrides the text color for this label. Pass null to follow the
+     * current theme again.
      *
-     * @param textColor the new text color (as ARGB int)
+     * @param textColor the new text color (as ARGB int) or null
      */
     public void setTextColor(int textColor) {
         if (this.textColor != textColor) {
@@ -184,18 +186,20 @@ public class Label extends Component {
     }
 
     /**
-     * Gets the font size.
+     * Gets the font size (theme default unless overridden).
      *
      * @return the font size
      */
     public float getFontSize() {
-        return font.getSize();
+        return getFont().getSize();
     }
 
     /**
-     * Sets the font size.
+     * Overrides the font size for this label. Pass null to follow the
+     * current theme again. The previous font was shared through
+     * {@code FontManager} so nothing needs to be closed here.
      *
-     * @param size the new font size
+     * @param size the new font size or null
      */
     public void setFontSize(float size) {
         if (font.getSize() != size) {
@@ -214,8 +218,9 @@ public class Label extends Component {
         }
 
         // Calculate text position based on alignment
-        float textWidth = canvas.measureText(text, font);
-        float textHeight = canvas.getTextHeight(font);
+        io.github.humbleui.skija.Font f = getFont();
+        float textWidth = canvas.measureText(text, f);
+        float textHeight = canvas.getTextHeight(f);
         float textX;
         
         switch (alignment) {

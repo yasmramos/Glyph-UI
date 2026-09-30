@@ -3,6 +3,7 @@ package com.glyphui.core;
 import com.glyphui.graphics.Canvas;
 import com.glyphui.ui.Component;
 import com.glyphui.ui.Panel;
+import com.glyphui.ui.TextField;
 import com.glyphui.events.*;
 import io.github.humbleui.skija.*;
 import org.lwjgl.glfw.GLFWKeyCallback;
@@ -11,6 +12,8 @@ import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWKeyCallbackI;
 import org.lwjgl.glfw.GLFWMouseButtonCallbackI;
 import org.lwjgl.glfw.GLFWCursorPosCallbackI;
+import org.lwjgl.glfw.GLFWCharCallback;
+import org.lwjgl.glfw.GLFWCharCallbackI;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -419,21 +422,97 @@ public class Application implements AutoCloseable {
         };
         GLFWCursorPosCallback.create(cursorCallback).set(windowHandle);
 
-        // Key callback
+        // Focus manager: owns Tab / Shift+Tab traversal and the focused widget
+        focusManager = new FocusManager(this::requestRepaint);
+        focusManager.setRoot(rootPanel);
+        FocusManager.setGlobalFocusManager(focusManager);
+
+        // Clipboard bridge for TextField (copy/paste via GLFW clipboard API)
+        TextField.setClipboardHooks(
+            () -> {
+                Component focused = focusManager.getFocused();
+                if (focused instanceof TextField) {
+                    String sel = ((TextField) focused).getSelectedTextOrNull();
+                    if (sel != null) {
+                        glfwSetClipboardString(windowHandle, sel);
+                    }
+                }
+            },
+            () -> {
+                String clip = glfwGetClipboardString(windowHandle);
+                if (clip != null && !clip.isEmpty()) {
+                    Component focused = focusManager.getFocused();
+                    if (focused instanceof TextField) {
+                        ((TextField) focused).insertText(clip);
+                    }
+                }
+            });
+
+        // Key callback -- Tab / Shift+Tab are intercepted by the FocusManager;
+        // every other key is dispatched down the tree (widgets only react
+        // when they hold the keyboard focus).
         GLFWKeyCallbackI keyCallback = (w, key, scancode, action, mods) -> {
             if (action == GLFW_RELEASE && key == GLFW_KEY_ESCAPE) {
                 window.setShouldClose(true);
                 return;
             }
 
+            if (key == GLFW_KEY_TAB && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+                boolean shift = (mods & GLFW_MOD_SHIFT) != 0;
+                if (shift) {
+                    focusManager.focusPrevious();
+                } else {
+                    focusManager.focusNext();
+                }
+                return; // Tab never reaches individual widgets
+            }
+
             KeyEventType type = (action == GLFW_PRESS) ? KeyEventType.PRESS : KeyEventType.RELEASE;
             EnumSet<KeyModifier> modifiers = getModifiers(mods);
-            
-            KeyEvent event = new KeyEvent(type, key, (char) 0, modifiers);
+
+            char keyChar = (action == GLFW_RELEASE) ? 0 : mapKeyToChar(key);
+            KeyEvent event = new KeyEvent(type, key, keyChar, modifiers);
             rootPanel.onKeyEvent(event);
             requestRepaint();
         };
         GLFWKeyCallback.create(keyCallback).set(windowHandle);
+
+        // Char callback -- printable text input goes straight to the focused
+        // TextField. NOTE: GLFW has no IME API, so real input-method
+        // composition (CJK candidate windows, dead-key composition) is not
+        // supported in v0.1; see README.
+        GLFWCharCallbackI charCallback = (w, codepoint) -> {
+            Component focused = focusManager.getFocused();
+            if (focused instanceof TextField) {
+                ((TextField) focused).onCharTyped((char) codepoint);
+            }
+        };
+        GLFWCharCallback.create(charCallback).set(windowHandle);
+    }
+
+    /**
+     * Maps the most common special keys to control characters so widgets can
+     * recognize them through {@link KeyEvent#getKeyChar()} without depending
+     * on LWJGL constants. Printable characters arrive through the GLFW char
+     * callback instead; unmapped keys produce NUL.
+     *
+     * @param glfwKey the GLFW key code
+     * @return the mapped character, or 0 when there is no mapping
+     */
+    private static char mapKeyToChar(int glfwKey) {
+        switch (glfwKey) {
+            case GLFW_KEY_ENTER:
+            case GLFW_KEY_KP_ENTER:
+                return '\r';
+            case GLFW_KEY_TAB:
+                return '\t';
+            case GLFW_KEY_BACKSPACE:
+                return 8;
+            case GLFW_KEY_ESCAPE:
+                return 27;
+            default:
+                return 0;
+        }
     }
 
     /**
