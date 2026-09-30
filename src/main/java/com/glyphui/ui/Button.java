@@ -1,6 +1,8 @@
 package com.glyphui.ui;
 
+import com.glyphui.core.Application;
 import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Property;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 import com.glyphui.events.KeyEventType;
@@ -10,22 +12,32 @@ import io.github.humbleui.skija.*;
  * A button component with text, click handler, and visual states.
  */
 public class Button extends Component {
+    /** Horizontal padding added on each side of the measured text. */
+    public static final float HORIZONTAL_PADDING = 24.0f;
+    /** Vertical padding added to the measured text height. */
+    public static final float VERTICAL_PADDING = 16.0f;
+
     private String text;
     private Runnable onClick;
+
+    /** Observable text property (lazily created). */
+    private Property<String> textProperty;
 
     @Override
     protected String defaultStyleTag() {
         return "button";
     }
 
-    // Optional per-button color overrides; null means "use the Theme".
+    // Optional per-button color overrides; null means "use the computed
+    // style / theme". The primitive setters keep the legacy API and store
+    // into these boxed fields.
     private Integer normalColorOverride;
     private Integer hoverColorOverride;
     private Integer pressedColorOverride;
     private Integer textColorOverride;
     private Integer borderColorOverride;
     private Float borderRadiusOverride;
-    
+
     // Reusable Paint objects to avoid allocation per frame
     private Paint bgPaint;
     private Paint borderPaint;
@@ -47,19 +59,45 @@ public class Button extends Component {
     public Button(float x, float y, float width, float height, String text) {
         super(x, y, width, height);
         this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Button without explicit bounds. The size will be derived
+     * from the preferred (measured) text size when a layout manager runs.
+     *
+     * @param text the text displayed on the button
+     */
+    public Button(String text) {
+        super();
+        this.text = text;
+        initDefaults();
+    }
+
+    /**
+     * Creates a new Button with default (unset) bounds and empty text.
+     */
+    public Button() {
+        this("");
+    }
+
+    /**
+     * Initializes default paint objects. Colors and fonts are not stored
+     * here: they resolve lazily through the computed style / theme so that
+     * CSS rules and theme switches apply without re-touching each widget.
+     */
+    private void initDefaults() {
         this.onClick = null;
-        // Appearance (colors, radius, font) is resolved from Theme.current()
-        // at render/measure time; no hard-coded defaults here anymore.
 
         // Initialize reusable Paint objects
         this.bgPaint = new Paint();
         this.bgPaint.setAntiAlias(true);
-        
+
         this.borderPaint = new Paint();
         this.borderPaint.setMode(PaintMode.STROKE);
         this.borderPaint.setStrokeWidth(1.0f);
         this.borderPaint.setAntiAlias(true);
-        
+
         this.textPaint = new Paint();
         this.textPaint.setAntiAlias(true);
     }
@@ -74,13 +112,29 @@ public class Button extends Component {
     }
 
     /**
-     * Sets the button text.
+     * Returns the observable text property. Setting it from a background
+     * thread marshals the change onto the UI thread automatically.
+     *
+     * @return the text property (never null after first access)
+     */
+    public Property<String> textProperty() {
+        if (textProperty == null) {
+            textProperty = new Property<>(Application.getCurrent(), text, newText -> {
+                this.text = newText;
+                requestRepaint();
+            });
+        }
+        return textProperty;
+    }
+
+    /**
+     * Sets the button text. Delegates to {@link #textProperty()} for
+     * backward compatibility and cross-thread safety.
      *
      * @param text the new text
      */
     public void setText(String text) {
-        this.text = text;
-        invalidate();
+        textProperty().set(text);
     }
 
     /**
@@ -95,17 +149,17 @@ public class Button extends Component {
     /**
      * Sets the click handler.
      *
+     * <p>The handler is invoked from the GLFW event dispatch inside
+     * {@code Application.run()}, so it always executes on the UI thread by
+     * construction; widget mutations and repaint requests made from it need
+     * no synchronization.</p>
+     *
      * @param onClick the runnable to execute on click
      */
     public void setOnClick(Runnable onClick) {
         this.onClick = onClick;
     }
 
-    /**
-     * Gets the normal state color (override or theme value).
-     *
-     * @return the normal color (as ARGB int)
-     */
     /**
      * Gets the normal state color. Resolution order: matching CSS rule
      * (e.g. {@code button:hover} when the state is HOVER) → per-instance
@@ -125,12 +179,14 @@ public class Button extends Component {
      * @param normalColor the new normal color (as ARGB int) or null
      */
     public void setNormalColor(Integer normalColor) {
-        this.normalColorOverride = normalColor;
-        invalidate();
+        if (!java.util.Objects.equals(this.normalColorOverride, normalColor)) {
+            this.normalColorOverride = normalColor;
+            requestRepaint();
+        }
     }
 
     /**
-     * Gets the hover state color (override or theme value).
+     * Gets the hover state color (CSS rule → override → theme default).
      *
      * @return the hover color (as ARGB int)
      */
@@ -146,12 +202,14 @@ public class Button extends Component {
      * @param hoverColor the new hover color (as ARGB int) or null
      */
     public void setHoverColor(Integer hoverColor) {
-        this.hoverColorOverride = hoverColor;
-        invalidate();
+        if (!java.util.Objects.equals(this.hoverColorOverride, hoverColor)) {
+            this.hoverColorOverride = hoverColor;
+            requestRepaint();
+        }
     }
 
     /**
-     * Gets the pressed state color (override or theme value).
+     * Gets the pressed state color (CSS rule → override → theme default).
      *
      * @return the pressed color (as ARGB int)
      */
@@ -167,12 +225,14 @@ public class Button extends Component {
      * @param pressedColor the new pressed color (as ARGB int) or null
      */
     public void setPressedColor(Integer pressedColor) {
-        this.pressedColorOverride = pressedColor;
-        invalidate();
+        if (!java.util.Objects.equals(this.pressedColorOverride, pressedColor)) {
+            this.pressedColorOverride = pressedColor;
+            requestRepaint();
+        }
     }
 
     /**
-     * Gets the text color (override or theme value).
+     * Gets the text color (CSS rule → override → theme default).
      *
      * @return the text color (as ARGB int)
      */
@@ -188,12 +248,14 @@ public class Button extends Component {
      * @param textColor the new text color (as ARGB int) or null
      */
     public void setTextColor(Integer textColor) {
-        this.textColorOverride = textColor;
-        invalidate();
+        if (!java.util.Objects.equals(this.textColorOverride, textColor)) {
+            this.textColorOverride = textColor;
+            requestRepaint();
+        }
     }
 
     /**
-     * Gets the border color (override or theme value).
+     * Gets the border color (CSS rule → override → theme default).
      *
      * @return the border color (as ARGB int)
      */
@@ -209,12 +271,14 @@ public class Button extends Component {
      * @param borderColor the new border color (as ARGB int) or null
      */
     public void setBorderColor(Integer borderColor) {
-        this.borderColorOverride = borderColor;
-        invalidate();
+        if (!java.util.Objects.equals(this.borderColorOverride, borderColor)) {
+            this.borderColorOverride = borderColor;
+            requestRepaint();
+        }
     }
 
     /**
-     * Gets the border radius (override or theme value).
+     * Gets the border radius (CSS rule → override → theme default).
      *
      * @return the border radius
      */
@@ -230,8 +294,10 @@ public class Button extends Component {
      * @param borderRadius the new border radius or null
      */
     public void setBorderRadius(Float borderRadius) {
-        this.borderRadiusOverride = borderRadius;
-        invalidate();
+        if (!java.util.Objects.equals(this.borderRadiusOverride, borderRadius)) {
+            this.borderRadiusOverride = borderRadius;
+            requestRepaint();
+        }
     }
 
     /**
@@ -369,12 +435,14 @@ public class Button extends Component {
     }
 
     @Override
-    public void onMouseEvent(MouseEvent event) {
+    public boolean onMouseEvent(MouseEvent event) {
         if (!visible || !enabled) {
-            return;
+            return false;
         }
 
         boolean isInside = contains(event.getX(), event.getY());
+
+        ComponentState oldState = state;
 
         switch (event.getType()) {
             case MOVE:
@@ -408,6 +476,14 @@ public class Button extends Component {
             default:
                 break;
         }
+
+        // Request a repaint only when the visual state actually changed.
+        // Events inside the button bounds are consumed so they do not reach
+        // components underneath.
+        if (state != oldState) {
+            requestRepaint();
+        }
+        return isInside;
     }
 
     /**

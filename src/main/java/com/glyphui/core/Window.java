@@ -19,21 +19,11 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 /**
  * Manages the application window and GLFW context.
  *
- * <p>HiDPI support: logical (window) coordinates and physical (framebuffer)
- * coordinates are kept separate:
- * <ul>
- *   <li>{@code windowWidth/windowHeight}: logical size reported by
- *       {@code glfwGetWindowSize}. This is the coordinate space in which GLFW
- *       delivers mouse cursor positions and in which the UI tree lives.</li>
- *   <li>{@code framebufferWidth/framebufferHeight}: physical pixel size
- *       reported by {@code glfwGetFramebufferSize}. This is the size of the
- *       GPU render target.</li>
- * </ul>
- * {@link #getWidth()} / {@link #getHeight()} return the <b>logical</b> size;
- * use {@link #getFramebufferWidth()} / {@link #getFramebufferHeight()} for the
- * render target dimensions.</p>
+ * <p>{@code Window} owns the native GLFW window handle, so it implements
+ * {@link AutoCloseable}. {@link #close()} destroys the window and terminates
+ * GLFW; it is safe to call multiple times.</p>
  */
-public class Window {
+public class Window implements AutoCloseable {
     private long windowHandle;
     /** Logical window width (glfwGetWindowSize). */
     private int windowWidth;
@@ -217,20 +207,16 @@ public class Window {
     }
 
     /**
-     * Waits for window events (blocking). Used when there is nothing to
-     * repaint so the event loop consumes zero CPU while idle. A pending
-     * {@link #postEmptyEvent()} (or any OS event) wakes it up.
+     * Waits until one or more events have been received and then polls them.
+     *
+     * <p>This is the blocking counterpart of {@link #pollEvents()} used by the
+     * on-demand event loop: the UI thread sleeps here instead of busy-waiting,
+     * and another thread can wake it up promptly with
+     * {@code glfwPostEmptyEvent()} (see
+     * {@link Application#invokeLater(Runnable)}).</p>
      */
     public void waitEvents() {
         glfwWaitEvents();
-    }
-
-    /**
-     * Posts an empty event so that a thread blocked in {@link #waitEvents()}
-     * wakes up (e.g. from {@code Application.invokeLater} on another thread).
-     */
-    public void postEmptyEvent() {
-        glfwPostEmptyEvent();
     }
 
     /**
@@ -431,13 +417,37 @@ public class Window {
     }
 
     /**
-     * Destroys the window and terminates GLFW.
+     * Destroys the window and terminates GLFW. Idempotent: subsequent calls
+     * are no-ops once the window handle has been released.
+     *
+     * <p><strong>Note:</strong> {@code glfwTerminate()} releases process-wide
+     * GLFW state, not just this window's resources. Any other GLFW window in
+     * the same process becomes unusable after this call; Glyph-UI assumes a
+     * single owning {@code Window} per application.</p>
      */
     public void destroy() {
+        if (windowHandle == 0L) {
+            return; // already destroyed
+        }
         glfwFreeCallbacks(windowHandle);
         glfwDestroyWindow(windowHandle);
-        windowHandle = MemoryUtil.NULL;
+        windowHandle = 0L;
         glfwTerminate();
-        glfwSetErrorCallback(null).free();
+        // glfwSetErrorCallback(null) uninstalls and returns the previously
+        // registered error callback; guard against a null return so we never
+        // dereference it, then free its native resources.
+        GLFWErrorCallback previousErrorCallback = glfwSetErrorCallback(null);
+        if (previousErrorCallback != null) {
+            previousErrorCallback.free();
+        }
+    }
+
+    /**
+     * Releases the native window resources. Equivalent to {@link #destroy()};
+     * provided so windows can be used with try-with-resources.
+     */
+    @Override
+    public void close() {
+        destroy();
     }
 }
