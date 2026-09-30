@@ -203,6 +203,21 @@ public abstract class Component implements AutoCloseable {
         this.sizeExplicitlySet = false;
     }
 
+    /** Whether this component participates in keyboard focus traversal. */
+    private boolean focusable = true;
+
+    /** Whether this component currently holds the keyboard focus. */
+    private boolean focused;
+
+    /**
+     * Optional explicit accessibility name override (see
+     * {@link #getAccessibleName()}). Null means "derive a default".
+     */
+    private String accessibleName;
+
+    /** Optional explicit accessibility description override. */
+    private String accessibleDescription;
+
     /**
      * Global repaint hook. When set (typically by {@code Application}), any
      * component mutation that calls {@link #invalidate()} propagates up the
@@ -242,6 +257,16 @@ public abstract class Component implements AutoCloseable {
      * @param width  the width of the component
      * @param height the height of the component
      */
+    /**
+     * Creates a zero-sized component to be positioned/sized by a layout
+     * manager or by {@link #setSize}. Subclasses such as {@code TextField}
+     * and {@code ImageView} use this when their size is derived from
+     * content via {@link #measure}.
+     */
+    protected Component() {
+        this(0, 0, 0, 0);
+    }
+
     public Component(float x, float y, float width, float height) {
         this.x = x;
         this.y = y;
@@ -418,7 +443,8 @@ public abstract class Component implements AutoCloseable {
     }
 
     /**
-     * Sets the visibility of the component.
+     * Sets the visibility of the component. Hiding a focused component
+     * clears its focus (see {@link com.glyphui.core.FocusManager}).
      *
      * @param visible true to make visible, false to hide
      */
@@ -436,7 +462,8 @@ public abstract class Component implements AutoCloseable {
     }
 
     /**
-     * Sets whether the component is enabled.
+     * Sets whether the component is enabled. Disabling a focused component
+     * clears its focus (see {@link com.glyphui.core.FocusManager}).
      *
      * @param enabled true to enable, false to disable
      */
@@ -519,6 +546,242 @@ public abstract class Component implements AutoCloseable {
      * @param canvas the canvas to draw on
      */
     public abstract void render(Canvas canvas);
+
+    /**
+     * Measures the intrinsic size of this component under the given
+     * constraints, in logical units.
+     *
+     * <p>The default implementation returns the preferred size (see
+     * {@link #getPreferredWidth()} / {@link #getPreferredHeight()}) clamped
+     * to the supplied maximums. Text widgets such as {@code Button} and
+     * {@code Label} override this to measure their text with the theme font
+     * plus padding.</p>
+     *
+     * @param maxWidth  the maximum available width (use
+     *                  {@link Float#POSITIVE_INFINITY} for unbounded)
+     * @param maxHeight the maximum available height (use
+     *                  {@link Float#POSITIVE_INFINITY} for unbounded)
+     * @return the measured dimension, never negative
+     */
+    public Dimension measure(float maxWidth, float maxHeight) {
+        float w = Math.min(getPreferredWidth(), sanitize(maxWidth));
+        float h = Math.min(getPreferredHeight(), sanitize(maxHeight));
+        return new Dimension(w, h);
+    }
+
+    /**
+     * Treats NaN/infinite constraints as "unbounded" so the clamp above
+     * still yields the preferred size.
+     *
+     * @param value the raw constraint
+     * @return a finite upper bound
+     */
+    private static float sanitize(float value) {
+        if (Float.isNaN(value) || value == Float.POSITIVE_INFINITY) {
+            return Float.MAX_VALUE;
+        }
+        return Math.max(0.0f, value);
+    }
+
+    /**
+     * Gets the preferred width of this component. Kept as a helper consumed
+     * by the default {@link #measure(float, float)} implementation; layout
+     * managers should call {@code measure} instead.
+     *
+     * @return the preferred width
+     */
+    public float getPreferredWidth() {
+        return width;
+    }
+
+    /**
+     * Gets the preferred height of this component. Kept as a helper consumed
+     * by the default {@link #measure(float, float)} implementation; layout
+     * managers should call {@code measure} instead.
+     *
+     * @return the preferred height
+     */
+    public float getPreferredHeight() {
+        return height;
+    }
+
+    // ------------------------------------------------------------------
+    // Focus support
+    // ------------------------------------------------------------------
+
+    /**
+     * Checks whether this component participates in keyboard focus
+     * traversal.
+     *
+     * @return true if focusable
+     */
+    public boolean isFocusable() {
+        return focusable;
+    }
+
+    /**
+     * Sets whether this component participates in keyboard focus traversal.
+     * Making a focused component unfocusable clears its focus.
+     *
+     * @param focusable true to allow focus
+     */
+    public void setFocusable(boolean focusable) {
+        this.focusable = focusable;
+        if (!focusable && focused) {
+            com.glyphui.core.FocusManager fm = com.glyphui.core.FocusManager.getGlobalFocusManager();
+            if (fm != null) {
+                fm.clearFocus(this);
+            } else {
+                setFocusedInternal(false);
+            }
+        }
+        invalidate();
+    }
+
+    /**
+     * Checks whether this component currently holds the keyboard focus.
+     *
+     * @return true if focused
+     */
+    public boolean isFocused() {
+        return focused;
+    }
+
+    /**
+     * Requests the keyboard focus for this component through the global
+     * {@link com.glyphui.core.FocusManager}. No-op when the component is
+     * not focusable or not visible/enabled.
+     */
+    public void requestFocus() {
+        com.glyphui.core.FocusManager fm = com.glyphui.core.FocusManager.getGlobalFocusManager();
+        if (fm != null) {
+            fm.requestFocus(this);
+        }
+    }
+
+    /**
+     * Internal focus flag setter used by {@link com.glyphui.core.FocusManager}
+     * and unit tests. Application code should use {@link #requestFocus()} or
+     * the focus manager instead.
+     *
+     * @param focused the new focus state
+     */
+    public void setFocusedInternal(boolean focused) {
+        if (this.focused == focused) {
+            return;
+        }
+        this.focused = focused;
+        if (focused) {
+            onFocusGained();
+        } else {
+            onFocusLost();
+        }
+        invalidate();
+    }
+
+    /**
+     * Called when this component gains the keyboard focus. The default
+     * implementation does nothing; subclasses may override.
+     */
+    protected void onFocusGained() {
+    }
+
+    /**
+     * Called when this component loses the keyboard focus. The default
+     * implementation does nothing; subclasses may override.
+     */
+    protected void onFocusLost() {
+    }
+
+    // ------------------------------------------------------------------
+    // Accessibility stubs (v0.1 API only — no platform bridge yet)
+    // ------------------------------------------------------------------
+
+    /**
+     * Gets the accessibility role of this component. Subclasses override
+     * this to return a more specific role (e.g. {@link AccessibleRole#BUTTON}).
+     *
+     * @return the accessible role (defaults to {@link AccessibleRole#GENERIC})
+     */
+    public AccessibleRole getAccessibleRole() {
+        return AccessibleRole.GENERIC;
+    }
+
+    /**
+     * Gets the accessibility name of this component. Defaults to the
+     * component id unless overridden via {@link #setAccessibleName(String)}.
+     *
+     * @return the accessible name
+     */
+    public String getAccessibleName() {
+        return accessibleName != null ? accessibleName : id;
+    }
+
+    /**
+     * Overrides the accessibility name.
+     *
+     * @param accessibleName the new name (null restores the default)
+     */
+    public void setAccessibleName(String accessibleName) {
+        this.accessibleName = accessibleName;
+    }
+
+    /**
+     * Gets the accessibility description of this component. Defaults to the
+     * role name unless overridden via {@link #setAccessibleDescription(String)}.
+     *
+     * @return the accessible description
+     */
+    public String getAccessibleDescription() {
+        return accessibleDescription != null ? accessibleDescription : getAccessibleRole().name();
+    }
+
+    /**
+     * Overrides the accessibility description.
+     *
+     * @param accessibleDescription the new description (null restores the default)
+     */
+    public void setAccessibleDescription(String accessibleDescription) {
+        this.accessibleDescription = accessibleDescription;
+    }
+
+    // ------------------------------------------------------------------
+    // Theme access
+    // ------------------------------------------------------------------
+
+    /**
+     * Gets the theme used by this component. Components read colors, fonts,
+     * radii and paddings from the current theme at render/measure time.
+     *
+     * @return the current theme (never null)
+     */
+    protected Theme getTheme() {
+        return Theme.current();
+    }
+
+    /**
+     * Draws the standard focus ring for this component using the theme's
+     * accent color: a dashed rounded rectangle inset by one logical pixel.
+     * Widgets that accept focus ({@code Button}, {@code TextField}, ...)
+     * call this from {@code render} when {@link #isFocused()} is true.
+     *
+     * @param canvas the canvas to draw on
+     */
+    protected void renderFocusRing(Canvas canvas) {
+        io.github.humbleui.skija.Paint paint = new io.github.humbleui.skija.Paint();
+        try {
+            paint.setColor(getTheme().getAccentColor());
+            paint.setStroke(true);
+            paint.setStrokeWidth(1.5f);
+            paint.setAntiAlias(true);
+            paint.setPathEffect(io.github.humbleui.skija.PathEffect.makeDash(new float[]{4.0f, 3.0f}, 0.0f));
+            canvas.drawRRect(x + 1.0f, y + 1.0f, Math.max(0.0f, width - 2.0f),
+                    Math.max(0.0f, height - 2.0f),
+                    getTheme().getFocusRingRadius(), getTheme().getFocusRingRadius(), paint);
+        } finally {
+            paint.close();
+        }
+    }
 
     /**
      * Handles mouse events.

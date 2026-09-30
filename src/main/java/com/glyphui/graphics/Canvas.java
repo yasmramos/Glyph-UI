@@ -258,6 +258,37 @@ public class Canvas {
     }
 
     /**
+     * Draws a raw Skija image at the specified position (native pixels).
+     *
+     * @param image the image to draw (not closed by this call)
+     * @param x     the x-coordinate
+     * @param y     the y-coordinate
+     */
+    public void drawImage(io.github.humbleui.skija.Image image, float x, float y) {
+        canvas.drawImage(image, x, y);
+    }
+
+    /**
+     * Draws a Glyph UI {@link Image} wrapper at the specified position,
+     * scaled to the given destination size.
+     *
+     * @param image the image wrapper (not consumed by this call)
+     * @param x     the destination x-coordinate
+     * @param y     the destination y-coordinate
+     * @param w     the destination width
+     * @param h     the destination height
+     */
+    public void drawImage(Image image, float x, float y, float w, float h) {
+        if (image == null || !image.isLoaded()) {
+            return;
+        }
+        io.github.humbleui.types.Rect dst = io.github.humbleui.types.Rect.makeXYWH(x, y, w, h);
+        io.github.humbleui.types.Rect src = io.github.humbleui.types.Rect.makeXYWH(
+                0, 0, image.getWidth(), image.getHeight());
+        canvas.drawImageRect(image.getNativeImage(), src, dst, null, true);
+    }
+
+    /**
      * Flushes and submits the canvas drawing operations.
      */
     public void flush() {
