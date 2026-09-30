@@ -19,6 +19,7 @@ public class Window {
     private int height;
     private String title;
     private boolean shouldClose;
+    private GLFWErrorCallback errorCallback;
 
     /**
      * Creates a new Window.
@@ -40,8 +41,9 @@ public class Window {
      * @return true if initialization was successful
      */
     public boolean create() {
-        // Setup error callback
-        GLFWErrorCallback.createPrint(System.err).set();
+        // Setup error callback (kept in a field so it can be freed on destroy)
+        errorCallback = GLFWErrorCallback.createPrint(System.err);
+        errorCallback.set();
 
         // Initialize GLFW
         if (!glfwInit()) {
@@ -230,12 +232,20 @@ public class Window {
     }
 
     /**
-     * Destroys the window and terminates GLFW.
+     * Destroys the window and terminates GLFW. Safe to call multiple times.
      */
     public void destroy() {
-        glfwFreeCallbacks(windowHandle);
-        glfwDestroyWindow(windowHandle);
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwFreeCallbacks(windowHandle);
+            glfwDestroyWindow(windowHandle);
+            windowHandle = MemoryUtil.NULL;
+        }
         glfwTerminate();
-        glfwSetErrorCallback(null).free();
+        // Free the error callback allocated in create()
+        if (errorCallback != null) {
+            glfwSetErrorCallback(null).free();
+            errorCallback.free();
+            errorCallback = null;
+        }
     }
 }

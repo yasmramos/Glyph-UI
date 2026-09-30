@@ -7,5 +7,7 @@ public enum MouseEventType {
     PRESS,
     RELEASE,
     MOVE,
-    DRAG
+    DRAG,
+    /** Mouse wheel scroll event; carries the scroll amount in deltaX/deltaY. */
+    SCROLL
 }

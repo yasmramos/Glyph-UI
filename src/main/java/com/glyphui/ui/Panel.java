@@ -188,13 +188,15 @@ public class Panel extends Component {
         int localX = event.getX() - (int)x;
         int localY = event.getY() - (int)y;
         
-        // Create a new MouseEvent with local coordinates
+        // Create a new MouseEvent with local coordinates (scroll deltas preserved)
         com.glyphui.events.MouseEvent localEvent = new com.glyphui.events.MouseEvent(
             event.getType(),
             localX,
             localY,
             event.getButton(),
-            event.getClickCount()
+            event.getClickCount(),
+            event.getDeltaX(),
+            event.getDeltaY()
         );
 
         // Propagate event to children in reverse order (top-most first)

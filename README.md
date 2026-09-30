@@ -137,6 +137,10 @@ The project includes integration tests that create actual GLFW windows and captu
 
 **Note on Monocle**: Monocle is specific to JavaFX and does NOT apply to this toolkit, which uses LWJGL/GLFW + Skija for rendering.
 
+### Raster mode (`useRasterSurface = true`)
+
+`Application.init(title, width, height, true)` creates an off-screen raster surface instead of a GPU-backed one. **A raster surface is never presented to the GLFW window** (no GL framebuffer is involved); it exists exclusively for headless/testing scenarios such as screenshot capture via `captureToPng`. For visible on-screen output always use the GPU backend (`useRasterSurface = false`, the default).
+
 Screenshot artifacts from CI builds can be downloaded from GitHub Actions workflow runs.
 
 ## Contributing
