@@ -15,6 +15,12 @@ public class Panel extends Component {
     protected int backgroundColor;
 
     /**
+     * Reusable background paint, created lazily on first render and closed in
+     * {@link #dispose()} to avoid per-frame native allocations.
+     */
+    private io.github.humbleui.skija.Paint bgPaint;
+
+    /**
      * Creates a new Panel.
      *
      * @param x      the x-coordinate of the panel
@@ -57,18 +63,18 @@ public class Panel extends Component {
     public void remove(Component component) {
         children.remove(component);
         component.setParent(null);
-        component.dispose();
+        component.close();
         markLayoutDirty();
         invalidate();
     }
 
     /**
-     * Removes all child components from this panel.
+     * Removes all child components from this panel, closing each one.
      */
     public void clear() {
         for (Component child : children) {
             child.setParent(null);
-            child.dispose();
+            child.close();
         }
         children.clear();
         markLayoutDirty();
@@ -76,10 +82,42 @@ public class Panel extends Component {
     }
 
     /**
+     * Releases this panel's resources and cascades {@link Component#close()}
+     * to every child so nested widgets free their native Skija objects too.
+     * The child list is cleared afterwards.
+     */
+    @Override
+    public void dispose() {
+        for (Component child : children) {
+            child.setParent(null);
+            child.close();
+        }
+        children.clear();
+        if (bgPaint != null) {
+            bgPaint.close();
+            bgPaint = null;
+        }
+    }
+
+    /**
+     * Lazily creates the reusable background paint. Kept out of the render
+     * loop's allocation path: it is created once and reused every frame.
+     */
+    private void ensureBgPaint() {
+        if (bgPaint == null || bgPaint.isClosed()) {
+            bgPaint = new io.github.humbleui.skija.Paint();
+            bgPaint.setAntiAlias(true);
+        }
+    }
+
+    /**
      * Marks the layout as dirty, triggering a relayout on next render.
+     * Also requests a repaint so the application re-renders when the
+     * layout result changes the visual tree (on-demand rendering).
      */
     protected void markLayoutDirty() {
         layoutDirty = true;
+        requestRepaint();
     }
 
     /**
@@ -124,14 +162,20 @@ public class Panel extends Component {
 
     @Override
     public void setWidth(float width) {
+        float oldWidth = this.width;
         super.setWidth(width);
-        markLayoutDirty();
+        if (oldWidth != width) {
+            markLayoutDirty();
+        }
     }
 
     @Override
     public void setHeight(float height) {
+        float oldHeight = this.height;
         super.setHeight(height);
-        markLayoutDirty();
+        if (oldHeight != height) {
+            markLayoutDirty();
+        }
     }
 
     /**
@@ -154,8 +198,10 @@ public class Panel extends Component {
      * @param backgroundColor the new background color (as ARGB int)
      */
     public void setBackgroundColor(int backgroundColor) {
-        this.backgroundColor = backgroundColor;
-        invalidate();
+        if (this.backgroundColor != backgroundColor) {
+            this.backgroundColor = backgroundColor;
+            requestRepaint();
+        }
     }
 
     @Override
@@ -167,22 +213,23 @@ public class Panel extends Component {
         // Ensure layout is applied before rendering children
         doLayout();
 
-        // Draw the effective background: explicit color when set, otherwise
-        // the current theme's window background so panels follow light/dark.
-        int effectiveBackground = getBackgroundColor();
-        io.github.humbleui.skija.Paint bgPaint = new io.github.humbleui.skija.Paint();
-        try {
-            bgPaint.setColor(effectiveBackground);
-            bgPaint.setAntiAlias(true);
+        // Draw background if color is set (non-transparent). The paint object
+        // is reused across frames to avoid per-frame native allocations.
+        // Compare the alpha channel directly: io.github.humbleui.skija.Color
+        // is an int value class that does not override equals(), so reference
+        // comparison against a freshly built transparent color is unreliable.
+        if ((backgroundColor >>> 24) != 0) {
+            ensureBgPaint();
+            bgPaint.setColor(backgroundColor);
             canvas.drawRect(x, y, width, height, bgPaint);
-        } finally {
-            bgPaint.close();
         }
 
-        // Save the canvas state and translate to panel's local coordinate system
-        io.github.humbleui.skija.Canvas nativeCanvas = canvas.getNativeCanvas();
-        int saveCount = nativeCanvas.save();
-        nativeCanvas.translate(x, y);
+        // Save the canvas state, translate to the panel's local coordinate
+        // system and clip to its bounds so that children cannot draw outside
+        // the panel. The saved state is restored with restoreToCount().
+        int saveCount = canvas.save();
+        canvas.translate(x, y);
+        canvas.clipRect(0, 0, width, height);
 
         try {
             // Render all children in local coordinates
@@ -193,14 +240,14 @@ public class Panel extends Component {
             }
         } finally {
             // Restore the canvas state
-            nativeCanvas.restoreToCount(saveCount);
+            canvas.restoreToCount(saveCount);
         }
     }
 
     @Override
-    public void onMouseEvent(com.glyphui.events.MouseEvent event) {
+    public boolean onMouseEvent(com.glyphui.events.MouseEvent event) {
         if (!visible || !enabled) {
-            return;
+            return false;
         }
 
         // Convert mouse coordinates to local coordinate system for children
@@ -216,13 +263,22 @@ public class Panel extends Component {
             event.getClickCount()
         );
 
-        // Propagate event to children in reverse order (top-most first)
+        // Propagate the event to children in reverse order (top-most first).
+        // Only children whose bounds contain the pointer receive the event,
+        // and propagation stops as soon as a child consumes it.
         for (int i = children.size() - 1; i >= 0; i--) {
             Component child = children.get(i);
-            if (child.isVisible() && child.isEnabled()) {
-                child.onMouseEvent(localEvent);
+            if (!child.isVisible() || !child.isEnabled()) {
+                continue;
+            }
+            if (!child.contains(localX, localY)) {
+                continue;
+            }
+            if (child.onMouseEvent(localEvent)) {
+                return true;
             }
         }
+        return false;
     }
 
     @Override
