@@ -2,7 +2,6 @@ package com.glyphui.ui;
 
 import com.glyphui.graphics.Canvas;
 import com.glyphui.graphics.RasterCanvasTestFactory;
-import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Pixmap;
 import io.github.humbleui.skija.Surface;
 import org.junit.jupiter.api.AfterAll;
@@ -62,7 +61,8 @@ class WidgetRasterTest {
         void constructorDefaults() {
             Label label = new Label(5, 10, 200, 30, "Hello");
             assertEquals("Hello", label.getText());
-            assertEquals(Color.makeARGB(255, 255, 255, 255), label.getTextColor());
+            assertEquals(com.glyphui.graphics.Theme.current().getForegroundColor(), label.getTextColor(),
+                    "default text color follows the current theme");
             assertEquals(Label.TextAlignment.LEFT, label.getAlignment());
             assertEquals(14.0f, label.getFontSize(), 1e-6);
             label.dispose();
