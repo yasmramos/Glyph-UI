@@ -88,8 +88,9 @@ public class ImageView extends Component {
     }
 
     @Override
-    public void onMouseEvent(MouseEvent event) {
+    public boolean onMouseEvent(MouseEvent event) {
         // Images are non-interactive in v0.1
+        return false;
     }
 
     @Override
