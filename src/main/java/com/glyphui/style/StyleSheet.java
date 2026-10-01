@@ -215,6 +215,9 @@ public final class StyleSheet {
      * @return matching rules, lowest priority first
      */
     public List<Rule> matchingRules(List<StyleNode> path) {
+        // Standard right-to-left matching over the root → leaf path built by
+        // StyleEngine (each compound must match some ancestor, '>' requires
+        // immediate adjacency).
         List<Rule> matched = new ArrayList<>();
         for (Rule r : rules) {
             if (r.selector().matches(path)) {

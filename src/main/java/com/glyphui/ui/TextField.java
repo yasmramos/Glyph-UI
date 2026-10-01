@@ -421,16 +421,18 @@ public class TextField extends Component {
     }
 
     @Override
-    public void onMouseEvent(MouseEvent event) {
+    public boolean onMouseEvent(MouseEvent event) {
         if (!isEnabled()) {
-            return;
+            return false;
         }
         if (event.getType() == com.glyphui.events.MouseEventType.PRESS
                 && event.getButton() == com.glyphui.events.MouseButton.LEFT
                 && contains(event.getX(), event.getY())) {
             requestFocus();
             setCaretTo(positionAtX(event.getX()), false);
+            return true;
         }
+        return false;
     }
 
     /** Maps a window-space x coordinate to the nearest caret index. */
