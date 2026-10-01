@@ -36,7 +36,7 @@ public class ButtonTest {
         // Point inside button
         assertTrue(button.contains(50, 30), "Point (50,30) should be inside button");
         assertTrue(button.contains(10, 10), "Top-left corner should be inside");
-        assertTrue(button.contains(109, 49), "Bottom-right corner should be inside");
+        assertTrue(button.contains(109, 49), "Point just inside the bottom-right edge should be inside");
         
         // Point outside button
         assertFalse(button.contains(5, 30), "Point left of button should be outside");

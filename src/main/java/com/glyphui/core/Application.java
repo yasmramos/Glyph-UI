@@ -14,8 +14,6 @@ import org.lwjgl.glfw.GLFWMouseButtonCallbackI;
 import org.lwjgl.glfw.GLFWCursorPosCallbackI;
 import org.lwjgl.glfw.GLFWCharCallback;
 import org.lwjgl.glfw.GLFWCharCallbackI;
-import org.lwjgl.glfw.GLFWFramebufferSizeCallback;
-import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -109,6 +107,15 @@ public class Application implements AutoCloseable {
     private float contentScaleY = 1.0f;
 
     /**
+     * True while this application owns the static
+     * {@code Component.setGlobalRepaintRequester} hook (installed by
+     * {@link #init}). Tracked explicitly because method references have
+     * unstable identity and cannot be compared with {@code ==}. Cleared by
+     * {@link #close()} so a closed instance never lingers through globals.
+     */
+    private boolean globalHookOwnedByThis;
+
+    /**
      * The most recently started application instance, used by widgets to
      * obtain the UI-thread marshalling target lazily (properties are created
      * on first access, which may happen before {@code init()} completes).
@@ -136,8 +143,11 @@ public class Application implements AutoCloseable {
         this.forceRasterSurface = false;
         this.paintDirty = true; // first frame must always be painted
         this.rootPanel = new Panel(0, 0, 800, 600);
-        // Propagate component invalidations up to requestRepaint()
-        Component.setGlobalRepaintRequester(this::requestRepaint);
+        // NOTE: the repaint hooks (Component.setGlobalRepaintRequester /
+        // Component.setRepaintRequester) are deliberately NOT installed here.
+        // A constructor that grabs process-wide static state would leak the
+        // hook when the instance is never initialized (e.g. dropped in tests).
+        // init() installs them instead, and close() clears them again.
     }
 
     /**
@@ -213,12 +223,22 @@ public class Application implements AutoCloseable {
      * @return true if initialization was successful
      */
     public boolean init(String title, int width, int height, boolean useRasterSurface) {
+        // Idempotency guard: a second init() would leak the previous window,
+        // surface and DirectContext (two GL contexts, orphaned native handles).
+        if (running || window != null) {
+            throw new IllegalStateException("Application already initialized; "
+                + "call close() before re-initializing");
+        }
         try {
             this.forceRasterSurface = useRasterSurface;
 
             // Create window
             window = new Window(title, width, height);
             if (!window.create()) {
+                // Do not leave a half-initialized application behind: release
+                // the (failed) window so a later close()/re-init is consistent.
+                window.destroy();
+                window = null;
                 return false;
             }
 
@@ -237,8 +257,14 @@ public class Application implements AutoCloseable {
                 }
             }
 
-            // Route repaint requests from components to this application
+            // Route repaint requests from components to this application.
+            // Two hooks exist in Component: the per-instance legacy requester
+            // (direct widget notifications) and the static global requester
+            // (invalidate() propagation that reaches the tree root). Point
+            // both at this application; close() clears them again.
             Component.setRepaintRequester(this::requestRepaint);
+            Component.setGlobalRepaintRequester(this::requestRepaint);
+            globalHookOwnedByThis = true;
 
             // Setup callbacks
             setupCallbacks();
@@ -382,13 +408,19 @@ public class Application implements AutoCloseable {
             surface = null;
         }
 
-        surface = Surface.makeRaster(ImageInfo.makeN32Premul(width, height));
+        // Same factory as initRasterSurface(): keep both allocation paths
+        // consistent (makeRasterN32Premul is the idiomatic premultiplied
+        // N32 variant of makeRaster(ImageInfo)).
+        surface = Surface.makeRasterN32Premul(width, height);
 
         if (surface == null) {
             throw new RuntimeException("Failed to recreate raster surface");
         }
 
         io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
+        // Always rebind canvas AND surface together: flush() goes through the
+        // wrapper's surface reference, so a stale surface would flush into a
+        // closed native object.
         canvas.setNativeCanvas(skijaCanvas, surface);
         canvas.resize(width, height);
 
@@ -418,13 +450,17 @@ public class Application implements AutoCloseable {
     private void setupCallbacks() {
         long windowHandle = window.getWindowHandle();
 
-        // Framebuffer resize callback
-        GLFWFramebufferSizeCallbackI framebufferCallback = (w, width, height) -> {
-            window.updateDimensions(width, height);
-            recreateSurface(width, height);
+        // Framebuffer resize: Window.create() already installs the internal
+        // GLFW framebuffer callback that caches the physical size and keeps
+        // the logical cache in sync. GLFW keeps only ONE callback per event
+        // type per window, so registering a second one here would silently
+        // replace it and orphan Window's cached state. Subscribe through the
+        // listener API instead; by the time this runs, Window has already
+        // updated its own caches from the raw callback values.
+        window.setFramebufferSizeListener((w, fbWidth, fbHeight) -> {
+            recreateSurface(window.getFramebufferWidth(), window.getFramebufferHeight());
             requestRepaint();
-        };
-        GLFWFramebufferSizeCallback.create(framebufferCallback).set(windowHandle);
+        });
 
         // Content scale (DPI) change — e.g. window moved across monitors:
         // only the per-frame scale factor changes; render() reads it live,
@@ -439,8 +475,12 @@ public class Application implements AutoCloseable {
         GLFWMouseButtonCallbackI mouseButtonCallback = (w, button, action, mods) -> {
             MouseButton glyphButton = convertMouseButton(button);
             MouseEventType type = (action == GLFW_PRESS) ? MouseEventType.PRESS : MouseEventType.RELEASE;
-            
-            mouseButtons[button] = (action == GLFW_PRESS);
+
+            // Guard the state array: GLFW exposes more buttons than we track
+            // (gaming mice report up to GLFW_MOUSE_BUTTON_LAST = 8+).
+            if (button >= 0 && button < mouseButtons.length) {
+                mouseButtons[button] = (action == GLFW_PRESS);
+            }
 
             MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, glyphButton, 1);
             rootPanel.onMouseEvent(event);
@@ -573,7 +613,10 @@ public class Application implements AutoCloseable {
 
         if (!isGpuBackend()) {
             // Raster backend: allocate a fresh CPU-backed surface at the new
-            // PHYSICAL size; the canvas wrapper keeps the LOGICAL size.
+            // PHYSICAL size. recreateRasterSurface() rebinds BOTH the native
+            // canvas and the surface in the wrapper (flush() needs the live
+            // surface) and marks paint dirty; we then override the wrapper
+            // dimensions with the LOGICAL size below.
             recreateRasterSurface(fbWidth, fbHeight);
         } else {
             // GPU backend: wrap the window framebuffer in a new render target
@@ -595,26 +638,40 @@ public class Application implements AutoCloseable {
                 throw new RuntimeException("Failed to recreate BackendRenderTarget");
             }
 
-            surface = Surface.wrapBackendRenderTarget(
-                directContext,
-                renderTarget,
-                SurfaceOrigin.BOTTOM_LEFT,
-                SurfaceColorFormat.RGBA_8888,
-                ColorSpace.getSRGB()
-            );
+            try {
+                surface = Surface.wrapBackendRenderTarget(
+                    directContext,
+                    renderTarget,
+                    SurfaceOrigin.BOTTOM_LEFT,
+                    SurfaceColorFormat.RGBA_8888,
+                    ColorSpace.getSRGB()
+                );
+            } catch (RuntimeException e) {
+                // wrap failed: Skija did not take ownership, release it here
+                renderTarget.close();
+                throw new RuntimeException("Failed to wrap backend render target: "
+                    + e.getMessage(), e);
+            }
 
-            // The wrapped surface takes ownership of the render target
-            renderTarget.close();
+            // Consistent with initSurface(): do NOT close the render target
+            // after wrapping. Skija's wrapped surface may keep referencing the
+            // native target for its lifetime; closing it eagerly risks use of
+            // a freed handle on the next flush/draw. The DirectContext owns
+            // the lifecycle once wrapped (see also issue #24: both paths must
+            // follow the same ownership rule).
 
             if (surface == null) {
+                renderTarget.close();
                 throw new RuntimeException("Failed to recreate Skija surface");
             }
 
             io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
-            canvas.setNativeCanvas(skijaCanvas);
+            // Rebind canvas AND surface together — Canvas.flush() delegates to
+            // surface.flushAndSubmit(), so a stale surface reference would
+            // flush into the closed (previous) surface.
+            canvas.setNativeCanvas(skijaCanvas, surface);
+            canvas.resize(logicalWidth, logicalHeight);
         }
-
-        canvas.resize(logicalWidth, logicalHeight);
 
         // Update root panel size (logical coordinates)
         rootPanel.setWidth(logicalWidth);
@@ -824,10 +881,17 @@ public class Application implements AutoCloseable {
      * Captures the current frame to a PNG file.
      * For GPU backend, flips the image vertically since Skija renders BOTTOM_LEFT.
      *
+     * <p><strong>Threading:</strong> this method touches Skija native state
+     * and the component tree without synchronization; it must be called on
+     * the UI thread (or before {@link #run()} starts). From other threads,
+     * marshal it: {@code app.invokeLater(() -> app.captureToPng(file))}.</p>
+     *
      * @param file the output file path
      * @throws RuntimeException if capture fails
      */
     public void captureToPng(java.io.File file) {
+        checkThread();
+
         // Render the current frame first
         renderFrame();
         
@@ -997,28 +1061,6 @@ public class Application implements AutoCloseable {
         }
     }
     /**
-     * Runs all tasks queued on the static current-application reference.
-     * This lets widgets whose properties were created before {@code run()}
-     * (and therefore captured a null application) still marshal background
-     * property sets onto the UI thread through {@link #invokeOnCurrent}.
-     */
-    private static void drainCurrent() {
-        Application app = current;
-        if (app == null) {
-            return;
-        }
-        Runnable task;
-        while ((task = app.uiTaskQueue.poll()) != null) {
-            try {
-                task.run();
-            } catch (RuntimeException e) {
-                System.err.println("Exception in posted UI task: " + e.getMessage());
-                e.printStackTrace();
-            }
-        }
-    }
-
-    /**
      * Queues a task on the current application's UI-thread queue and wakes up
      * its event loop. Used by {@link com.glyphui.graphics.Property} when the
      * widget captured no application instance at creation time. A no-op when
@@ -1081,9 +1123,12 @@ public class Application implements AutoCloseable {
             // Poll events (callbacks may mark paintDirty)
             window.pollEvents();
 
-            // Run tasks posted from other threads via invokeLater(...)
+            // Run tasks posted from other threads via invokeLater(...).
+            // Properties marshalled through Application.invokeOnCurrent()
+            // end up in the same queue (it delegates to current.invokeLater),
+            // so draining this instance's queue is sufficient — no separate
+            // "drainCurrent()" pass is needed.
             drainUiTasks();
-            drainCurrent();
 
             // Advance animation while one is registered (continuous repainting)
             boolean animating = (animationCallback != null);
@@ -1091,7 +1136,18 @@ public class Application implements AutoCloseable {
                 animationCallback.run();
             }
 
-            if (paintDirty || animating) {
+            // Atomically test-and-consume the dirty flag so that a concurrent
+            // requestRepaint() landing between the check and render() cannot
+            // be lost (volatile read + write alone has a race window).
+            final boolean needPaint;
+            synchronized (this) {
+                needPaint = paintDirty || animating;
+                if (needPaint) {
+                    paintDirty = false;
+                }
+            }
+
+            if (needPaint) {
                 lastFrameTime = glfwGetTime();
                 render();
             } else if (!isGpuBackend()) {
@@ -1113,13 +1169,16 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Renders the current frame and consumes the repaint request.
+     * Renders the current frame. The paint-dirty flag is consumed by the
+     * event loop under the instance monitor (see {@link #run()}); this method
+     * also clears it defensively so direct calls from tests
+     * ({@link #renderFrame()}) and {@link #captureToPng(java.io.File)} behave
+     * consistently.
      */
     private void render() {
-        paintDirty = false;
-
-        // Clear canvas with background color
-        canvas.clear(Color.makeARGB(255, 30, 30, 30));
+        synchronized (this) {
+            paintDirty = false;
+        }
 
         // Re-cascade the stylesheet against the current tree state so that
         // pseudo-classes (:hover, :focus, :disabled, :active) always reflect
@@ -1131,7 +1190,9 @@ public class Application implements AutoCloseable {
         io.github.humbleui.skija.Canvas nativeCanvas = canvas.getNativeCanvas();
         int saveCount = nativeCanvas.save();
         try {
-            // Clear canvas with background color (covers full physical surface)
+            // Clear once, on the identity CTM, so the whole PHYSICAL surface
+            // is covered. (A second clear through the wrapper was redundant
+            // and polluted the save/restore stack.)
             nativeCanvas.clear(Color.makeARGB(255, 30, 30, 30));
 
             // HiDPI: map logical UI coordinates to physical device pixels
@@ -1143,11 +1204,14 @@ public class Application implements AutoCloseable {
             nativeCanvas.restoreToCount(saveCount);
         }
 
-        // Flush drawing commands to the backend
+        // Flush responsibilities:
+        //   - Canvas.flush() -> Surface.flushAndSubmit(): submits Skia draw
+        //     ops to the backend (required for both raster and GPU paths).
+        //   - DirectContext.flush(): additionally pushes GL work into the
+        //     driver queue; only meaningful with a GPU context.
         canvas.flush();
 
         if (isGpuBackend()) {
-            // Flush DirectContext and present the frame via buffer swap
             directContext.flush();
             window.swapBuffers();
         }
@@ -1175,6 +1239,26 @@ public class Application implements AutoCloseable {
         if (current == this) {
             current = null;
         }
+
+        // Clear every process-wide static this application installed, so a
+        // closed instance is never retained through global hooks (important
+        // for tests that create/destroy many applications). Method references
+        // have unstable identity (== between this::requestRepaint instances
+        // is not guaranteed), so ownership is tracked with an explicit flag
+        // set by init().
+        if (globalHookOwnedByThis) {
+            Component.setGlobalRepaintRequester(null);
+            globalHookOwnedByThis = false;
+        }
+        Component.setRepaintRequester(null);
+
+        if (focusManager != null) {
+            if (FocusManager.getGlobalFocusManager() == focusManager) {
+                FocusManager.setGlobalFocusManager(null);
+            }
+            focusManager = null;
+        }
+        TextField.setClipboardHooks(null, null);
 
         // Dispose all components in the root panel (cascades to children)
         if (rootPanel != null) {

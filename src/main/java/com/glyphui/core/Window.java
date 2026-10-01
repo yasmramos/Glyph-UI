@@ -11,7 +11,6 @@ import org.lwjgl.glfw.GLFWWindowSizeCallbackI;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryUtil;
 
-import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.system.MemoryStack.stackPush;
@@ -71,12 +70,19 @@ public class Window implements AutoCloseable {
      * @return true if initialization was successful
      */
     public boolean create() {
-        // Setup error callback
-        GLFWErrorCallback.createPrint(System.err).set();
+        // Setup error callback. Keep the CbRef so we can free it on failure
+        // paths and in destroy() (a bare .set() would orphan the native stub).
+        GLFWErrorCallback errorCallback = GLFWErrorCallback.createPrint(System.err).set();
 
         // Initialize GLFW
         if (!glfwInit()) {
             System.err.println("Unable to initialize GLFW");
+            // Uninstall our callback (restores GLFW's default) and free its
+            // native resources before bailing out.
+            GLFWErrorCallback installed = glfwSetErrorCallback(null);
+            if (installed != null) {
+                installed.free();
+            }
             return false;
         }
 
@@ -90,12 +96,22 @@ public class Window implements AutoCloseable {
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-        glfwWindowHint(GLFW_SAMPLES, 4); // MSAA
+        // MSAA hint removed: the Skija BackendRenderTarget is created with
+        // samples=0, so a multisampled default framebuffer was never actually
+        // resolved by us. Keep the GL state consistent (no-op on drivers that
+        // ignore it anyway) until Skija is configured for real MSAA
+        // (samples=4 + stencil=8).
 
         // Create the window
         windowHandle = glfwCreateWindow(windowWidth, windowHeight, title, MemoryUtil.NULL, MemoryUtil.NULL);
         if (windowHandle == MemoryUtil.NULL) {
             System.err.println("Failed to create GLFW window");
+            // Clean up process-wide GLFW state AND our error callback before
+            // returning, otherwise a re-init leaks the native callback stub.
+            GLFWErrorCallback installed = glfwSetErrorCallback(null);
+            if (installed != null) {
+                installed.free();
+            }
             glfwTerminate();
             return false;
         }
@@ -157,14 +173,18 @@ public class Window implements AutoCloseable {
             }
         }).set(windowHandle);
 
-        // Center the window
-        GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-        if (vidmode != null) {
-            glfwSetWindowPos(
-                windowHandle,
-                (vidmode.width() - windowWidth) / 2,
-                (vidmode.height() - windowHeight) / 2
-            );
+        // Center the window. Guard against headless setups: glfwGetPrimaryMonitor()
+        // returns NULL with no display attached, and glfwGetVideoMode(NULL) is UB.
+        long primaryMonitor = glfwGetPrimaryMonitor();
+        if (primaryMonitor != MemoryUtil.NULL) {
+            GLFWVidMode vidmode = glfwGetVideoMode(primaryMonitor);
+            if (vidmode != null) {
+                glfwSetWindowPos(
+                    windowHandle,
+                    (vidmode.width() - windowWidth) / 2,
+                    (vidmode.height() - windowHeight) / 2
+                );
+            }
         }
 
         // Make the window visible
@@ -183,20 +203,33 @@ public class Window implements AutoCloseable {
     /**
      * Checks if the window should close.
      *
+     * <p>Single source of truth: while a live GLFW window exists we query
+     * its flag directly (the local field would only duplicate it and could
+     * drift). The cached {@code shouldClose} field is used solely as a
+     * fallback before {@link #create()} succeeds, so headless/unit-test
+     * contexts can still request closure.</p>
+     *
      * @return true if the window should close
      */
     public boolean shouldClose() {
-        return shouldClose || glfwWindowShouldClose(windowHandle);
+        if (windowHandle != MemoryUtil.NULL) {
+            return glfwWindowShouldClose(windowHandle);
+        }
+        return shouldClose;
     }
 
     /**
-     * Sets the should close flag.
+     * Sets the should close flag. Safe to call before {@link #create()}:
+     * without a live window handle the request is simply cached (calling
+     * {@code glfwSetWindowShouldClose} with handle 0 raises a GLFW error).
      *
      * @param shouldClose true to request window close
      */
     public void setShouldClose(boolean shouldClose) {
         this.shouldClose = shouldClose;
-        glfwSetWindowShouldClose(windowHandle, shouldClose);
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwSetWindowShouldClose(windowHandle, shouldClose);
+        }
     }
 
     /**
@@ -217,6 +250,18 @@ public class Window implements AutoCloseable {
      */
     public void waitEvents() {
         glfwWaitEvents();
+    }
+
+    /**
+     * Waits for events with an upper time bound, then polls them. Useful for
+     * low-frequency animations where a pure {@link #waitEvents()} (infinite)
+     * or busy polling is too coarse — e.g. call it with 1/30 to cap an idle
+     * animation at ~30 FPS without spinning the CPU.
+     *
+     * @param seconds maximum time to wait, in seconds
+     */
+    public void waitEventsTimeout(double seconds) {
+        glfwWaitEventsTimeout(seconds);
     }
 
     /**
@@ -370,6 +415,8 @@ public class Window implements AutoCloseable {
         this.contentScaleX = scaleX;
         this.contentScaleY = scaleY;
         if (contentScaleListener != null) {
+            // Pass the real handle when available; 0 (no live window) is fine
+            // for headless listeners but must never reach a native callback.
             contentScaleListener.invoke(windowHandle, scaleX, scaleY);
         }
     }
@@ -438,17 +485,39 @@ public class Window implements AutoCloseable {
         if (windowHandle == 0L) {
             return; // already destroyed
         }
-        glfwFreeCallbacks(windowHandle);
-        glfwDestroyWindow(windowHandle);
-        windowHandle = 0L;
-        glfwTerminate();
-        // glfwSetErrorCallback(null) uninstalls and returns the previously
-        // registered error callback; guard against a null return so we never
-        // dereference it, then free its native resources.
+
+        // Free our window callbacks explicitly and null out the Java refs so
+        // nobody can later invoke a stub pointing at freed native memory.
+        // (glfwFreeCallbacks would do this too, but leaves the fields dangling.)
+        if (windowSizeCbRef != null) {
+            windowSizeCbRef.free();
+            windowSizeCbRef = null;
+        }
+        if (framebufferSizeCbRef != null) {
+            framebufferSizeCbRef.free();
+            framebufferSizeCbRef = null;
+        }
+        if (contentScaleCbRef != null) {
+            contentScaleCbRef.free();
+            contentScaleCbRef = null;
+        }
+
+        // Uninstall + free the GLFW error callback BEFORE glfwTerminate():
+        // terminate resets GLFW's internal state, and touching the error
+        // callback afterwards is not guaranteed to be well-defined.
         GLFWErrorCallback previousErrorCallback = glfwSetErrorCallback(null);
         if (previousErrorCallback != null) {
             previousErrorCallback.free();
         }
+
+        glfwDestroyWindow(windowHandle);
+        windowHandle = 0L;
+
+        // LWJGL: drop the thread-local GL capabilities bound to the context
+        // we just destroyed, otherwise function-pointer tables leak.
+        GL.setCapabilities(null);
+
+        glfwTerminate();
     }
 
     /**
