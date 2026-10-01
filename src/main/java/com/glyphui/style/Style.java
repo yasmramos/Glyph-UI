@@ -2,6 +2,7 @@ package com.glyphui.style;
 
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -176,7 +177,7 @@ public final class Style {
      */
     public Style inheritFrom(Style parent) {
         if (parent == null || parent.isEmpty()) {
-            return this;
+            return withoutRawValues();
         }
         EnumMap<StyleProperty, Object> merged = new EnumMap<>(StyleProperty.class);
         for (Map.Entry<StyleProperty, Object> e : parent.values.entrySet()) {
@@ -187,6 +188,23 @@ public final class Style {
         merged.putAll(values);
         merged.remove(StyleProperty.RAW_VALUES);
         return new Style(Collections.unmodifiableMap(merged));
+    }
+
+    /**
+     * The set of properties this style declares (excluding the synthetic
+     * {@link StyleProperty#RAW_VALUES} carrier). Used by the engine to know
+     * exactly which keys an inline style overrides.
+     *
+     * @return the declared property keys, never null
+     */
+    java.util.Set<StyleProperty> declaredProperties() {
+        EnumSet<StyleProperty> set = EnumSet.noneOf(StyleProperty.class);
+        for (Map.Entry<StyleProperty, Object> e : values.entrySet()) {
+            if (e.getKey() != StyleProperty.RAW_VALUES) {
+                set.add(e.getKey());
+            }
+        }
+        return set;
     }
 
     /**
@@ -235,8 +253,14 @@ public final class Style {
      * {@code --bg/--fg/--accent/--border}) are kept as raw text under
      * {@link StyleProperty#RAW_VALUES}. This method runs them through the same
      * value pipeline ({@link CssValues#parse}) with the engine's variables and
-     * folds the results into the typed values (existing typed entries win on
-     * conflict, which cannot happen for well-formed sheets).</p>
+     * folds the results into the typed values. On conflict between an existing
+     * typed entry and a raw declaration for the same property, the raw
+     * declaration wins: it is the most recently parsed form of the rule's own
+     * declaration, while the typed entry may derive from an earlier duplicate
+     * declaration in the same block (last-declaration-wins, like CSS). For
+     * well-formed sheets — one declaration per property per rule, as produced
+     * by {@link StyleSheet#parse} — the two sets are disjoint and no conflict
+     * arises.</p>
      *
      * @param variables custom-property map for {@code var()} resolution
      *                  (null treated as empty)
@@ -257,15 +281,36 @@ public final class Style {
         }
         Map<String, String> vars = variables != null ? variables : Map.of();
         for (Map.Entry<StyleProperty, String> e : rawValues.entrySet()) {
-            Object typed = CssValues.parse(e.getKey().cssName(), e.getValue(), vars);
+            // Route through the property's canonical CSS name, which may
+            // differ from its kebab-case enum name (BACKGROUND is declared as
+            // the "background" shorthand but its cssName() is
+            // "background-color"). Deriving the pipeline key from cssName()
+            // instead of the declaration text silently misclassifies values:
+            // a "#rrggbbaa" color routed under "background-color" hits the
+            // heuristic branch of CssValues.parse and comes back rotated to
+            // #aarrggbb.
+            Object typed = CssValues.parse(pipelineNameFor(e.getKey()), e.getValue(), vars);
             if (typed != null) {
                 builder.set(e.getKey(), typed);
             } else {
                 System.err.println("[GlyphUI] Warning: could not resolve CSS value \""
-                        + e.getValue() + "\" for property \"" + e.getKey().cssName() + "\"");
+                        + e.getValue() + "\" for property \"" + pipelineNameFor(e.getKey()) + "\"");
             }
         }
         return builder.build();
+    }
+
+    /**
+     * The canonical name under which a property must be routed through
+     * {@link CssValues#parse}. Kept in sync with
+     * {@link StyleSheet#propertyFor} (its inverse): BACKGROUND is parsed from
+     * the "background" shorthand, so re-parsing its raw value must use that
+     * key — cssName() returns the longhand "background-color", which the
+     * color pipeline only recognizes as a standard name, losing the
+     * shorthand-specific branch.
+     */
+    private static String pipelineNameFor(StyleProperty property) {
+        return property == StyleProperty.BACKGROUND ? "background" : property.cssName();
     }
 
     @Override
@@ -283,17 +328,63 @@ public final class Style {
         private final EnumMap<StyleProperty, Object> values = new EnumMap<>(StyleProperty.class);
 
         /**
-         * Sets a raw value (type must match the property's documented type).
+         * Sets a value for a property. The value must match the property's
+         * documented type ({@link StyleProperty#expectedType()}); mistyped
+         * values are rejected loudly here instead of silently returning the
+         * read-time default forever (a {@code String} stored under a Float
+         * property is invisible to {@code getFloat}). {@code Integer}/{@code
+         * Long} values accepted by an {@code int}-typed property; {@code
+         * Float}/{@code Double}/{@code Integer} values by a float-typed one.
+         * {@link StyleProperty#RAW_VALUES} is exempt (synthetic carrier).
          *
          * @param property the key
-         * @param value    the value
+         * @param value    the value (null removes/ignores the entry)
          * @return this builder
+         * @throws IllegalArgumentException when the value type does not match
+         *                                  the property's expected type
          */
         public Builder set(StyleProperty property, Object value) {
-            if (value != null) {
-                values.put(property, value);
+            if (value == null) {
+                return this;
             }
+            Class<?> expected = property.expectedType();
+            if (expected != null && !isCompatible(expected, value)) {
+                throw new IllegalArgumentException("Style property " + property.cssName()
+                        + " expects " + expected.getSimpleName() + " but got "
+                        + value.getClass().getSimpleName() + ": \"" + value + "\"");
+            }
+            values.put(property, value);
             return this;
+        }
+
+        /**
+         * Removes a previously set entry from this builder. Used by the
+         * engine when overlaying an inline style so that only the properties
+         * actually declared inline end up in the result.
+         *
+         * @param property the key to remove
+         * @return this builder
+         */
+        public Builder clear(StyleProperty property) {
+            values.remove(property);
+            return this;
+        }
+
+        private static boolean isCompatible(Class<?> expected, Object value) {
+            if (expected.isInstance(value)) {
+                return true;
+            }
+            // Numeric widening/narrowing tolerated between boxed int/float
+            // domains keeps programmatic builders ergonomic without letting
+            // strings or wrong-kind objects through.
+            if (expected == Integer.class) {
+                return value instanceof Integer || value instanceof Long;
+            }
+            if (expected == Float.class) {
+                return value instanceof Float || value instanceof Double
+                        || value instanceof Integer;
+            }
+            return false;
         }
 
         public Builder color(StyleProperty property, int argb) {
@@ -317,9 +408,69 @@ public final class Style {
          */
         public Builder putAll(Style other) {
             if (other != null) {
-                values.putAll(other.values);
+                for (Map.Entry<StyleProperty, Object> e : other.values.entrySet()) {
+                    // Route through set() so every absorbed entry is type-
+                    // validated the same way as a direct one. RAW_VALUES is
+                    // exempt (expectedType() == null), everything else must
+                    // already be correctly typed — merge paths (inheritFrom,
+                    // overrideWith) preserve that invariant.
+                    set(e.getKey(), e.getValue());
+                }
             }
             return this;
+        }
+
+        /**
+         * Sets an integer value (colors are stored as ARGB ints). Equivalent
+         * to {@code set(property, Integer.valueOf(value))} but without the
+         * autoboxing footgun: passing a raw int directly to
+         * {@link #set(StyleProperty, Object)} boxes it as {@code Integer},
+         * which fails validation for float-typed properties such as
+         * {@code opacity}. This method converts explicitly per the property's
+         * {@link StyleProperty#expectedType()} (int → float widening allowed,
+         * float → int rejected).
+         *
+         * @param property the key
+         * @param value    the int value
+         * @return this builder
+         * @throws IllegalArgumentException when the property expects String or
+         *                                  cannot hold this int losslessly
+         */
+        public Builder setInt(StyleProperty property, int value) {
+            Class<?> expected = property.expectedType();
+            if (expected == Integer.class) {
+                return set(property, value);
+            }
+            if (expected == Float.class) {
+                return set(property, (float) value);
+            }
+            throw new IllegalArgumentException("Property " + property.name()
+                    + " expects " + (expected == null ? "raw map" : expected.getSimpleName())
+                    + ", got int " + value);
+        }
+
+        /**
+         * Float counterpart of {@link #setInt}: converts a raw float to the
+         * property's expected numeric type (float → int only when the value
+         * is integral).
+         *
+         * @param property the key
+         * @param value    the float value
+         * @return this builder
+         * @throws IllegalArgumentException on non-numeric or String properties
+         */
+        public Builder setFloat(StyleProperty property, float value) {
+            Class<?> expected = property.expectedType();
+            if (expected == Float.class) {
+                return set(property, value);
+            }
+            if (expected == Integer.class && value == Math.floor(value)
+                    && !Float.isInfinite(value)) {
+                return set(property, (int) value);
+            }
+            throw new IllegalArgumentException("Property " + property.name()
+                    + " expects " + (expected == null ? "raw map" : expected.getSimpleName())
+                    + ", got float " + value);
         }
 
         /**

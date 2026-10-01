@@ -28,12 +28,15 @@ class PseudoClassStateTest {
 
     @BeforeEach
     void setUp() {
+        // NOTE: 8-digit hex colors follow CSS Color 4 (#rrggbbaa, alpha LAST).
+        // parseColor converts them to the engine's internal ARGB int format
+        // (alpha in the most significant byte), e.g. #00000011 -> 0x11000000.
         sheet = StyleSheet.parse("""
-                button { color: #00000011; }
-                button:hover { color: #00000022; }
-                button:focus { color: #00000033; }
-                button:active { color: #00000044; }
-                button:disabled { color: #00000055; }
+                button { color: #11000000; }
+                button:hover { color: #22000000; }
+                button:focus { color: #33000000; }
+                button:active { color: #44000000; }
+                button:disabled { color: #55000000; }
                 """);
         root = new Panel(0, 0, 400, 300);
         button = new Button(0, 0, 100, 30, "click");
@@ -58,13 +61,13 @@ class PseudoClassStateTest {
     @Test
     void baseStateUsesTypeRuleOnly() {
         button.setState(ComponentState.IDLE);
-        assertEquals(0xFF000011, computedColor());
+        assertEquals(0x11000000, computedColor());
     }
 
     @Test
     void hoverStatePicksHoverRule() {
         button.setState(ComponentState.HOVER);
-        assertEquals(0xFF000022, computedColor(), ":hover must win over the type rule");
+        assertEquals(0x22000000, computedColor(), ":hover must win over the type rule");
     }
 
     @Test
@@ -72,13 +75,13 @@ class PseudoClassStateTest {
         button.setFocusable(true);
         button.requestFocus();
         assertTrue(button.isFocused());
-        assertEquals(0xFF000033, computedColor(), ":focus matches via isFocused()");
+        assertEquals(0x33000000, computedColor(), ":focus matches via isFocused()");
     }
 
     @Test
     void activeStatePicksActiveRule() {
         button.setState(ComponentState.PRESSED);
-        assertEquals(0xFF000044, computedColor(), ":active maps to ComponentState.PRESSED");
+        assertEquals(0x44000000, computedColor(), ":active maps to ComponentState.PRESSED");
     }
 
     @Test
@@ -87,18 +90,18 @@ class PseudoClassStateTest {
         button.setState(ComponentState.HOVER);
         // Both :hover and :disabled match; :disabled has the same specificity
         // but appears later in the sheet, so it wins (declaration order).
-        assertEquals(0xFF000055, computedColor());
+        assertEquals(0x55000000, computedColor());
     }
 
     @Test
     void disablingAFocusedButtonClearsFocusAndRecomputesStyle() {
         button.setFocusable(true);
         button.requestFocus();
-        assertEquals(0xFF000033, computedColor());
+        assertEquals(0x33000000, computedColor());
 
         button.setEnabled(false);
         assertFalse(button.isFocused(), "FocusManager must drop focus from disabled widgets");
-        assertEquals(0xFF000055, computedColor());
+        assertEquals(0x55000000, computedColor());
     }
 
     @Test
