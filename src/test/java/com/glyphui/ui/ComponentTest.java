@@ -94,11 +94,12 @@ public class ComponentTest {
 
     @Test
     public void testContainsInsideAndCorners() {
-        // Component at (10, 10) with size 100x40 -> covers x:[10,110], y:[10,50]
+        // Component at (10, 10) with size 100x40 -> half-open [10,110) x [10,50)
         TestComponent comp = new TestComponent(10, 10, 100, 40);
 
         assertTrue(comp.contains(10, 10), "Top-left corner is inclusive");
-        assertTrue(comp.contains(110, 50), "Bottom-right corner is inclusive");
+        assertFalse(comp.contains(110, 50), "Bottom-right corner is exclusive (half-open bounds)");
+        assertTrue(comp.contains(109, 49), "Point just inside the bottom-right edge is contained");
         assertTrue(comp.contains(60, 30), "Center point is inside");
     }
 
