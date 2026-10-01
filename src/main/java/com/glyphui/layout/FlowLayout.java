@@ -1,6 +1,8 @@
 package com.glyphui.layout;
 
 import com.glyphui.graphics.Dimension;
+import com.glyphui.style.Style;
+import com.glyphui.style.StyleProperty;
 import com.glyphui.ui.Component;
 import com.glyphui.ui.Panel;
 
@@ -95,9 +97,22 @@ public class FlowLayout extends LayoutManager {
             // (word-wrapping labels, etc.) are laid out with their true size.
             Dimension size = component.measure(remainingWidth, Float.POSITIVE_INFINITY);
 
-            // Apply the measured size to the component
-            component.setWidth(size.getWidth());
-            component.setHeight(size.getHeight());
+            // Apply the size through applyLayoutSize(), NOT setWidth/setHeight:
+            // those are the user-facing setters and would flag the bounds as
+            // explicit (and pin an inline width/height), so the component
+            // could never be re-measured by later layout passes.
+            // A height the user set explicitly is respected unless CSS
+            // declares one; the row still advances by the measured
+            // (preferred) height so neighbouring rows do not overlap.
+            float appliedHeight = size.getHeight();
+            if (component.isSizeExplicitlySet()) {
+                Style cs = component.getComputedStyle();
+                boolean cssHeight = cs != null && cs.has(StyleProperty.HEIGHT);
+                if (!cssHeight) {
+                    appliedHeight = component.getHeight();
+                }
+            }
+            component.applyLayoutSize(size.getWidth(), appliedHeight);
 
             // Position the component in local coordinates
             component.setX(currentX);

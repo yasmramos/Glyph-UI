@@ -323,8 +323,11 @@ class StyleSubsystemFixesTest {
             Panel root = new Panel(0, 0, 200, 200);
             Button direct = new Button(0, 0, 100, 30, "Direct");
             root.add(direct);
-            // A grandchild must NOT match the '>' rule.
+            // A grandchild must NOT match the '>' rule. The intermediate node
+            // must not itself be a "div": a button directly under a div
+            // legitimately matches 'div > button'.
             Panel inner = new Panel(0, 0, 100, 30);
+            inner.setStyleTag("section");
             Button nested = new Button(0, 0, 80, 30, "Nested");
             inner.add(nested);
             root.add(inner);

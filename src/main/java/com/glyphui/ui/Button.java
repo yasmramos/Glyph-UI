@@ -12,10 +12,18 @@ import io.github.humbleui.skija.*;
  * A button component with text, click handler, and visual states.
  */
 public class Button extends Component {
-    /** Horizontal padding added on each side of the measured text. */
-    public static final float HORIZONTAL_PADDING = 24.0f;
-    /** Vertical padding added to the measured text height. */
-    public static final float VERTICAL_PADDING = 16.0f;
+    /**
+     * Default horizontal padding added on each side of the measured text.
+     * Matches the default theme's button padding; the theme and CSS
+     * {@code padding} take precedence at measure time.
+     */
+    public static final float HORIZONTAL_PADDING = 12.0f;
+    /**
+     * Default vertical padding added above and below the measured text.
+     * Matches the default theme's button padding; the theme and CSS
+     * {@code padding} take precedence at measure time.
+     */
+    public static final float VERTICAL_PADDING = 6.0f;
 
     private String text;
     private Runnable onClick;
@@ -325,11 +333,18 @@ public class Button extends Component {
 
     @Override
     public float getPreferredWidth() {
+        // User-provided bounds are the preferred size (see Component).
+        if (sizeExplicitlySet) {
+            return width;
+        }
         return measure(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY).getWidth();
     }
 
     @Override
     public float getPreferredHeight() {
+        if (sizeExplicitlySet) {
+            return height;
+        }
         return measure(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY).getHeight();
     }
 
@@ -347,8 +362,10 @@ public class Button extends Component {
         // An explicit CSS width/height (or one set through the base
         // measurement path) wins over text-based intrinsic sizing.
         com.glyphui.style.Style s = getComputedStyle();
-        if (s != null && (s.has(com.glyphui.style.StyleProperty.WIDTH)
-                || s.has(com.glyphui.style.StyleProperty.HEIGHT))) {
+        if (sizeExplicitlySet || (s != null && (s.has(com.glyphui.style.StyleProperty.WIDTH)
+                || s.has(com.glyphui.style.StyleProperty.HEIGHT)))) {
+            // Explicit bounds (bounds constructor / setWidth) behave like an
+            // explicit size: no text-based intrinsic sizing.
             return super.measure(maxWidth, maxHeight);
         }
         io.github.humbleui.skija.Font f = resolveFont(com.glyphui.graphics.Theme.FontRole.BUTTON);
@@ -358,9 +375,9 @@ public class Button extends Component {
         com.glyphui.graphics.Theme theme = getTheme();
         // CSS padding (when declared) overrides the theme's button padding.
         float padH = resolveFloatStyle(com.glyphui.style.StyleProperty.PADDING, null,
-                theme != null ? theme.getButtonPaddingHorizontal() : 8f);
+                theme != null ? theme.getButtonPaddingHorizontal() : HORIZONTAL_PADDING);
         float padV = resolveFloatStyle(com.glyphui.style.StyleProperty.PADDING, null,
-                theme != null ? theme.getButtonPaddingVertical() : 4f);
+                theme != null ? theme.getButtonPaddingVertical() : VERTICAL_PADDING);
         float w = textWidth + 2.0f * padH;
         float h = lineHeight + 2.0f * padV;
         return new com.glyphui.graphics.Dimension(

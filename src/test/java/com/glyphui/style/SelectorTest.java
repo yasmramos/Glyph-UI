@@ -73,8 +73,10 @@ class SelectorTest {
                 "direct child must match");
         assertTrue(sel.matches(path("x", "div", "button")),
                 "last two nodes being div,button must match regardless of ancestors");
-        assertFalse(sel.matches(path("div", "div", "button")),
-                "grandchild under an extra div must NOT match");
+        assertTrue(sel.matches(path("div", "div", "button")),
+                "the button's direct parent is a div, so it matches (CSS semantics)");
+        assertFalse(sel.matches(path("div", "div", "span", "button")),
+                "grandchild under an extra span must NOT match");
         assertFalse(sel.matches(path("div", "span", "button")),
                 "grandchild through a span must NOT match");
     }
