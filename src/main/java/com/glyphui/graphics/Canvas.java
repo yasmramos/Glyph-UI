@@ -116,25 +116,6 @@ public class Canvas {
     }
 
     /**
-     * Saves the current canvas matrix/clip state. Pair with
-     * {@link #restoreToCount(int)}.
-     *
-     * @return a save count to pass to {@link #restoreToCount(int)}
-     */
-    public int save() {
-        return canvas.save();
-    }
-
-    /**
-     * Restores the canvas state to the given save count.
-     *
-     * @param saveCount the count returned by {@link #save()}
-     */
-    public void restoreToCount(int saveCount) {
-        canvas.restoreToCount(saveCount);
-    }
-
-    /**
      * Scales the canvas CTM. Used for HiDPI rendering: the surface covers
      * the physical framebuffer, so the logical-coordinate UI tree is drawn
      * under a {@code contentScale} transform.
@@ -144,16 +125,6 @@ public class Canvas {
      */
     public void scale(float sx, float sy) {
         canvas.scale(sx, sy);
-    }
-
-    /**
-     * Translates the canvas CTM.
-     *
-     * @param dx the horizontal translation
-     * @param dy the vertical translation
-     */
-    public void translate(float dx, float dy) {
-        canvas.translate(dx, dy);
     }
 
     /**

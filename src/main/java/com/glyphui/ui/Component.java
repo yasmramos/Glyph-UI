@@ -2,7 +2,9 @@ package com.glyphui.ui;
 
 import com.glyphui.core.Application;
 import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Dimension;
 import com.glyphui.graphics.Property;
+import com.glyphui.graphics.Theme;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 import com.glyphui.style.Style;
@@ -129,7 +131,7 @@ public abstract class Component implements StyleNode, AutoCloseable {
      */
     public Property<Float> xProperty() {
         if (xProperty == null) {
-            xProperty = new Property<>(Application.getCurrent(), x, v -> { this.x = v; requestRepaint(); });
+            xProperty = new Property<>(Application.getCurrent(), x, v -> { this.x = v; requestRepaint(); invalidate(); });
         }
         return xProperty;
     }
@@ -141,7 +143,7 @@ public abstract class Component implements StyleNode, AutoCloseable {
      */
     public Property<Float> yProperty() {
         if (yProperty == null) {
-            yProperty = new Property<>(Application.getCurrent(), y, v -> { this.y = v; requestRepaint(); });
+            yProperty = new Property<>(Application.getCurrent(), y, v -> { this.y = v; requestRepaint(); invalidate(); });
         }
         return yProperty;
     }
@@ -184,7 +186,13 @@ public abstract class Component implements StyleNode, AutoCloseable {
             visibleProperty = new Property<>(Application.getCurrent(), visible, v -> {
                 if (this.visible != v) {
                     this.visible = v;
-                    requestRepaint();
+                    // A hidden widget cannot keep the keyboard focus.
+                    com.glyphui.core.FocusManager fm =
+                            com.glyphui.core.FocusManager.getGlobalFocusManager();
+                    if (fm != null) {
+                        fm.componentVisibilityChanged(this);
+                    }
+                    invalidate();
                 }
             });
         }
@@ -201,21 +209,17 @@ public abstract class Component implements StyleNode, AutoCloseable {
             enabledProperty = new Property<>(Application.getCurrent(), enabled, v -> {
                 if (this.enabled != v) {
                     this.enabled = v;
-                    requestRepaint();
+                    // A disabled widget cannot keep the keyboard focus.
+                    com.glyphui.core.FocusManager fm =
+                            com.glyphui.core.FocusManager.getGlobalFocusManager();
+                    if (fm != null) {
+                        fm.componentDisabled(this);
+                    }
+                    invalidate();
                 }
             });
         }
         return enabledProperty;
-    }
-
-    /**
-     * Creates a new Component with default (unset) bounds.
-     * The resulting component has zero geometry until a layout manager assigns
-     * a preferred size or the user sets bounds explicitly.
-     */
-    public Component() {
-        this(0f, 0f, 0f, 0f);
-        this.sizeExplicitlySet = false;
     }
 
     /** Whether this component participates in keyboard focus traversal. */
@@ -281,14 +285,6 @@ public abstract class Component implements StyleNode, AutoCloseable {
     }
 
     /**
-     * Creates a new Component.
-     *
-     * @param x      the x-coordinate of the component
-     * @param y      the y-coordinate of the component
-     * @param width  the width of the component
-     * @param height the height of the component
-     */
-    /**
      * Creates a zero-sized component to be positioned/sized by a layout
      * manager or by {@link #setSize}. Subclasses such as {@code TextField}
      * and {@code ImageView} use this when their size is derived from
@@ -296,8 +292,17 @@ public abstract class Component implements StyleNode, AutoCloseable {
      */
     protected Component() {
         this(0, 0, 0, 0);
+        this.sizeExplicitlySet = false;
     }
 
+    /**
+     * Creates a new Component.
+     *
+     * @param x      the x-coordinate of the component
+     * @param y      the y-coordinate of the component
+     * @param width  the width of the component
+     * @param height the height of the component
+     */
     public Component(float x, float y, float width, float height) {
         this.x = x;
         this.y = y;
@@ -914,28 +919,6 @@ public abstract class Component implements StyleNode, AutoCloseable {
             return Float.MAX_VALUE;
         }
         return Math.max(0.0f, value);
-    }
-
-    /**
-     * Gets the preferred width of this component. Kept as a helper consumed
-     * by the default {@link #measure(float, float)} implementation; layout
-     * managers should call {@code measure} instead.
-     *
-     * @return the preferred width
-     */
-    public float getPreferredWidth() {
-        return width;
-    }
-
-    /**
-     * Gets the preferred height of this component. Kept as a helper consumed
-     * by the default {@link #measure(float, float)} implementation; layout
-     * managers should call {@code measure} instead.
-     *
-     * @return the preferred height
-     */
-    public float getPreferredHeight() {
-        return height;
     }
 
     // ------------------------------------------------------------------
