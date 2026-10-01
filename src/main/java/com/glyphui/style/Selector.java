@@ -21,6 +21,13 @@ import java.util.List;
  * {@code :active} (pressed). They are evaluated against the component's
  * current state, not against a live mouse. {@code :root} is accepted as a
  * selector-level marker for the top-most node (custom-property blocks).
+ * A compound such as {@code :root .foo} is also valid: the {@code :root}
+ * part pins matching to the tree root while the remaining parts constrain
+ * descendants of it, following normal descendant/child semantics.
+ *
+ * <p>ID selectors ({@code #name}) are case-sensitive, like HTML ids; type
+ * and class names are matched case-insensitively (lower-cased at parse
+ * time) against the component's normalized style tag and style classes.</p>
  *
  * Specificity follows the classic CSS model as a tuple
  * {@code (idCount, classCount, typeCount)} compared lexicographically.
@@ -50,13 +57,20 @@ public final class Selector {
     private final List<Boolean> childCombinators;
     private final String source;
     private final int[] specificity;          // {ids, classes+pseudos, types}
+    /**
+     * True when the rightmost simple selector carries the {@code :root}
+     * marker. Such selectors are position-anchored at the tree root, so
+     * {@link #matches(List)} must not walk ancestors past index 0.
+     */
+    private final boolean anchoredAtRoot;
 
     private Selector(List<SimpleSelector> chain, List<Boolean> childCombinators,
-                     String source, int[] specificity) {
+                     String source, int[] specificity, boolean anchoredAtRoot) {
         this.chain = chain;
         this.childCombinators = childCombinators;
         this.source = source;
         this.specificity = specificity;
+        this.anchoredAtRoot = anchoredAtRoot;
     }
 
     /**
@@ -80,9 +94,9 @@ public final class Selector {
                                 + c + "' / attributes / selector lists are not part of the subset)");
             }
         }
-        // Tokenize: each '>' is its own token; everything else splits on
-        // whitespace. Links between adjacent simple selectors are child ('>')
-        // or descendant (whitespace).
+        // Tokenize with a single regex pass so misplaced combinators are
+        // detected from token positions ("a > > b" yields two consecutive
+        // '>' tokens; a leading/trailing '>' lands at the ends).
         List<String> tokens = new ArrayList<>();
         java.util.regex.Matcher m = java.util.regex.Pattern
                 .compile(">|[^\\s>]+").matcher(trimmed);
@@ -91,20 +105,28 @@ public final class Selector {
         }
         List<SimpleSelector> chain = new ArrayList<>();
         List<Boolean> links = new ArrayList<>(); // links.get(i): between i and i+1
+        boolean pendingChild = false;            // a '>' seen since the last simple selector
         int ids = 0, cls = 0, typ = 0;
         for (int i = 0; i < tokens.size(); i++) {
             String part = tokens.get(i);
             if (">".equals(part)) {
-                if (chain.isEmpty() || i == tokens.size() - 1) {
+                if (chain.isEmpty() || i == tokens.size() - 1
+                        || ">".equals(tokens.get(i + 1))) {
                     throw new IllegalArgumentException("Misplaced '>' in: " + trimmed);
                 }
-                links.set(links.size() - 1, Boolean.TRUE);
+                // A link entry is appended only when the *next* simple
+                // selector is parsed, so we cannot mutate one here; remember
+                // the child combinator and apply it at that point instead.
+                // (The old code did links.set(size-1, TRUE) here, which threw
+                // IndexOutOfBoundsException on any "a > b" selector.)
+                pendingChild = true;
                 continue;
             }
             SimpleSelector s = parseSimple(part);
             if (!chain.isEmpty()) {
-                links.add(Boolean.FALSE); // descendant until '>' upgrades it
+                links.add(pendingChild); // direct child after '>', descendant otherwise
             }
+            pendingChild = false;
             if (s.id != null) ids++;
             cls += s.classes.size() + s.pseudos.size();
             if (s.rootMarker) cls++;
@@ -114,9 +136,12 @@ public final class Selector {
         if (chain.isEmpty()) {
             throw new IllegalArgumentException("Empty selector: " + trimmed);
         }
+        assert links.size() == chain.size() - 1
+                : "combinator links must be one fewer than chain segments";
         return new Selector(Collections.unmodifiableList(chain),
                 Collections.unmodifiableList(links), trimmed,
-                new int[]{ids, cls, typ});
+                new int[]{ids, cls, typ},
+                chain.get(chain.size() - 1).rootMarker);
     }
 
     private static SimpleSelector parseSimple(String token) {
@@ -146,8 +171,8 @@ public final class Selector {
                     && token.charAt(i) != ':') {
                 i++;
             }
-            String name = token.substring(start, i).toLowerCase();
-            if (c == ':' && name.equals("root")) {
+            String name = token.substring(start, i);
+            if (c == ':' && name.equalsIgnoreCase("root")) {
                 s.rootMarker = true; // :root is a tree-position marker
                 continue;
             }
@@ -155,9 +180,15 @@ public final class Selector {
                 throw new IllegalArgumentException("Malformed selector token: " + token);
             }
             switch (c) {
-                case '.' -> s.classes.add(name);
+                // Type names and class names are lower-cased to match the
+                // component's normalized styleTag()/style classes. IDs are
+                // case-sensitive per HTML/CSS semantics, so '#id' keeps its
+                // original casing and is compared verbatim against
+                // Component.getId(). Pseudo-class names are matched
+                // case-insensitively in parsePseudo.
+                case '.' -> s.classes.add(name.toLowerCase());
                 case '#' -> s.id = name;
-                case ':' -> s.pseudos.add(parsePseudo(name, token));
+                case ':' -> s.pseudos.add(parsePseudo(name.toLowerCase(), token));
                 default -> throw new IllegalArgumentException("Malformed selector token: " + token);
             }
         }
@@ -191,40 +222,59 @@ public final class Selector {
             return false;
         }
         // Rightmost simple selector must match the last path element.
-        int ci = chain.size() - 1;
-        if (!matchesSimple(chain.get(ci), path.get(path.size() - 1))) {
+        if (!matchesSimple(chain.get(chain.size() - 1), path.get(path.size() - 1))) {
             return false;
         }
-        ci--;
-        int pi = path.size() - 2;
-        // Walk remaining ancestors from right to left.
-        while (ci >= 0) {
-            boolean childLink = childCombinators.get(ci);
-            if (childLink) {
-                // Must match the immediate parent.
-                if (pi < 0 || !matchesSimple(chain.get(ci), path.get(pi))) {
-                    return false;
-                }
-                pi--;
-                ci--;
-            } else {
-                // Descendant: scan upward until a match is found.
-                boolean found = false;
-                while (pi >= 0) {
-                    if (matchesSimple(chain.get(ci), path.get(pi))) {
-                        found = true;
-                        pi--;
-                        break;
-                    }
-                    pi--;
-                }
-                if (!found) {
-                    return false;
-                }
-                ci--;
+        // A selector whose RIGHTMOST compound is ":root" is anchored to the
+        // tree root: only the single-node path [root] can match it. Without
+        // this guard, matchesSimple's parent==null test passes for every node
+        // in a fake/partial path, making ":root" match anywhere. (The intent
+        // "button inside the root element" is expressed by putting :root on
+        // the LEFT segment — e.g. ":root button" — which the path-bounded
+        // walk below handles correctly.)
+        if (anchoredAtRoot) {
+            return path.size() == 1;
+        }
+        // Remaining chain segments must map onto a strictly decreasing
+        // sequence of ancestor indices honouring each combinator. The
+        // descendant link greedily picks the first match scanning upward,
+        // but that choice can strand an earlier '>' link (e.g. "div > .x y"
+        // against [div, span.x, div, button.y] would otherwise wrongly
+        // match by binding 'y' to the outer div). Backtracking here keeps
+        // matching correct for mixed combinators at negligible cost — the
+        // chain length is tiny and paths are shallow.
+        return matchChain(path, chain.size() - 2, path.size() - 2);
+    }
+
+    /**
+     * Recursive right-to-left matcher with backtracking.
+     *
+     * @param path root → leaf node path
+     * @param ci   index of the next chain segment to place
+     * @param pi   highest path index still available for {@code ci}
+     * @return true when every remaining segment fits
+     */
+    private boolean matchChain(List<StyleNode> path, int ci, int pi) {
+        if (ci < 0) {
+            return true; // all segments placed
+        }
+        boolean childLink = childCombinators.get(ci);
+        if (childLink) {
+            // '>' requires immediate adjacency with the already-placed
+            // segment on the right (at pi + 1), so only path[pi] qualifies.
+            return pi >= 0
+                    && matchesSimple(chain.get(ci), path.get(pi))
+                    && matchChain(path, ci - 1, pi - 1);
+        }
+        // Descendant: try every ancestor position from nearest to farthest;
+        // on failure continue with the next candidate (backtracking).
+        for (int k = pi; k >= 0; k--) {
+            if (matchesSimple(chain.get(ci), path.get(k))
+                    && matchChain(path, ci - 1, k - 1)) {
+                return true;
             }
         }
-        return true;
+        return false;
     }
 
     private boolean matchesSimple(SimpleSelector s, StyleNode node) {
