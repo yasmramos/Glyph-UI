@@ -105,20 +105,23 @@ public abstract class Component implements StyleNode, AutoCloseable {
     private Property<Boolean> visibleProperty;
     private Property<Boolean> enabledProperty;
 
-    /** Applies a user-set width: marks bounds as explicit, repaints and invalidates. */
+    /**
+     * Applies a user-set width: marks bounds as explicit, syncs the inline
+     * style and triggers a single invalidation. The repaint is requested
+     * exactly once through {@link #invalidate()}, which propagates up the
+     * parent chain and reaches the application requester at the root.
+     */
     private void applyWidthExplicit(float newWidth) {
         this.width = newWidth;
         this.sizeExplicitlySet = true;
-        requestRepaint();
         applyExplicitSize();
         invalidate();
     }
 
-    /** Applies a user-set height: marks bounds as explicit, repaints and invalidates. */
+    /** Applies a user-set height: same single-repaint path as width. */
     private void applyHeightExplicit(float newHeight) {
         this.height = newHeight;
         this.sizeExplicitlySet = true;
-        requestRepaint();
         applyExplicitSize();
         invalidate();
     }
@@ -570,6 +573,19 @@ public abstract class Component implements StyleNode, AutoCloseable {
         io.github.humbleui.skija.Typeface face = family != null
                 ? com.glyphui.graphics.FontManager.resolveTypeface(family, style)
                 : com.glyphui.graphics.FontManager.resolveTypeface(null, style);
+        if (face == null) {
+            // Unknown/unsupported family: fall back to the default typeface.
+            face = com.glyphui.graphics.FontManager.resolveTypeface(null,
+                    io.github.humbleui.skija.FontStyle.NORMAL);
+        }
+        if (face == null) {
+            // No usable typeface at all (e.g. empty font catalog in a
+            // headless test): return the theme/default font instead of
+            // letting the Font constructor throw an opaque NPE.
+            Theme theme = getTheme();
+            return theme != null ? theme.getFont(role)
+                    : com.glyphui.graphics.FontManager.getFont(role);
+        }
         io.github.humbleui.skija.Font font = new io.github.humbleui.skija.Font(face, size);
         STYLE_FONTS.put(key, font);
         return font;
@@ -746,17 +762,24 @@ public abstract class Component implements StyleNode, AutoCloseable {
      * inline style exists yet (the plain fields remain authoritative).
      */
     private void applyExplicitSize() {
-        if (inlineStyle != null && !inlineStyle.isEmpty()) {
-            com.glyphui.style.Style.Builder b = com.glyphui.style.Style.builder()
-                    .putAll(inlineStyle);
-            if (inlineStyle.has(com.glyphui.style.StyleProperty.WIDTH)) {
-                b.length(com.glyphui.style.StyleProperty.WIDTH, width);
-            }
-            if (inlineStyle.has(com.glyphui.style.StyleProperty.HEIGHT)) {
-                b.length(com.glyphui.style.StyleProperty.HEIGHT, height);
-            }
-            inlineStyle = b.build();
+        if (!sizeExplicitlySet) {
+            return;
         }
+        if (inlineStyle == null || inlineStyle.isEmpty()) {
+            // First explicit size with no inline declarations: create the
+            // inline style so programmatic sizes win over stylesheet rules,
+            // as documented above.
+            inlineStyle = com.glyphui.style.Style.builder()
+                    .length(com.glyphui.style.StyleProperty.WIDTH, width)
+                    .length(com.glyphui.style.StyleProperty.HEIGHT, height)
+                    .build();
+            return;
+        }
+        com.glyphui.style.Style.Builder b = com.glyphui.style.Style.builder()
+                .putAll(inlineStyle);
+        b.length(com.glyphui.style.StyleProperty.WIDTH, width);
+        b.length(com.glyphui.style.StyleProperty.HEIGHT, height);
+        inlineStyle = b.build();
     }
 
     /**
@@ -809,6 +832,12 @@ public abstract class Component implements StyleNode, AutoCloseable {
     /**
      * Sets the parent panel of this component.
      *
+     * <p>This only rewires the back-pointer; it does not add or remove the
+     * component in any child list and does not trigger a relayout/repaint.
+     * Containers own tree membership — prefer {@link Panel#add(Component)}
+     * and {@link Panel#remove(Component)}, which call this method as part
+     * of a fully consistent reparenting.</p>
+     *
      * @param parent the parent panel
      */
     public void setParent(Panel parent) {
@@ -857,13 +886,29 @@ public abstract class Component implements StyleNode, AutoCloseable {
     /**
      * Checks if a point is within the bounds of this component.
      *
+     * <p>Bounds are half-open: the left/top edge is inclusive, the
+     * right/bottom edge exclusive. Adjacent components therefore do not both
+     * claim a point that lies exactly on their shared border.</p>
+     *
      * @param mouseX the x-coordinate to check
      * @param mouseY the y-coordinate to check
      * @return true if the point is inside the component
      */
     public boolean contains(int mouseX, int mouseY) {
-        return mouseX >= x && mouseX <= x + width &&
-               mouseY >= y && mouseY <= y + height;
+        return contains((float) mouseX, (float) mouseY);
+    }
+
+    /**
+     * Float-precision hit test; see {@link #contains(int, int)} for the
+     * half-open bounds semantics. Preferred when coordinates come from a
+     * HiDPI conversion or fractional layout.
+     *
+     * @param px the x-coordinate to check
+     * @param py the y-coordinate to check
+     * @return true if the point is inside the component
+     */
+    public boolean contains(float px, float py) {
+        return px >= x && px < x + width && py >= y && py < y + height;
     }
 
     /**
@@ -1090,7 +1135,10 @@ public abstract class Component implements StyleNode, AutoCloseable {
             paint.setStroke(true);
             paint.setStrokeWidth(1.5f);
             paint.setAntiAlias(true);
-            paint.setPathEffect(io.github.humbleui.skija.PathEffect.makeDash(new float[]{4.0f, 3.0f}, 0.0f));
+            // The dash effect is an immutable native object shared by every
+            // focus ring in the process; it must never be closed here (or by
+            // Paint.close(), which does not own its PathEffect).
+            paint.setPathEffect(FOCUS_DASH_EFFECT);
             canvas.drawRRect(x + 1.0f, y + 1.0f, Math.max(0.0f, width - 2.0f),
                     Math.max(0.0f, height - 2.0f),
                     getTheme().getFocusRingRadius(), getTheme().getFocusRingRadius(), paint);
@@ -1098,6 +1146,10 @@ public abstract class Component implements StyleNode, AutoCloseable {
             paint.close();
         }
     }
+
+    /** Shared dashed path effect for focus rings (created once, never closed per-frame). */
+    private static final io.github.humbleui.skija.PathEffect FOCUS_DASH_EFFECT =
+            io.github.humbleui.skija.PathEffect.makeDash(new float[]{4.0f, 3.0f}, 0.0f);
 
     /**
      * Handles mouse events.

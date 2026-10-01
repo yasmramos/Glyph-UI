@@ -141,11 +141,13 @@ class RepaintRequesterTest {
             Panel panel = new Panel(0, 0, 200, 200);
             int before = repaintCount.get();
 
-            // Component.setWidth requests one repaint; Panel.setWidth also
-            // marks the layout dirty (which requests another one).
+            // Resizing a panel must request exactly one repaint. The
+            // previous double request (direct repaint hook plus layout
+            // invalidation) was a bug: repaint coalescing makes the second
+            // call redundant, so setWidth now goes through a single path.
             panel.setWidth(300);
 
-            assertEquals(before + 2, repaintCount.get());
+            assertEquals(before + 1, repaintCount.get());
         }
     }
 }
