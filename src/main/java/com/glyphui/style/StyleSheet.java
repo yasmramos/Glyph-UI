@@ -24,30 +24,50 @@ import java.util.Set;
 
 /**
  * A parsed stylesheet: a list of {@code (selector -> Style)} rules plus the
- * custom properties ({@code --name: value}) declared under {@code :root} for
- * {@code var(--name)} resolution against the active theme.
+ * custom properties ({@code --name: value}) collected from the whole sheet
+ * for {@code var(--name)} resolution against the active theme.
+ *
+ * <p><b>Custom-property scoping:</b> in this subset custom properties are
+ * <em>global</em>, not scoped per selector like real CSS. Every {@code --x}
+ * declaration anywhere in the sheet contributes to one shared map; on
+ * duplicates, last declaration in source order wins for all consumers. The
+ * conventional place to declare them remains {@code :root}.</p>
  *
  * <p>Parsing is delegated to <b>ph-css</b>. Declaration values are mapped to
  * the supported {@link StyleProperty} set; anything unsupported is skipped
  * with a warning (the documented subset lives in README.md).</p>
  *
- * <p>The cascade implemented by {@link #computeMatches(StyleNode)} follows
- * CSS ordering: rules are applied in ascending specificity, ties broken by
- * source order — later/higher-specificity wins.</p>
+ * <p>The cascade implemented by {@link #matchingRules(List)} follows CSS
+ * ordering: rules are applied in ascending specificity, ties broken by
+ * source order — later/higher-specificity wins. The priority order is
+ * precomputed once at parse time, so matching just filters it.</p>
  */
 public final class StyleSheet {
 
-    /** One selector + its declaration block. */
-    public record Rule(Selector selector, Style style, int order) {
+    /**
+     * One selector + its declaration block.
+     *
+     * @param selector the parsed selector
+     * @param style    the declaration block
+     * @param order    source-order position within the sheet
+     * @param id       stable cache key assigned at parse time; unique among
+     *                 the rules of the owning stylesheet (the record's
+     *                 equality deliberately ignores it)
+     */
+    public record Rule(Selector selector, Style style, int order, int id) {
     }
 
     private final List<Rule> rules;
+    /** The same rules sorted by cascade priority (specificity, then order). */
+    private final List<Rule> prioritySorted;
     private final Map<String, String> rootVariables;
     private final Set<String> unsupportedProperties;
 
-    private StyleSheet(List<Rule> rules, Map<String, String> rootVariables,
+    private StyleSheet(List<Rule> sourceOrder, List<Rule> prioritySorted,
+                       Map<String, String> rootVariables,
                        Set<String> unsupportedProperties) {
-        this.rules = Collections.unmodifiableList(rules);
+        this.rules = Collections.unmodifiableList(sourceOrder);
+        this.prioritySorted = Collections.unmodifiableList(prioritySorted);
         this.rootVariables = Collections.unmodifiableMap(rootVariables);
         this.unsupportedProperties = Collections.unmodifiableSet(unsupportedProperties);
     }
@@ -58,7 +78,7 @@ public final class StyleSheet {
      * @return a stylesheet with no rules
      */
     public static StyleSheet empty() {
-        return new StyleSheet(List.of(), Map.of(), Set.of());
+        return new StyleSheet(List.of(), List.of(), Map.of(), Set.of());
     }
 
     /**
@@ -139,7 +159,10 @@ public final class StyleSheet {
                     builder.set(StyleProperty.RAW_VALUES,
                             Collections.unmodifiableMap(rawValues));
                 }
-                rules.add(new Rule(selector, builder.build(), order++));
+                // The id is the rule's position in source order: a stable,
+                // unique-per-sheet cache key assigned at parse time.
+                rules.add(new Rule(selector, builder.build(), order, order));
+                order++;
             }
         }
         for (int i = 0; i < sheet.getImportRuleCount(); i++) {
@@ -148,7 +171,12 @@ public final class StyleSheet {
                     + ir.getLocationString() + "\" not supported, skipped");
         }
         rules.sort(Comparator.comparingInt(Rule::order));
-        return new StyleSheet(rules, variables, unsupported);
+        // Pre-sort by cascade priority (specificity, then source order) so
+        // matchingRules can preserve it without re-sorting per node.
+        List<Rule> byPriority = new ArrayList<>(rules);
+        byPriority.sort(Comparator.<Rule>comparingInt(r -> weight(r.selector()))
+                .thenComparingInt(Rule::order));
+        return new StyleSheet(rules, byPriority, variables, unsupported);
     }
 
     private static void collectVariables(CascadingStyleSheet sheet,
@@ -217,16 +245,29 @@ public final class StyleSheet {
     public List<Rule> matchingRules(List<StyleNode> path) {
         // Standard right-to-left matching over the root → leaf path built by
         // StyleEngine (each compound must match some ancestor, '>' requires
-        // immediate adjacency).
+        // immediate adjacency). Iterating the pre-sorted list preserves the
+        // cascade priority order without re-sorting per node.
         List<Rule> matched = new ArrayList<>();
-        for (Rule r : rules) {
+        for (Rule r : prioritySorted) {
             if (r.selector().matches(path)) {
                 matched.add(r);
             }
         }
-        matched.sort(Comparator.<Rule>comparingInt(r -> weight(r.selector()))
-                .thenComparingInt(Rule::order));
         return matched;
+    }
+
+    /**
+     * Stable cache key for a parsed rule: its preassigned unique id.
+     * Replaces the former O(n) {@code getRules().indexOf(rule)} lookup done
+     * once per matched rule per node per frame during the cascade. The id is
+     * unique among the rules of this sheet and stable for the sheet's
+     * lifetime, so engines can key resolved-style caches with it in O(1).
+     *
+     * @param rule a rule previously returned by {@link #matchingRules}
+     * @return the id assigned at parse time
+     */
+    public static int ruleId(Rule rule) {
+        return rule.id();
     }
 
     /**
