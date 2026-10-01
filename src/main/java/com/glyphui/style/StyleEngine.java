@@ -165,10 +165,13 @@ public final class StyleEngine {
         Map<String, String> vars = new HashMap<>(styleSheet.getRootVariables());
         Theme t = theme != null ? theme : Theme.current();
         if (t != null) {
-            vars.put("--bg", String.format("#%08X", t.getBackgroundColor()));
-            vars.put("--fg", String.format("#%08X", t.getForegroundColor()));
-            vars.put("--accent", String.format("#%08X", t.getAccentColor()));
-            vars.put("--border", String.format("#%08X", t.getBorderColor()));
+            // Format as 6-digit hex (#RRGGBB): the engine's own theme colors
+            // are opaque, and emitting #RRGGBBAA would be re-parsed with the
+            // CSS Color 4 RGBA ordering (alpha last), swapping channels.
+            vars.put("--bg", String.format("#%06X", t.getBackgroundColor() & 0xFFFFFF));
+            vars.put("--fg", String.format("#%06X", t.getForegroundColor() & 0xFFFFFF));
+            vars.put("--accent", String.format("#%06X", t.getAccentColor() & 0xFFFFFF));
+            vars.put("--border", String.format("#%06X", t.getBorderColor() & 0xFFFFFF));
         }
         return vars;
     }

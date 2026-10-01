@@ -14,6 +14,8 @@ import org.lwjgl.glfw.GLFWMouseButtonCallbackI;
 import org.lwjgl.glfw.GLFWCursorPosCallbackI;
 import org.lwjgl.glfw.GLFWCharCallback;
 import org.lwjgl.glfw.GLFWCharCallbackI;
+import org.lwjgl.glfw.GLFWFramebufferSizeCallback;
+import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
@@ -98,6 +100,13 @@ public class Application implements AutoCloseable {
     private double mouseX;
     private double mouseY;
     private boolean[] mouseButtons = new boolean[10];
+
+    /** Owns Tab / Shift+Tab focus traversal and the currently focused widget. */
+    private FocusManager focusManager;
+
+    /** Cached HiDPI content scale factors (logical -> physical pixels). */
+    private float contentScaleX = 1.0f;
+    private float contentScaleY = 1.0f;
 
     /**
      * The most recently started application instance, used by widgets to
@@ -247,6 +256,11 @@ public class Application implements AutoCloseable {
             running = true;
             paintDirty = true; // always paint the first frame
 
+            // Cache the HiDPI content scale factors; render() applies them
+            // per frame and the callback below keeps them up to date.
+            this.contentScaleX = window.getContentScaleX();
+            this.contentScaleY = window.getContentScaleY();
+
             return true;
         } catch (Exception e) {
             System.err.println("Failed to initialize application: " + e.getMessage());
@@ -358,7 +372,7 @@ public class Application implements AutoCloseable {
      * @param width  the new width
      * @param height the new height
      */
-    void recreateRasterSurface(int width, int height) {
+    public void recreateRasterSurface(int width, int height) {
         if (canvas == null) {
             throw new IllegalStateException("Canvas must be initialized before recreating a raster surface");
         }
@@ -379,6 +393,18 @@ public class Application implements AutoCloseable {
         canvas.resize(width, height);
 
         requestRepaint();
+    }
+
+    /**
+     * Recreates the CPU-backed raster surface using the window's current
+     * framebuffer size. Used by tests to simulate HiDPI framebuffer changes
+     * without a GL context.
+     */
+    public void recreateRasterSurfaceForTesting() {
+        if (window == null) {
+            throw new IllegalStateException("Window must be initialized first");
+        }
+        recreateRasterSurface(window.getFramebufferWidth(), window.getFramebufferHeight());
     }
 
     /**
@@ -403,7 +429,11 @@ public class Application implements AutoCloseable {
         // Content scale (DPI) change — e.g. window moved across monitors:
         // only the per-frame scale factor changes; render() reads it live,
         // so we just need a repaint.
-        window.setContentScaleListener((w, xscale, yscale) -> requestRepaint());
+        window.setContentScaleListener((w, xscale, yscale) -> {
+            this.contentScaleX = xscale;
+            this.contentScaleY = yscale;
+            requestRepaint();
+        });
 
         // Mouse button callback — coordinates stay in LOGICAL space
         GLFWMouseButtonCallbackI mouseButtonCallback = (w, button, action, mods) -> {
@@ -537,9 +567,14 @@ public class Application implements AutoCloseable {
             surface = null;
         }
 
+        // Logical size derived from the physical framebuffer via the DPI factor
+        int logicalWidth = Math.max(1, Math.round(fbWidth / contentScaleX));
+        int logicalHeight = Math.max(1, Math.round(fbHeight / contentScaleY));
+
         if (!isGpuBackend()) {
-            // Raster backend: allocate a fresh CPU-backed surface at the new size
-            recreateRasterSurface(width, height);
+            // Raster backend: allocate a fresh CPU-backed surface at the new
+            // PHYSICAL size; the canvas wrapper keeps the LOGICAL size.
+            recreateRasterSurface(fbWidth, fbHeight);
         } else {
             // GPU backend: wrap the window framebuffer in a new render target
             int[] fbIdArray = new int[1];
@@ -548,8 +583,8 @@ public class Application implements AutoCloseable {
 
             // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
             BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
-                width,
-                height,
+                fbWidth,
+                fbHeight,
                 0,      // samples
                 0,      // stencil
                 fbId,
@@ -579,11 +614,11 @@ public class Application implements AutoCloseable {
             canvas.setNativeCanvas(skijaCanvas);
         }
 
-        canvas.resize(width, height);
+        canvas.resize(logicalWidth, logicalHeight);
 
-        // Update root panel size
-        rootPanel.setWidth(width);
-        rootPanel.setHeight(height);
+        // Update root panel size (logical coordinates)
+        rootPanel.setWidth(logicalWidth);
+        rootPanel.setHeight(logicalHeight);
 
         requestRepaint();
     }
@@ -634,6 +669,15 @@ public class Application implements AutoCloseable {
      */
     public Panel getRootPanel() {
         return rootPanel;
+    }
+
+    /**
+     * Gets the native window wrapper created during {@link #init()}.
+     *
+     * @return the window, or null before init
+     */
+    public Window getWindow() {
+        return window;
     }
 
     /**
@@ -849,15 +893,6 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Requests a repaint on the next event-loop iteration.
-     * Widgets call this after state changes; safe to call from any thread
-     * (the flag is volatile and setting it repeatedly is harmless).
-     */
-    public void requestRepaint() {
-        paintDirty = true;
-    }
-
-    /**
      * Returns the thread that started {@link #run()} (the UI thread), or
      * {@code null} if the event loop has not started yet.
      *
@@ -1001,15 +1036,6 @@ public class Application implements AutoCloseable {
         }
     }
 
-
-    /**
-     * Returns the current on-demand rendering state for testing/diagnostics.
-     *
-     * @return true if a repaint is pending
-     */
-    public boolean isPaintDirty() {
-        return paintDirty;
-    }
 
     /**
      * Sets an animation callback that keeps the loop repainting every frame.

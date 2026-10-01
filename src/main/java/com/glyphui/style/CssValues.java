@@ -116,6 +116,16 @@ final class CssValues {
         if (property.equals("font-weight")) {
             return parseFontWeight(v);
         }
+        // Some widgets store color-like properties under non-standard names
+        // (e.g. "text-color"); still resolve them as colors when the raw
+        // value looks like a color token.
+        if (v.startsWith("#") || v.startsWith("rgb(") || v.startsWith("rgba(")
+                || NAMED_COLORS.containsKey(v)) {
+            Integer c = parseColor(v);
+            if (c != null) {
+                return c;
+            }
+        }
         // Keyword / identifier properties: display, font-family, flex-*, etc.
         return stripQuotes(v);
     }

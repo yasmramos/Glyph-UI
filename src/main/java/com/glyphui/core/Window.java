@@ -220,6 +220,15 @@ public class Window implements AutoCloseable {
     }
 
     /**
+     * Posts an empty event to the GLFW event queue, waking up a UI thread
+     * blocked in {@link #waitEvents()} so that it promptly processes a new
+     * repaint request or queued task.
+     */
+    public void postEmptyEvent() {
+        glfwPostEmptyEvent();
+    }
+
+    /**
      * Gets the window handle.
      *
      * @return the GLFW window handle
