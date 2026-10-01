@@ -56,8 +56,9 @@ final class CssValues {
     /** Properties whose value is a bare numeric length (px). */
     private static boolean isLengthProperty(String prop) {
         return switch (prop) {
-            case "padding", "margin", "width", "height", "border-width",
-                 "border-radius", "font-size", "gap" -> true;
+            case "padding", "margin", "width", "height",
+                 "border", "border-width", "border-radius",
+                 "font-size", "gap" -> true;
             default -> false;
         };
     }
@@ -87,9 +88,13 @@ final class CssValues {
         if (v.isEmpty()) {
             return null;
         }
-        // Shorthands that need more than one token are out of subset.
-        if (property.equals("border") && !v.matches("-?\\d+(\\.\\d+)?px")) {
-            return null; // e.g. "1px solid red" not supported yet
+        // The `border` shorthand is only supported in its width-only form
+        // (e.g. "2px", "0"); anything multi-token ("1px solid red") is out of
+        // subset. `border` is also listed in isLengthProperty so the accepted
+        // value is parsed into a Float typed for StyleProperty.BORDER_WIDTH —
+        // storing the raw string here would silently fail every getFloat().
+        if (property.equals("border") && !v.matches("-?\\d+(\\.\\d+)?(px)?")) {
+            return null;
         }
         if (property.equals("flex") && !v.matches("\\d+(\\.\\d+)?")) {
             return null; // "1 1 auto" style shorthand not supported
@@ -181,13 +186,19 @@ final class CssValues {
     /**
      * Parses a CSS color into an ARGB int.
      *
-     * <p>Hex forms are interpreted per the CSS Color 4 specification:
-     * {@code #rgba} and {@code #rrggbbaa} carry the alpha channel in the
-     * <em>last</em> digits (RGBA ordering), which is converted to the internal
-     * ARGB representation here.</p>
+     * <p><b>Project convention for 4/8-digit hex colors:</b> the alpha byte
+     * comes <em>first</em> ({@code #aarrggbb} / {@code #argb}), matching the
+     * internal ARGB ints used across GlyphUI (Skija, theme defaults and
+     * custom-property values written as {@code 0x...}/{@code #aarrggbb}).
+     * This intentionally deviates from CSS Color 4's {@code #rrggbbaa}
+     * ordering so that a color can round-trip through the raw-value pipeline
+     * ({@code RAW_VALUES} → {@code var()} substitution → re-parse) without
+     * rotating its channels. Consequently a theme variable holding
+     * {@code #11000000} resolves to ARGB {@code 0x11000000} (alpha = 0x11),
+     * not {@code 0x00110000}.</p>
      *
-     * @param value one of {@code #rgb}, {@code #rgba}, {@code #rrggbb},
-     *              {@code #rrggbbaa}, {@code rgb(r,g,b)},
+     * @param value one of {@code #rgb}, {@code #argb}, {@code #rrggbb},
+     *              {@code #aarrggbb}, {@code rgb(r,g,b)},
      *              {@code rgba(r,g,b,a)} or a named color
      * @return ARGB int, or null when unparsable
      */
@@ -208,11 +219,11 @@ final class CssValues {
                         return 0xFF000000 | (r << 16) | (g << 8) | b;
                     }
                     case 4: {
-                        // #rgba — CSS Color 4, alpha in the last digit.
-                        int r = Integer.parseInt(hex.substring(0, 1), 16) * 17;
-                        int g = Integer.parseInt(hex.substring(1, 2), 16) * 17;
-                        int b = Integer.parseInt(hex.substring(2, 3), 16) * 17;
-                        int a = Integer.parseInt(hex.substring(3, 4), 16) * 17;
+                        // #argb — project convention: alpha in the FIRST digit.
+                        int a = Integer.parseInt(hex.substring(0, 1), 16) * 17;
+                        int r = Integer.parseInt(hex.substring(1, 2), 16) * 17;
+                        int g = Integer.parseInt(hex.substring(2, 3), 16) * 17;
+                        int b = Integer.parseInt(hex.substring(3, 4), 16) * 17;
                         return (a << 24) | (r << 16) | (g << 8) | b;
                     }
                     case 6: {
@@ -220,13 +231,11 @@ final class CssValues {
                         return 0xFF000000 | (int) rgb;
                     }
                     case 8: {
-                        // #rrggbbaa — CSS Color 4, alpha in the last byte.
-                        long rgba = Long.parseLong(hex, 16);
-                        long r = (rgba >> 24) & 0xFF;
-                        long g = (rgba >> 16) & 0xFF;
-                        long b = (rgba >> 8) & 0xFF;
-                        long a = rgba & 0xFF;
-                        return (int) ((a << 24) | (r << 16) | (g << 8) | b);
+                        // #aarrggbb — project convention (see class javadoc):
+                        // hex digits are read verbatim into the ARGB int so
+                        // colors round-trip through the raw-value pipeline
+                        // without channel rotation.
+                        return (int) Long.parseLong(hex, 16);
                     }
                     default:
                         return null;

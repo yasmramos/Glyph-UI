@@ -17,10 +17,12 @@ class CascadeSpecificityTest {
 
     @Test
     void idBeatsClassBeatsType() {
+        // 8-digit hex colors are CSS Color 4 #rrggbbaa (alpha LAST); the engine
+        // stores them internally as ARGB ints (alpha in the most significant byte).
         StyleSheet sheet = StyleSheet.parse("""
-                button { color: #00000011; }
-                .accent { color: #00000022; }
-                #special { color: #00000033; }
+                button { color: #11000000; }
+                .accent { color: #22000000; }
+                #special { color: #33000000; }
                 """);
         Panel root = new Panel(0, 0, 400, 300);
         Button b = new Button(0, 0, 100, 30, "hi");
@@ -30,13 +32,13 @@ class CascadeSpecificityTest {
 
         StyleEngine.apply(root, sheet);
 
-        assertEquals(0xFF000033, b.getComputedStyle().getInt(StyleProperty.COLOR, 0),
+        assertEquals(0x33000000, b.getComputedStyle().getInt(StyleProperty.COLOR, 0),
                 "#id must win over .class and type selectors");
     }
 
     @Test
     void inlineStyleWinsOverEverything() {
-        StyleSheet sheet = StyleSheet.parse("#x { color: #000000AA; }");
+        StyleSheet sheet = StyleSheet.parse("#x { color: #AA000000; }");
         Panel root = new Panel(0, 0, 400, 300);
         Label label = new Label(0, 0, 100, 20, "text");
         label.setId("x");
@@ -71,7 +73,7 @@ class CascadeSpecificityTest {
     @Test
     void textualPropertiesInheritFromParent() {
         StyleSheet sheet = StyleSheet.parse("""
-                div.card { font-size: 18px; color: #00FF00FF; }
+                div.card { font-size: 18px; color: #FF00FF00; }
                 """);
         Panel root = new Panel(0, 0, 400, 300);
         Panel card = new Panel(0, 0, 400, 200);

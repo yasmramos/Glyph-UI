@@ -55,6 +55,13 @@ public class Panel extends Component {
      * @param component the component to add
      */
     public void add(Component component) {
+        // Reparent first: a component already attached to another panel must
+        // never end up in two trees at once (the old parent would keep it in
+        // its children list while the new one also references it).
+        Panel previous = component.getParent();
+        if (previous != null && previous != this) {
+            previous.remove(component);
+        }
         children.add(component);
         component.setParent(this);
         markLayoutDirty();
@@ -62,14 +69,19 @@ public class Panel extends Component {
     }
 
     /**
-     * Removes a child component from this panel.
+     * Removes a child component from this panel. The component is detached
+     * (parent cleared) and then closed so nested widgets release their
+     * native resources; removal itself does not destroy the component, and
+     * it may be re-added to any panel afterwards. Removing a component that
+     * is not a child of this panel is a no-op.
      *
      * @param component the component to remove
      */
     public void remove(Component component) {
-        children.remove(component);
-        component.setParent(null);
-        component.close();
+        if (children.remove(component)) {
+            component.setParent(null);
+            component.close();
+        }
         markLayoutDirty();
         invalidate();
     }
