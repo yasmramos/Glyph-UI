@@ -29,8 +29,8 @@ public class Canvas {
      * @param height the canvas height
      */
     public Canvas(io.github.humbleui.skija.Canvas canvas, Surface surface, int width, int height) {
-        this.canvas = canvas;
-        this.surface = surface;
+        this.canvas = java.util.Objects.requireNonNull(canvas, "canvas");
+        this.surface = java.util.Objects.requireNonNull(surface, "surface");
         this.width = width;
         this.height = height;
     }
@@ -70,6 +70,11 @@ public class Canvas {
 
     /**
      * Replaces the underlying native canvas, keeping the current surface reference.
+     *
+     * <p><strong>Warning:</strong> this overload leaves {@link #getSurface()} pointing
+     * at the previous surface. It is only safe when the new canvas belongs to that same
+     * surface; otherwise use {@link #setNativeCanvas(io.github.humbleui.skija.Canvas, Surface)}
+     * so that {@link #flush()} keeps operating on a live surface.</p>
      *
      * @param newCanvas the new Skija canvas
      */
@@ -221,11 +226,18 @@ public class Canvas {
     /**
      * Gets the height of text for a given font.
      *
+     * <p>Returns the glyph box height ({@code descent - ascent}); the font's
+     * inter-line leading is intentionally not included. Callers wanting real
+     * line spacing should add {@code FontMetrics.getLeading()} themselves.</p>
+     *
      * @param font the font to use
      * @return the text height
      */
     public float getTextHeight(Font font) {
-        return font.getMetrics().getDescent() - font.getMetrics().getAscent();
+        // Cache the metrics object: some Skija versions allocate a new
+        // FontMetrics per getMetrics() call.
+        FontMetrics metrics = font.getMetrics();
+        return metrics.getDescent() - metrics.getAscent();
     }
 
     /**
@@ -261,6 +273,11 @@ public class Canvas {
 
     /**
      * Flushes and submits the canvas drawing operations.
+     *
+     * <p>On the GPU backend this submits pending draw commands to Skia's GPU queue;
+     * {@code Application.render()} additionally calls {@code DirectContext.flush()}
+     * and swaps buffers. On the raster backend this is effectively a no-op, since a
+     * raster surface has no command queue — pixels are written synchronously.</p>
      */
     public void flush() {
         surface.flushAndSubmit();
