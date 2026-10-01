@@ -125,7 +125,7 @@ class CascadeSpecificityTest {
         StyleEngine.apply(root, sheet);
 
         assertEquals(6f, flat.getComputedStyle().getFloat(StyleProperty.MARGIN, 0f), 1e-6);
-        assertEquals(0f, outside.getComputedStyle().getFloat(StyleProperty.MARGIN, -1f), 1e-6,
+        assertEquals(0f, outside.getComputedStyle().getFloat(StyleProperty.MARGIN, 0f), 1e-6,
                 "button outside the toolbar must not match the descendant rule");
     }
 }

@@ -197,6 +197,19 @@ public class Panel extends Component {
     }
 
     /**
+     * Layout-assigned size (does not mark the bounds as explicit). A nested
+     * panel still has to re-run its own layout when its size changes.
+     */
+    @Override
+    public void applyLayoutSize(float width, float height) {
+        boolean changed = this.width != width || this.height != height;
+        super.applyLayoutSize(width, height);
+        if (changed) {
+            markLayoutDirty();
+        }
+    }
+
+    /**
      * Gets the effective background color. Resolution order: matching CSS
      * rule ({@code background} property) → explicit per-instance override →
      * theme window background (when no explicit color was set, the
