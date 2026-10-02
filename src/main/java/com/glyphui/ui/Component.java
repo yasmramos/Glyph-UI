@@ -5,6 +5,8 @@ import com.glyphui.graphics.Canvas;
 import com.glyphui.graphics.Dimension;
 import com.glyphui.graphics.Property;
 import com.glyphui.graphics.Theme;
+import com.glyphui.reactive.Disposable;
+import com.glyphui.reactive.DisposableScope;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.KeyEvent;
 import com.glyphui.style.Style;
@@ -36,7 +38,12 @@ import java.util.Locale;
  * the UI thread automatically; the classic setters ({@link #setX(float)}, etc.)
  * delegate to those properties and are therefore equally safe.</p>
  */
-public abstract class Component implements StyleNode, AutoCloseable {
+public abstract class Component implements StyleNode, Disposable {
+
+    /** Resources tied to this component's lifetime; created lazily. */
+    private DisposableScope resources;
+    /** Set by the first {@link #dispose()} call. */
+    private boolean disposed;
 
     /** Monotonic counter used to generate unique component IDs. */
     private static final java.util.concurrent.atomic.AtomicLong ID_COUNTER =
@@ -1168,12 +1175,103 @@ public abstract class Component implements StyleNode, AutoCloseable {
     public abstract void onKeyEvent(KeyEvent event);
     
     /**
-     * Releases resources held by this component.
-     * Subclasses should override this method to clean up resources.
-     * The default implementation does nothing.
+     * Registers a resource whose lifetime is tied to this component, typically
+     * a {@code Binding}, a {@code Computed} or a subscription. Tracked
+     * resources are closed by {@link #dispose()}, in registration order, after
+     * the children have been disposed. If the component is already disposed the
+     * resource is closed immediately, so late registration cannot leak.
+     *
+     * @param resource the resource to close on dispose
+     * @param <C>      the resource type
+     * @return {@code resource}, for chaining
      */
-    public void dispose() {
+    public <C extends AutoCloseable> C track(C resource) {
+        if (resources == null) {
+            resources = new DisposableScope();
+        }
+        return resources.add(resource);
+    }
+
+    /**
+     * Releases everything this component owns. Idempotent: only the first call
+     * does anything.
+     *
+     * <p>The order is fixed: first {@link #disposeChildren()} (children are
+     * disposed before their parent releases anything), then the resources
+     * registered with {@link #track(AutoCloseable)} in registration order, and
+     * finally {@link #onDispose()} for native resources. A failure in one step
+     * does not skip the others; the first failure is rethrown at the end with
+     * the rest attached as suppressed exceptions.</p>
+     *
+     * <p>Subclasses do not override this method: they release native resources
+     * in {@link #onDispose()} and containers dispose their children in
+     * {@link #disposeChildren()}.</p>
+     */
+    @Override
+    public final void dispose() {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
+        RuntimeException failure = null;
+        try {
+            disposeChildren();
+        } catch (RuntimeException e) {
+            failure = e;
+        }
+        if (resources == null) {
+            resources = new DisposableScope();
+        }
+        try {
+            resources.dispose();
+        } catch (RuntimeException e) {
+            failure = accumulate(failure, e);
+        }
+        try {
+            onDispose();
+        } catch (RuntimeException e) {
+            failure = accumulate(failure, e);
+        }
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    /**
+     * Tells whether {@link #dispose()} has been called.
+     *
+     * @return true once disposed
+     */
+    @Override
+    public boolean isDisposed() {
+        return disposed;
+    }
+
+    /**
+     * Hook for containers: dispose the children here. Called first by
+     * {@link #dispose()}. The default implementation does nothing.
+     */
+    protected void disposeChildren() {
+        // Leaf components have no children
+    }
+
+    /**
+     * Hook for subclasses that own native resources (paints, ...): release
+     * them here. Called last by {@link #dispose()}, at most once. The default
+     * implementation does nothing.
+     */
+    protected void onDispose() {
         // Default implementation does nothing
+    }
+
+    private static RuntimeException accumulate(RuntimeException first, RuntimeException next) {
+        if (first == null) {
+            return next;
+        }
+        if (first != next) {
+            first.addSuppressed(next);
+        }
+        return first;
     }
 
     /**
