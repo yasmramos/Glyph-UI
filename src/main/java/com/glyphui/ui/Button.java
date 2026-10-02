@@ -526,7 +526,8 @@ public class Button extends Component {
      * Releases resources held by this button.
      * Should be called when the button is no longer needed.
      */
-    public void dispose() {
+    @Override
+    protected void onDispose() {
         if (bgPaint != null) {
             bgPaint.close();
             bgPaint = null;
