@@ -47,14 +47,31 @@ public class Window implements AutoCloseable {
     private GLFWFramebufferSizeCallback framebufferSizeCbRef;
     private GLFWWindowContentScaleCallback contentScaleCbRef;
 
+    /** Active configuration (hints + behaviour); never null. */
+    private final WindowConfig config;
+
     /**
-     * Creates a new Window.
+     * Creates a new Window with the default {@link WindowConfig}
+     * (visible, resizable, decorated, OpenGL 3.2 core, centered).
      *
      * @param title  the window title
      * @param width  the window width (logical)
      * @param height the window height (logical)
      */
     public Window(String title, int width, int height) {
+        this(title, width, height, null);
+    }
+
+    /**
+     * Creates a new Window with a custom configuration applied as GLFW
+     * window hints at {@link #create()} time.
+     *
+     * @param title  the window title (takes precedence over {@code config.title})
+     * @param width  the window width (logical; takes precedence over {@code config.width})
+     * @param height the window height (logical; takes precedence over {@code config.height})
+     * @param config optional configuration; {@code null} uses defaults
+     */
+    public Window(String title, int width, int height, WindowConfig config) {
         this.title = title;
         this.windowWidth = width;
         this.windowHeight = height;
@@ -62,6 +79,23 @@ public class Window implements AutoCloseable {
         this.framebufferWidth = width;
         this.framebufferHeight = height;
         this.shouldClose = false;
+        this.config = config != null ? config : new WindowConfig();
+        // The constructor arguments are the source of truth for geometry/title
+        this.config.title = title;
+        this.config.width = width;
+        this.config.height = height;
+    }
+
+    /**
+     * Returns the configuration used by this window. Mutating it after
+     * {@link #create()} only affects hints on the next creation (there is
+     * one creation per instance); use the runtime setters
+     * ({@link #setTitle}, {@link #setDecorated}, ...) for live changes.
+     *
+     * @return the window configuration (never null)
+     */
+    public WindowConfig getConfig() {
+        return config;
     }
 
     /**
@@ -86,24 +120,22 @@ public class Window implements AutoCloseable {
             return false;
         }
 
-        // Configure GLFW for OpenGL context
-        glfwDefaultWindowHints();
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-        
-        // OpenGL context settings for Skija GPU backend
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-        // MSAA hint removed: the Skija BackendRenderTarget is created with
-        // samples=0, so a multisampled default framebuffer was never actually
-        // resolved by us. Keep the GL state consistent (no-op on drivers that
-        // ignore it anyway) until Skija is configured for real MSAA
-        // (samples=4 + stencil=8).
+        // Configure GLFW window hints from the (possibly user-supplied) config.
+        // config.apply() starts with glfwDefaultWindowHints(), so no stale
+        // hints can leak from a previous window in this process.
+        config.apply();
 
-        // Create the window
-        windowHandle = glfwCreateWindow(windowWidth, windowHeight, title, MemoryUtil.NULL, MemoryUtil.NULL);
+        // Create the window (fullscreen on the primary monitor when asked and
+        // a monitor is actually attached; otherwise windowed).
+        GLFWVidMode fullscreenMode = config.fullscreen ? config.fullscreenVideoMode() : null;
+        if (fullscreenMode != null) {
+            windowHandle = glfwCreateWindow(
+                fullscreenMode.width(), fullscreenMode.height(), title,
+                glfwGetPrimaryMonitor(), MemoryUtil.NULL);
+        } else {
+            windowHandle = glfwCreateWindow(config.width, config.height, title,
+                MemoryUtil.NULL, MemoryUtil.NULL);
+        }
         if (windowHandle == MemoryUtil.NULL) {
             System.err.println("Failed to create GLFW window");
             // Clean up process-wide GLFW state AND our error callback before
@@ -119,8 +151,8 @@ public class Window implements AutoCloseable {
         // Make OpenGL context current
         glfwMakeContextCurrent(windowHandle);
         
-        // Enable vsync
-        glfwSwapInterval(1);
+        // Enable vsync (configurable: 1 = on, 0 = off, N = every Nth refresh)
+        glfwSwapInterval(config.swapInterval);
         
         // Initialize LWJGL OpenGL capabilities
         GL.createCapabilities();
@@ -173,22 +205,30 @@ public class Window implements AutoCloseable {
             }
         }).set(windowHandle);
 
-        // Center the window. Guard against headless setups: glfwGetPrimaryMonitor()
-        // returns NULL with no display attached, and glfwGetVideoMode(NULL) is UB.
-        long primaryMonitor = glfwGetPrimaryMonitor();
-        if (primaryMonitor != MemoryUtil.NULL) {
-            GLFWVidMode vidmode = glfwGetVideoMode(primaryMonitor);
-            if (vidmode != null) {
-                glfwSetWindowPos(
-                    windowHandle,
-                    (vidmode.width() - windowWidth) / 2,
-                    (vidmode.height() - windowHeight) / 2
-                );
+        // Center the window (unless disabled, or already fullscreen).
+        // Guard against headless setups: glfwGetPrimaryMonitor() returns NULL
+        // with no display attached, and glfwGetVideoMode(NULL) is UB.
+        // Note: Wayland ignores glfwSetWindowPos (client-side decorations);
+        // that is a backend limitation, not something we can work around here.
+        if (config.center && fullscreenMode == null) {
+            long primaryMonitor = glfwGetPrimaryMonitor();
+            if (primaryMonitor != MemoryUtil.NULL) {
+                GLFWVidMode vidmode = glfwGetVideoMode(primaryMonitor);
+                if (vidmode != null) {
+                    glfwSetWindowPos(
+                        windowHandle,
+                        (vidmode.width() - windowWidth) / 2,
+                        (vidmode.height() - windowHeight) / 2
+                    );
+                }
             }
         }
 
-        // Make the window visible
-        glfwShowWindow(windowHandle);
+        // Make the window visible (skipped when created hidden via
+        // WindowConfig.visible(false); call show() yourself later).
+        if (config.visible) {
+            glfwShowWindow(windowHandle);
+        }
 
         return true;
     }
@@ -329,6 +369,164 @@ public class Window implements AutoCloseable {
      */
     public String getTitle() {
         return title;
+    }
+
+    /**
+     * Changes the window title at runtime. Safe before {@link #create()}:
+     * the new title is cached and used when the window is eventually created.
+     *
+     * @param title the new title
+     */
+    public void setTitle(String title) {
+        this.title = title;
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwSetWindowTitle(windowHandle, title);
+        }
+    }
+
+    /**
+     * Shows the window (no-op without a live handle or when already visible).
+     * Pair with {@code WindowConfig.visible(false)} to control presentation.
+     */
+    public void show() {
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwShowWindow(windowHandle);
+        }
+    }
+
+    /**
+     * Hides the window (no-op without a live handle).
+     */
+    public void hide() {
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwHideWindow(windowHandle);
+        }
+    }
+
+    /**
+     * Enables or disables window decorations at runtime
+     * ({@code glfwSetWindowAttrib(GLFW_DECORATED)}). Ignored on some
+     * Wayland compositors.
+     *
+     * @param decorated true for native title bar/borders
+     */
+    public void setDecorated(boolean decorated) {
+        config.decorated = decorated;
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwSetWindowAttrib(windowHandle, GLFW_DECORATED, decorated ? GLFW_TRUE : GLFW_FALSE);
+        }
+    }
+
+    /**
+     * Enables or disables the resizable flag at runtime.
+     *
+     * @param resizable true to allow user resizing
+     */
+    public void setResizable(boolean resizable) {
+        config.resizable = resizable;
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwSetWindowAttrib(windowHandle, GLFW_RESIZABLE, resizable ? GLFW_TRUE : GLFW_FALSE);
+        }
+    }
+
+    /**
+     * Keeps the window above (or with) other windows
+     * ({@code glfwSetWindowAttrib(GLFW_FLOATING)}).
+     *
+     * @param floating true to float above other windows
+     */
+    public void setFloating(boolean floating) {
+        config.floating = floating;
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwSetWindowAttrib(windowHandle, GLFW_FLOATING, floating ? GLFW_TRUE : GLFW_FALSE);
+        }
+    }
+
+    /**
+     * Sets the window opacity (0.0 fully transparent .. 1.0 opaque).
+     * Supported on Windows, macOS and some X11 compositors; silently
+     * unsupported elsewhere (GLFW raises a platform-unavailable error).
+     *
+     * @param opacity the opacity in [0, 1]
+     */
+    public void setOpacity(float opacity) {
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwSetWindowOpacity(windowHandle, Math.max(0f, Math.min(1f, opacity)));
+        }
+    }
+
+    /**
+     * Moves the window in screen coordinates. Ignored under Wayland, where
+     * the compositor owns window placement.
+     *
+     * @param x the new X position
+     * @param y the new Y position
+     */
+    public void setPosition(int x, int y) {
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwSetWindowPos(windowHandle, x, y);
+        }
+    }
+
+    /**
+     * Resizes the window in logical coordinates. The cached sizes are updated
+     * via the normal GLFW size callbacks once the window manager applies it.
+     *
+     * @param width  the new logical width
+     * @param height the new logical height
+     */
+    public void setSize(int width, int height) {
+        if (windowHandle != MemoryUtil.NULL) {
+            glfwSetWindowSize(windowHandle, width, height);
+        } else {
+            updateDimensions(width, height);
+        }
+    }
+
+    /**
+     * Requests or clears user/window maximization
+     * ({@code glfwMaximizeWindow} / {@code glfwRestoreWindow}).
+     *
+     * @param maximized true to maximize
+     */
+    public void setMaximized(boolean maximized) {
+        if (windowHandle != MemoryUtil.NULL) {
+            if (maximized) {
+                glfwMaximizeWindow(windowHandle);
+            } else {
+                glfwRestoreWindow(windowHandle);
+            }
+        }
+    }
+
+    /**
+     * Switches between fullscreen (primary monitor) and windowed mode.
+     * No-op without a live window handle or when no monitor is attached.
+     *
+     * @param fullscreen true for borderless fullscreen at the monitor's
+     *                   native video mode
+     */
+    public void setFullscreen(boolean fullscreen) {
+        if (windowHandle == MemoryUtil.NULL) {
+            return;
+        }
+        long monitor = fullscreen ? glfwGetPrimaryMonitor() : MemoryUtil.NULL;
+        if (fullscreen && monitor == MemoryUtil.NULL) {
+            return; // headless: nothing to go fullscreen on
+        }
+        GLFWVidMode mode = fullscreen ? glfwGetVideoMode(monitor) : null;
+        if (fullscreen && mode == null) {
+            return;
+        }
+        config.fullscreen = fullscreen;
+        if (fullscreen) {
+            glfwSetWindowMonitor(windowHandle, monitor, 0, 0,
+                mode.width(), mode.height(), mode.refreshRate());
+        } else {
+            // Restore to the last known logical size at a fixed offset.
+            glfwSetWindowMonitor(windowHandle, MemoryUtil.NULL, 100, 100,
+                windowWidth, windowHeight, GLFW_DONT_CARE);
+        }
     }
 
     /**
