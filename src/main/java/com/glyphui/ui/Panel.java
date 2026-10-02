@@ -100,17 +100,36 @@ public class Panel extends Component {
     }
 
     /**
-     * Releases this panel's resources and cascades {@link Component#close()}
-     * to every child so nested widgets free their native Skija objects too.
-     * The child list is cleared afterwards.
+     * Disposes every child (detaching it first) and clears the child list.
+     * Called by {@link Component#dispose()} before this panel releases anything
+     * of its own. A failing child does not prevent its siblings from being
+     * disposed.
      */
     @Override
-    public void dispose() {
-        for (Component child : children) {
-            child.setParent(null);
-            child.close();
-        }
+    protected void disposeChildren() {
+        List<Component> snapshot = new ArrayList<>(children);
         children.clear();
+        RuntimeException failure = null;
+        for (Component child : snapshot) {
+            child.setParent(null);
+            try {
+                child.dispose();
+            } catch (RuntimeException e) {
+                if (failure == null) {
+                    failure = e;
+                } else {
+                    failure.addSuppressed(e);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
+    }
+
+    /** Releases the reusable background paint. */
+    @Override
+    protected void onDispose() {
         if (bgPaint != null) {
             bgPaint.close();
             bgPaint = null;
