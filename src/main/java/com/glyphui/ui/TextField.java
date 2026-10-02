@@ -560,7 +560,7 @@ public class TextField extends Component {
     }
 
     @Override
-    public void dispose() {
+    protected void onDispose() {
         if (backgroundPaint != null) {
             backgroundPaint.close();
             backgroundPaint = null;
