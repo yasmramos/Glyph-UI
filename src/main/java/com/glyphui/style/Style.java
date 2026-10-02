@@ -274,12 +274,12 @@ public final class Style {
         }
         Map<StyleProperty, String> rawValues = (Map<StyleProperty, String>) raw;
         Builder builder = builder();
+        Map<String, String> vars = variables != null ? variables : Map.of();
         for (Map.Entry<StyleProperty, Object> e : values.entrySet()) {
             if (e.getKey() != StyleProperty.RAW_VALUES) {
-                builder.set(e.getKey(), e.getValue());
+                builder.setInternally(e.getKey(), e.getValue());
             }
         }
-        Map<String, String> vars = variables != null ? variables : Map.of();
         for (Map.Entry<StyleProperty, String> e : rawValues.entrySet()) {
             // Route through the property's canonical CSS name, which may
             // differ from its kebab-case enum name (BACKGROUND is declared as
@@ -347,14 +347,42 @@ public final class Style {
             if (value == null) {
                 return this;
             }
+            checkType(property, value);
+            values.put(property, value);
+            return this;
+        }
+
+        /**
+         * Internal counterpart of {@link #set}: same validation funnel, but
+         * stores numeric values in the property's exact boxed type. Used when
+         * rebuilding a style whose entries are already typed ({@code
+         * resolveVars}): {@link #set} deliberately tolerates widening (Long →
+         * Integer slot, Double → Float slot) for programmatic ergonomics, and
+         * that tolerance would silently change the stored identity here.
+         */
+        private void setInternally(StyleProperty property, Object value) {
+            if (value == null) {
+                return;
+            }
+            Class<?> expected = property.expectedType();
+            if (expected == Integer.class && value instanceof Number n
+                    && !(value instanceof Integer)) {
+                value = n.intValue();
+            } else if (expected == Float.class && value instanceof Number n
+                    && !(value instanceof Float)) {
+                value = n.floatValue();
+            }
+            checkType(property, value);
+            values.put(property, value);
+        }
+
+        private static void checkType(StyleProperty property, Object value) {
             Class<?> expected = property.expectedType();
             if (expected != null && !isCompatible(expected, value)) {
                 throw new IllegalArgumentException("Style property " + property.cssName()
                         + " expects " + expected.getSimpleName() + " but got "
                         + value.getClass().getSimpleName() + ": \"" + value + "\"");
             }
-            values.put(property, value);
-            return this;
         }
 
         /**

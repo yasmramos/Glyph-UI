@@ -96,8 +96,18 @@ final class CssValues {
         if (property.equals("border") && !v.matches("-?\\d+(\\.\\d+)?(px)?")) {
             return null;
         }
-        if (property.equals("flex") && !v.matches("\\d+(\\.\\d+)?")) {
-            return null; // "1 1 auto" style shorthand not supported
+        // `flex` maps onto FLEX_GROW (StyleSheet.propertyFor), so it must be
+        // dispatched like flex-grow: a bare number parses as a Float length;
+        // the "1 1 auto" shorthand is out of subset and dropped (see below).
+        if (property.equals("flex") && v.matches("\\d+(\\.\\d+)?")) {
+            return parseLength(v);
+        }
+        // `flex` is a multi-token shorthand in CSS ("1 1 auto"). This subset
+        // only maps it onto FLEX_GROW, so anything that is not a bare number
+        // must be dropped: storing the keyword string under the float-typed
+        // FLEX_GROW property would fail Style.Builder's type validation.
+        if (property.equals("flex")) {
+            return null;
         }
         if (isColorProperty(property)) {
             return parseColor(v);
