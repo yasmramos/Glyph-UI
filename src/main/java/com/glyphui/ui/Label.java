@@ -330,7 +330,7 @@ public class Label extends Component {
      * intentionally NOT closed here.
      */
     @Override
-    public void dispose() {
+    protected void onDispose() {
         if (textPaint != null) {
             textPaint.close();
             textPaint = null;
