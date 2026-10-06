@@ -106,6 +106,15 @@ public interface WindowBackend extends AutoCloseable {
 
         /** @return the currently edited text, or null when not editing */
         String getText();
+
+        /**
+         * Current selection as {@code {lo, hi}} offsets into
+         * {@link #getText()}, or null when there is no selection. Used by
+         * IME-capable backends to report the selected range to the OS.
+         */
+        default int[] getSelectionRange() {
+            return null;
+        }
     }
 
     /**
@@ -354,6 +363,49 @@ public interface WindowBackend extends AutoCloseable {
      */
     default void present(SurfaceResult result) {
         swapBuffers();
+    }
+
+    // ------------------------------------------------------------------
+    // Event-loop ownership hooks
+    // ------------------------------------------------------------------
+
+    /**
+     * Returns true when the backend owns the process-wide UI thread and its
+     * event loop cannot be pumped from the caller thread (JWM: the native
+     * library must be started from the main thread via {@code App.start} and
+     * dispatches all window events from it). When this returns false (GLFW,
+     * headless tests) {@code Application.run()} keeps its classical
+     * poll/wait loop driven by the calling thread.
+     *
+     * @return true for app-owned-loop backends
+     */
+    default boolean isAppOwnedLoop() {
+        return false;
+    }
+
+    /**
+     * Called once by {@code Application.run()} immediately before entering
+     * the frame loop, only when {@link #isAppOwnedLoop()} is true. The
+     * backend uses this to hand control to its native event loop, invoking
+     * {@code onFrame} once per dispatched event batch (the loop body), and
+     * returning when the application signals close. The default implementation
+     * simply runs the callback inline (polling loop fallback).
+     *
+     * @param onFrame one full iteration of the toolkit's frame loop
+     */
+    default void enterEventLoop(Runnable onFrame) {
+        while (!shouldClose()) {
+            onFrame.run();
+        }
+    }
+
+    /**
+     * Requests that the native event loop wake up and run another frame as
+     * soon as possible (raster path has no vsync to pace frames). Default:
+     * no-op — GLFW/polling backends are paced by swap intervals and real
+     * events.
+     */
+    default void requestNewFrame() {
     }
 
     /**

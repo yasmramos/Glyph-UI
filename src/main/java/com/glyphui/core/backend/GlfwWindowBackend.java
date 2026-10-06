@@ -410,6 +410,8 @@ public class GlfwWindowBackend extends AbstractWindowBackend {
         if (fullscreen && mode == null) {
             return;
         }
+        // Only flip the config flag when the native call is actually applied
+        // (headless contract shared with every backend).
         config.fullscreen = fullscreen;
         if (fullscreen) {
             glfwSetWindowMonitor(windowHandle, monitor, 0, 0,

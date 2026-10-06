@@ -66,4 +66,50 @@ public final class GlyphKeys {
     public static final int X = 'X';
     public static final int Y = 'Y';
     public static final int Z = 'Z';
+
+    // --- Digits: US-ASCII code points -------------------------------------
+    public static final int D0 = '0';
+    public static final int D1 = '1';
+    public static final int D2 = '2';
+    public static final int D3 = '3';
+    public static final int D4 = '4';
+    public static final int D5 = '5';
+    public static final int D6 = '6';
+    public static final int D7 = '7';
+    public static final int D8 = '8';
+    public static final int D9 = '9';
+
+    // --- Punctuation (legacy GLFW wire values) ----------------------------
+    public static final int MINUS = 45;          // '-'
+    public static final int EQUAL = 61;          // '='
+    public static final int SLASH = 47;          // '/'
+    public static final int BACKSLASH = 92;      // '\'
+    public static final int SEMICOLON = 59;      // ';'
+    public static final int APOSTROPHE = 39;
+    public static final int COMMA = 44;          // ','
+    public static final int PERIOD = 46;         // '.'
+    public static final int GRAVE = 96;          // '`'
+    public static final int LEFT_BRACKET = 91;   // '['
+    public static final int RIGHT_BRACKET = 93;  // ']'
+
+    // --- Modifier keys (legacy GLFW wire values) --------------------------
+    public static final int LEFT_SHIFT = 340;
+    public static final int LEFT_CONTROL = 341;
+    public static final int LEFT_ALT = 342;
+    public static final int LEFT_SUPER = 343;
+    public static final int CAPS_LOCK = 280;
+
+    // --- Function keys (legacy GLFW wire values: F1=290..F12=301) ---------
+    public static final int F1 = 290;
+    public static final int F2 = 291;
+    public static final int F3 = 292;
+    public static final int F4 = 293;
+    public static final int F5 = 294;
+    public static final int F6 = 295;
+    public static final int F7 = 296;
+    public static final int F8 = 297;
+    public static final int F9 = 298;
+    public static final int F10 = 299;
+    public static final int F11 = 300;
+    public static final int F12 = 301;
 }

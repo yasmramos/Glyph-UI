@@ -18,6 +18,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <lwjgl.version>3.4.3</lwjgl.version>
         <skija.version>0.116.2</skija.version>
+        <jwm.version>0.4.25</jwm.version>
         <jacoco.version>0.8.11</jacoco.version>
     </properties>
 
@@ -85,6 +86,13 @@
     </profiles>
 
     <dependencies>
+        <!-- JWM: primary native-window backend (IME, clipboard, DPI). -->
+        <dependency>
+            <groupId>io.github.humbleui</groupId>
+            <artifactId>jwm</artifactId>
+            <version>${jwm.version}</version>
+        </dependency>
+
         <!-- Skija -->
         <dependency>
             <groupId>io.github.humbleui</groupId>
