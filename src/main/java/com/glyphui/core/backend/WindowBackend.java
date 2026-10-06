@@ -360,9 +360,14 @@ public interface WindowBackend extends AutoCloseable {
      *
      * @param result the surface result currently bound to the application
      *               canvas (may be null on early frames)
+     * @return true when the frame reached the window; <b>false</b> when the
+     *         backend could not display it yet (e.g. JWM's raster layer has
+     *         not allocated its pixels before the first native frame), which
+     *         asks the caller to schedule another paint
      */
-    default void present(SurfaceResult result) {
+    default boolean present(SurfaceResult result) {
         swapBuffers();
+        return true;
     }
 
     // ------------------------------------------------------------------

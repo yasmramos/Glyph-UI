@@ -47,6 +47,27 @@ On macOS:
 mvn exec:java -Dexec.mainClass="com.glyphui.Main" -Dexec.vmArgs="-XstartOnFirstThread"
 ```
 
+### Choosing a window backend
+
+The native window backend is resolved at runtime by `BackendFactory`:
+
+| Value | Backend |
+|-------|---------|
+| *(unset)* | JWM when `io.github.humbleui:jwm` is on the classpath, otherwise GLFW |
+| `glfw` | Legacy LWJGL/GLFW backend (OpenGL rendering) |
+| `jwm` | JWM backend: native IME/clipboard/per-monitor DPI, raster rendering |
+| `<fqcn>` | Any `WindowBackend` implementation with a `(String, int, int, WindowConfig)` constructor |
+
+```bash
+java -Dglyphui.backend=glfw -cp target/classes:<deps> com.glyphui.Main
+```
+
+JWM owns the process UI thread: its native message loop is started by
+`Application.run()` (through `WindowBackend.enterEventLoop`), not by
+`Application.init()`, which stays fully headless until then. Frames are
+blitted from the CPU surface onto the window layer via
+`WindowBackend.present(...)`.
+
 ## Project Structure
 
 ```

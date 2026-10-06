@@ -42,6 +42,14 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class Application implements AutoCloseable {
     private Window window;
     private Surface surface;
+    /**
+     * Latest {@link SurfaceResult} produced by {@link #surfaceFactory}.
+     * Kept so {@link #render()} can hand it to
+     * {@link Window#present(SurfaceResult)} on raster-only backends (JWM),
+     * which blit the CPU surface onto their native layer instead of
+     * swapping GL buffers.
+     */
+    private SurfaceResult surfaceResult;
     private Canvas canvas;
     private Panel rootPanel;
     /**
@@ -251,7 +259,14 @@ public class Application implements AutoCloseable {
             // All native-resource creation and ownership now lives in the
             // SurfaceFactory implementations; Application only adopts the
             // returned handles.
-            if (useRasterSurface) {
+            //
+            // Backends that report no GL support skip the attempt entirely:
+            // under JWM the native window does not exist yet (its creation is
+            // deferred to the event loop), so no GL context is current and
+            // DirectContext.makeGL() would fail against a null context.
+            final boolean tryGpu = !useRasterSurface
+                && window.getBackend().isGlCapable();
+            if (!tryGpu) {
                 this.surfaceFactory = new RasterSurfaceFactory();
                 initSurfaceFromFactory();
             } else {
@@ -328,6 +343,7 @@ public class Application implements AutoCloseable {
 
         this.surface = result.surface();
         this.directContext = result.directContext();
+        this.surfaceResult = result;
 
         // Create canvas wrapper in LOGICAL coordinates; the content-scale
         // transform is applied per-frame in render()
@@ -393,6 +409,7 @@ public class Application implements AutoCloseable {
         SurfaceResult result = new RasterSurfaceFactory()
             .recreate(null, width, height);
         surface = result.surface();
+        this.surfaceResult = result;
 
         io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
         // Always rebind canvas AND surface together: flush() goes through the
@@ -614,6 +631,17 @@ public class Application implements AutoCloseable {
      * @param fbHeight the new physical framebuffer height
      */
     private void recreateSurface(int fbWidth, int fbHeight) {
+        // A minimized window reports a 0x0 framebuffer (GLFW and JWM both do).
+        // Skija cannot build an empty raster surface — Surface.makeRaster(...)
+        // throws IllegalArgumentException — so keep the previous surface and
+        // skip this resize: render() is suppressed while the framebuffer is
+        // degenerate (see frameStep()) and the next real resize recreates it.
+        // Closing first (the old order) would also leave `surface` null when
+        // the allocation threw, turning a later paint into an NPE.
+        if (fbWidth <= 0 || fbHeight <= 0) {
+            return;
+        }
+
         if (surface != null) {
             surface.close();
             surface = null;
@@ -630,6 +658,7 @@ public class Application implements AutoCloseable {
         SurfaceResult result = surfaceFactory.recreate(window, fbWidth, fbHeight);
         this.surface = result.surface();
         this.directContext = result.directContext();
+        this.surfaceResult = result;
 
         io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
         // Rebind canvas AND surface together — Canvas.flush() delegates to
@@ -1090,53 +1119,95 @@ public class Application implements AutoCloseable {
         // from a foreign thread fails fast instead of corrupting Skija.
         Canvas.setThreadCheckOwner(() -> uiThread == null ? null : this);
 
+        if (window.getBackend().isAppOwnedLoop()) {
+            // The backend owns the UI thread and its native message loop
+            // (JWM): hand it the frame body, which it invokes on this thread
+            // once per dispatched event batch. This call blocks until the
+            // application shuts down, so there is nothing left to do here.
+            window.getBackend().enterEventLoop(this::frameStep);
+            return;
+        }
+
         while (!window.shouldClose()) {
-            // Poll events (callbacks may mark paintDirty)
-            window.pollEvents();
-
-            // Run tasks posted from other threads via invokeLater(...).
-            // Properties marshalled through Application.invokeOnCurrent()
-            // end up in the same queue (it delegates to current.invokeLater),
-            // so draining this instance's queue is sufficient — no separate
-            // "drainCurrent()" pass is needed.
-            drainUiTasks();
-
-            // Advance animation while one is registered (continuous repainting)
-            boolean animating = (animationCallback != null);
-            if (animating) {
-                animationCallback.run();
-            }
-
-            // Atomically test-and-consume the dirty flag so that a concurrent
-            // requestRepaint() landing between the check and render() cannot
-            // be lost (volatile read + write alone has a race window).
-            final boolean needPaint;
-            synchronized (this) {
-                needPaint = paintDirty || animating;
-                if (needPaint) {
-                    paintDirty = false;
+            final boolean painted = frameStep();
+            if (!painted) {
+                if (!isGpuBackend()) {
+                    // Raster backend has no hardware vsync: sleep a short interval
+                    // so the loop does not consume CPU while idle.
+                    try {
+                        Thread.sleep(RASTER_IDLE_SLEEP_MS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                } else {
+                    // GPU backend with a clean frame: block in glfwWaitEvents()
+                    // instead of busy-polling. The loop is woken up by real input
+                    // events or by glfwPostEmptyEvent() from invokeLater(...).
+                    window.waitEvents();
                 }
-            }
-
-            if (needPaint) {
-                lastFrameTime = nowSeconds();
-                render();
-            } else if (!isGpuBackend()) {
-                // Raster backend has no hardware vsync: sleep a short interval
-                // so the loop does not consume CPU while idle.
-                try {
-                    Thread.sleep(RASTER_IDLE_SLEEP_MS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            } else {
-                // GPU backend with a clean frame: block in glfwWaitEvents()
-                // instead of busy-polling. The loop is woken up by real input
-                // events or by glfwPostEmptyEvent() from invokeLater(...).
-                window.waitEvents();
             }
         }
+    }
+
+    /**
+     * One iteration of the frame loop: pump native events, drain tasks posted
+     * from other threads, advance the animation callback and paint when
+     * something changed. Called by the polling loop in {@link #run()} or by
+     * an app-owned-loop backend (JWM), always on the UI thread.
+     *
+     * @return true when this iteration rendered a frame
+     */
+    private boolean frameStep() {
+        // Poll events (callbacks may mark paintDirty)
+        window.pollEvents();
+
+        // Run tasks posted from other threads via invokeLater(...).
+        // Properties marshalled through Application.invokeOnCurrent()
+        // end up in the same queue (it delegates to current.invokeLater),
+        // so draining this instance's queue is sufficient — no separate
+        // "drainCurrent()" pass is needed.
+        drainUiTasks();
+
+        // Advance animation while one is registered (continuous repainting)
+        boolean animating = (animationCallback != null);
+        if (animating) {
+            animationCallback.run();
+        }
+
+        // Atomically test-and-consume the dirty flag so that a concurrent
+        // requestRepaint() landing between the check and render() cannot
+        // be lost (volatile read + write alone has a race window).
+        final boolean needPaint;
+        synchronized (this) {
+            needPaint = (paintDirty || animating) && !framebufferDegenerate();
+            if (needPaint) {
+                paintDirty = false;
+            }
+        }
+
+        if (needPaint) {
+            lastFrameTime = nowSeconds();
+            render();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * True while the window has no drawable area — i.e. it is minimized,
+     * because both GLFW and JWM report a 0x0 framebuffer then. Painting is
+     * suppressed in that state: the frame would have nowhere to go, and on
+     * JWM the present path would ask the native layer (also resized to 0x0)
+     * for a frame, whose empty {@code Surface.wrapPixels(...)} throws from
+     * inside the native event dispatch and kills the loop. The dirty flag is
+     * preserved meanwhile, so restoring the window repaints immediately.
+     *
+     * @return true when rendering must be skipped
+     */
+    private boolean framebufferDegenerate() {
+        return window != null
+            && (window.getFramebufferWidth() <= 0 || window.getFramebufferHeight() <= 0);
     }
 
     /**
@@ -1185,8 +1256,17 @@ public class Application implements AutoCloseable {
         if (isGpuBackend()) {
             directContext.flush();
             window.swapBuffers();
+        } else if (window != null && !window.getBackend().isGlCapable()) {
+            // Raster-only backend (JWM): the frame lives in a CPU surface,
+            // so push it onto the native window layer. When the layer is not
+            // ready yet (JWM allocates it on the first native frame), ask for
+            // another paint instead of leaving the window stale.
+            if (!window.present(surfaceResult)) {
+                requestRepaint();
+            }
         }
-        // Raster backend draws into a CPU surface; no presentation needed.
+        // Raster backend behind a GL-capable window: the surface is only
+        // consumed off-screen (tests / captureToPng), no presentation needed.
     }
 
     /**

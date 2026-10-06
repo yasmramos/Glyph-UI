@@ -27,6 +27,7 @@ import io.github.humbleui.jwm.TextInputClient;
 import io.github.humbleui.jwm.Window;
 import io.github.humbleui.types.IRange;
 import io.github.humbleui.types.IRect;
+import java.lang.reflect.InvocationTargetException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
@@ -41,21 +42,30 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * clipboard and per-monitor DPI scale through {@code Screen._scale}.
  *
  * <p><strong>Event-loop model:</strong> JWM owns the process UI thread —
- * {@code App.start(...)} must run on the main thread and dispatches every
- * window event from it. This backend therefore reports
- * {@link #isAppOwnedLoop()} true, and {@code Application.run()} enters
- * {@link #enterEventLoop(Runnable)}: the native loop calls back into the
- * toolkit once per dispatched event batch instead of the toolkit polling
- * from its own thread.</p>
+ * {@code App.start(...)} must run on the main thread, dispatches every
+ * window event from it and <b>blocks inside the native message loop until
+ * {@code App.terminate()}</b> (true on Windows/X11 as well as macOS). It
+ * therefore cannot run inside {@link #create()}, which must return so the
+ * application can build its widget tree; the whole native bootstrap
+ * (library load, window creation, message loop) is <b>deferred to
+ * {@link #enterEventLoop(Runnable)}</b>, called by {@code Application.run()}.
+ * Until then the backend is fully headless but already answers geometry
+ * queries from the cached configuration (see the headless contract).</p>
+ *
+ * <p>Because the native loop only pumps messages on the JWM UI thread, the
+ * toolkit's frame body is driven from a small daemon thread that posts it
+ * via {@code App.runOnUIThread(...)} — so {@code Application.run()}'s loop,
+ * all widget state and every Skija call stay on the UI thread. When the
+ * application signals close, the driver posts {@code App.terminate()} and
+ * the native loop unwinds, returning control to {@code enterEventLoop()}.</p>
  *
  * <p><strong>Rendering:</strong> raster-first. The application paints into
  * a CPU Skija surface; on every frame the backend blits it onto JWM's
  * native raster layer (created reflectively against
  * {@code io.github.humbleui.jwm.skija.LayerRasterSkija}, so this class
- * compiles without skija bindings on the compile classpath). GL-capable
- * builds can opt in with {@code -Dglyphui.jwm.gl=true}, which installs the
- * Skija GL layer instead (fbId 0 = default framebuffer bound by JWM via
- * {@code window.makeCurrent()}).</p>
+ * compiles without skija bindings on the compile classpath). The
+ * experimental GL layer ({@code -Dglyphui.jwm.gl=true}) is not wired end to
+ * end yet and is refused with a warning, falling back to raster.</p>
  *
  * <p><strong>Headless contract:</strong> nothing native is touched until
  * {@link #create()} runs, so cached-state setters and listener wiring work
@@ -70,15 +80,32 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     private volatile Window jwmWindow;
     /** True while the app-owned native loop is running (see enterEventLoop). */
     private final AtomicBoolean loopRunning = new AtomicBoolean(false);
-    /** Set when create() succeeded or was skipped because JWM is absent. */
+    /** Set when create() ran; the native bootstrap itself happens later. */
     private final AtomicBoolean initAttempted = new AtomicBoolean(false);
+    /**
+     * True when {@link #create()} succeeded and the native bootstrap
+     * (library load + window creation + message loop) is still owed to
+     * {@link #enterEventLoop(Runnable)}.
+     */
+    private volatile boolean pendingBootstrap;
+    /** True when the deferred native bootstrap failed; the loop must not start. */
+    private volatile boolean bootstrapFailed;
 
-    /** Reflective LayerRasterSkija instance (null until create()). */
-    private Object rasterLayer;
-    /** io.github.humbleui.skija.Surface of the raster layer (reflective). */
-    private Object layerSurface;
-    /** Cached makeARGB ColorInfo for the layer surface (reflective). */
-    private Object colorInfo;
+    /** Frame driver thread posting the toolkit loop onto the JWM UI thread. */
+    private volatile Thread frameDriver;
+
+    /** True while JWM's native message loop is pumping (enterEventLoop). */
+    private volatile boolean nativeLoopActive;
+
+    /** Desired IME state, applied at window creation (may arrive before it). */
+    private volatile boolean textInputEnabled;
+
+    /** JWM Skija raster layer hosting the pixels presented to the window. */
+    private volatile io.github.humbleui.jwm.skija.LayerRasterSkija rasterLayer;
+    /** Skija surface wrapping the layer pixels; null until JWM's first frame. */
+    private volatile io.github.humbleui.skija.Surface layerSurface;
+    /** True while a presentation layer is attached to the JWM window. */
+    private volatile boolean layerAttached;
     private boolean useGl;
 
     /** Cursor position in logical coords, tracked from mouse events. */
@@ -92,77 +119,214 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     // Lifecycle
     // ------------------------------------------------------------------
 
+    /**
+     * Deferred by design: {@code App.start(...)} blocks inside JWM's native
+     * message loop until {@code App.terminate()} (see the class doc), so
+     * creating the window here would deadlock {@code Application.init()} and
+     * the application would never show. This method only records the
+     * request; the native bootstrap runs later, from
+     * {@link #enterEventLoop(Runnable)}, on the JWM UI thread. Until then
+     * the backend answers every query from the cached configuration
+     * (headless contract), so building the widget tree works unchanged.
+     *
+     * @return true when the bootstrap has been scheduled (or already ran)
+     */
     @Override
     public boolean create() {
         if (!initAttempted.compareAndSet(false, true)) {
-            return jwmWindow != null;
+            return pendingBootstrap || jwmWindow != null;
         }
         useGl = Boolean.getBoolean(USE_GL_PROPERTY);
+        if (useGl) {
+            // The GL layer needs a live GL context, but the Skija surface is
+            // built during Application.init(), before this deferred window
+            // exists (see isGlCapable()). Until both ends can be wired
+            // together, honour the flag as "not yet supported" instead of
+            // presenting nothing: the raster layer below is always used.
+            System.err.println("Glyph UI: -Dglyphui.jwm.gl=true is not supported yet; "
+                + "using the JWM raster layer.");
+            useGl = false;
+        }
+        pendingBootstrap = true;
+        return true;
+    }
+
+    /**
+     * Creates the native window and its presentation layer. Runs on the JWM
+     * UI thread inside the {@code App.start(...)} launcher callback — the
+     * only context where the JWM API is legal — and finishes by making the
+     * window visible, since JWM creates windows hidden.
+     *
+     * @return true when the window exists and is ready to draw
+     */
+    private boolean createNativeWindow() {
         try {
-            // App.start returns immediately on Windows/X11 (it only blocks
-            // on macOS where it takes over the main thread). It MUST be
-            // called from the main thread.
-            App.start(() -> { /* no-op bootstrap; frames flow through the window listener */ });
             Window w = App.makeWindow();
             w.setEventListener(this::onJwmEvent);
             w.setTitle(title);
             w.setContentSize(windowWidth, windowHeight);
-            if (!config.visible) {
-                w.setVisible(false);
-            }
-            if (config.maximized) {
-                w.maximize();
-            }
-            if (config.floating) {
-                w.setZOrder(io.github.humbleui.jwm.ZOrder.FLOATING);
-            }
+            // Publish before attaching the layer: setLayer() fires screen and
+            // resize events synchronously and their handlers query the live
+            // window for scale and geometry.
+            this.jwmWindow = w;
             attachLayer(w);
             installTextInputClient(w);
-            this.jwmWindow = w;
-            // Seed geometry/scale from the first resize/screen events that
-            // JWM dispatches during the next loop iteration; meanwhile use
-            // the primary screen scale as a sane initial value.
+            // Seed geometry/scale from the screen events JWM dispatches during
+            // the next loop iteration; meanwhile use the primary screen scale.
             applyScreenScale(App.getPrimaryScreen());
+            applyPendingWindowState(w);
             return true;
         } catch (Throwable t) {
             System.err.println("Glyph UI: JWM initialization failed (" + t.getMessage()
                 + "). Running headless; window operations are no-ops.");
             t.printStackTrace();
+            this.jwmWindow = null;
             return false;
         }
     }
 
-    /** Creates and attaches the presentation layer (raster or GL), reflectively. */
+    /**
+     * Applies the {@link WindowConfig} state that could not be set before
+     * the native window existed (maximize / float / fullscreen / centering /
+     * IME), then shows the window when {@code config.visible} is set —
+     * the step missing from the original bootstrap, and the direct reason
+     * nothing ever appeared on screen.
+     */
+    private void applyPendingWindowState(Window w) {
+        // JWM creates the HWND with a style read from a handle that does not
+        // exist yet (WindowWin32::_createInternal calls _getWindowStyle()
+        // before CreateWindowExW), so the window only ends up with WS_CAPTION
+        // and is missing WS_SYSMENU / WS_MINIMIZEBOX / WS_MAXIMIZEBOX /
+        // WS_THICKFRAME — i.e. no close/minimize/maximize buttons and no
+        // resize border. setTitlebarVisible() ORs that exact style set in
+        // (and reapplies the frame), which is precisely config.decorated;
+        // false strips the whole titlebar, as the option promises.
+        w.setTitlebarVisible(config.decorated);
+
+        if (config.maximized) {
+            w.maximize();
+        }
+        if (config.floating) {
+            w.setZOrder(io.github.humbleui.jwm.ZOrder.FLOATING);
+        }
+        if (config.fullscreen) {
+            w.setFullScreen(true);
+        }
+        if (config.center) {
+            centerOnPrimaryScreen(w);
+        }
+        if (textInputEnabled) {
+            w.setTextInputEnabled(true);
+        }
+        if (config.visible) {
+            w.setVisible(true);
+        }
+    }
+
+    /**
+     * Centers the window on the primary monitor's work area. JWM places new
+     * windows at the OS default position (CW_USEDEFAULT), so without this
+     * {@code WindowConfig.center} would be ignored on the JWM backend.
+     *
+     * @param w the freshly created window (UI thread)
+     */
+    private static void centerOnPrimaryScreen(Window w) {
+        Screen screen = App.getPrimaryScreen();
+        if (screen == null || screen._bounds == null) {
+            return;
+        }
+        IRect content = w.getContentRect();
+        int x = screen._bounds._left
+            + Math.max(0, (screen._bounds.getWidth() - content.getWidth()) / 2);
+        int y = screen._bounds._top
+            + Math.max(0, (screen._bounds.getHeight() - content.getHeight()) / 2);
+        w.setWindowPosition(x, y);
+    }
+
+    /**
+     * Creates and attaches the presentation layer: JWM's Skija raster layer,
+     * whose native pixel buffer is where {@link #present(SurfaceResult)}
+     * blits the application frame.
+     *
+     * <p>Typed against skija/JWM directly: the historical reflective probing
+     * targeted APIs that do not exist in the pinned versions
+     * ({@code skija.AlphaType} is {@code ColorAlphaType}, and
+     * {@code ColorInfo} has no {@code makeARGB(...)} factory), so it always
+     * fell through to a raw layer with no drawing path — a visible but blank
+     * window. The layer keeps JWM's default {@code ColorInfo} (N32/premul),
+     * which matches the N32 premul surface the raster factory produces.</p>
+     *
+     * @param w the freshly created window (UI thread)
+     */
     private void attachLayer(Window w) {
+        if (useGl) {
+            // Refused in create() today (no GL context exists before the
+            // deferred window); kept so the flag has a defined meaning once
+            // the GL path is wired end to end.
+            layerAttached = true;
+            w.setLayer(new io.github.humbleui.jwm.skija.LayerGLSkija());
+            return;
+        }
         try {
-            if (useGl) {
-                Class<?> gl = Class.forName("io.github.humbleui.jwm.skija.LayerGLSkija");
-                Object layer = gl.getDeclaredConstructor().newInstance();
-                w.setLayer((io.github.humbleui.jwm.Layer) layer);
-                return;
-            }
-            Class<?> rasterCls = Class.forName("io.github.humbleui.jwm.skija.LayerRasterSkija");
-            Object layer = rasterCls.getDeclaredConstructor().newInstance();
-            // ColorInfo colorInfo = ColorInfo.makeARGB(w,h,ColorType.RGBA_8888,AlphaType.UNPREMUL)
-            Class<?> ciCls = Class.forName("io.github.humbleui.skija.ColorInfo");
-            Class<?> ctCls = Class.forName("io.github.humbleui.skija.ColorType");
-            Class<?> atCls = Class.forName("io.github.humbleui.skija.AlphaType");
-            Object rgba8888 = ctCls.getField("RGBA_8888").get(null);
-            Object unpremul = atCls.getField("UNPREMUL").get(null);
-            colorInfo = ciCls.getMethod("makeARGB", int.class, int.class, ctCls, atCls)
-                .invoke(null, framebufferWidth, framebufferHeight, rgba8888, unpremul);
-            rasterCls.getMethod("setColorInfo", ciCls).invoke(layer, colorInfo);
-            w.setLayer((io.github.humbleui.jwm.Layer) layer);
+            io.github.humbleui.jwm.skija.LayerRasterSkija layer =
+                new io.github.humbleui.jwm.skija.LayerRasterSkija();
+            // Publish BEFORE setLayer(): attaching fires EventWindowScreenChange
+            // (which JWM turns into a resize), and that resize runs our own
+            // listener — it must see the layer as already attached, otherwise
+            // ensureLayerAttached() would attach it again, recursively.
             this.rasterLayer = layer;
-            this.layerSurface = rasterCls.getMethod("getSurface").invoke(layer);
-        } catch (ClassNotFoundException e) {
-            // No skija bindings on the classpath: fall back to plain JWM
-            // raster layer (pixels exposed via getPixelsPtr for blitting).
-            System.err.println("Glyph UI: skija jwm bindings missing; using raw raster layer.");
-            w.setLayer(new io.github.humbleui.jwm.LayerRaster());
-        } catch (ReflectiveOperationException | RuntimeException e) {
+            this.layerSurface = null;
+            this.layerAttached = true;
+            w.setLayer(layer);
+            // Null until JWM runs the layer's first frame (see resolveLayerSurface).
+            this.layerSurface = layer.getSurface();
+        } catch (RuntimeException e) {
             throw new IllegalStateException("Cannot create JWM presentation layer", e);
         }
+    }
+
+    /**
+     * Detaches the presentation layer while the window has no drawable area
+     * (minimized: JWM reports 0x0 and its layer ends up empty).
+     *
+     * <p>This is what actually stops the resize crash. On a 0x0 resize JWM
+     * runs our listener and <b>then</b> feeds an {@code EventFrame} to
+     * itself ({@code Window.accept}), whose {@code LayerRasterSkija.frame()}
+     * calls {@code Surface.wrapPixels(...)} on the empty buffer and throws
+     * from inside the native dispatch — aborting the {@code WM_PAINT}
+     * handler, which Windows immediately re-sends, in a tight loop. With no
+     * layer attached JWM skips all layer work ({@code if (_layer != null)}),
+     * and {@code requestFrame()} becomes a no-op too (it is gated on JWM's
+     * "has attached layer" flag).</p>
+     */
+    private void detachLayer() {
+        Window w = jwmWindow;
+        if (w == null || !layerAttached) {
+            return;
+        }
+        layerAttached = false;
+        rasterLayer = null;
+        layerSurface = null;
+        try {
+            w.setLayer(null); // closes and frees the old layer
+        } catch (Throwable t) {
+            System.err.println("Glyph UI: could not detach the JWM layer ("
+                + t.getMessage() + ").");
+        }
+    }
+
+    /**
+     * Re-attaches the layer after the window becomes drawable again (restore
+     * from minimize). The layer is sized by the resize event that JWM
+     * generates right after {@code setLayer}, so nothing else is needed.
+     *
+     * @param w the live window (UI thread)
+     */
+    private void ensureLayerAttached(Window w) {
+        if (layerAttached) {
+            return;
+        }
+        attachLayer(w);
     }
 
     /** Wires the IME bridge: caret rect + selection come from ImeClient. */
@@ -215,6 +379,8 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     @Override
     public void destroy() {
+        stopFrameDriver();
+        pendingBootstrap = false;
         Window w = jwmWindow;
         jwmWindow = null;
         if (w != null) {
@@ -233,38 +399,118 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     @Override
     public boolean isAppOwnedLoop() {
-        return hasLiveWindow();
+        // Backend property, not a window property: the native loop must be
+        // entered even though the window does not exist yet (create() defers
+        // the bootstrap — see the class doc). Headless paths without a
+        // pending bootstrap are handled inside enterEventLoop(Runnable).
+        return true;
     }
 
+    /**
+     * Bootstraps JWM and runs its native message loop. {@code App.start(...)}
+     * executes the launcher (window creation + frame driver) and then
+     * <b>blocks pumping messages on the calling thread</b> — which must be
+     * the UI thread — until {@code App.terminate()} posts WM_CLOSE. Control
+     * returns to {@code Application.run()} only once the app has shut down.
+     *
+     * @param onFrame one full iteration of the toolkit's frame loop
+     */
     @Override
     public void enterEventLoop(Runnable onFrame) {
-        if (!hasLiveWindow()) {
-            // Headless fallback: drive the frame callback inline.
+        if (!pendingBootstrap) {
+            // Headless/test path: no native window owed, drive frames inline.
             while (!shouldClose()) {
                 onFrame.run();
             }
             return;
         }
+        pendingBootstrap = false;
+        try {
+            App.start(() -> {
+                if (createNativeWindow()) {
+                    nativeLoopActive = true;
+                    startFrameDriver(onFrame);
+                } else {
+                    bootstrapFailed = true;
+                    shouldClose = true;
+                    // We are on the UI thread: post WM_CLOSE so the message
+                    // loop (started right after this launcher returns) exits
+                    // instead of blocking forever.
+                    App.terminate();
+                }
+            });
+        } catch (Throwable t) {
+            bootstrapFailed = true;
+            shouldClose = true;
+            System.err.println("Glyph UI: JWM event loop failed (" + t.getMessage() + ").");
+            t.printStackTrace();
+        } finally {
+            nativeLoopActive = false;
+            stopFrameDriver();
+        }
+    }
+
+    /**
+     * Starts the daemon that drives the toolkit loop while JWM pumps
+     * messages. Every frame body is posted onto the JWM UI thread through
+     * {@code App.runOnUIThread(...)}, so widget state and Skija stay
+     * single-threaded; when the application asks to close, the driver posts
+     * {@code App.terminate()} to unwind the native loop.
+     *
+     * @param onFrame one full iteration of the toolkit's frame loop
+     */
+    private void startFrameDriver(Runnable onFrame) {
         loopRunning.set(true);
-        // Wake-up posted events execute the frame body on the UI thread.
-        Runnable pump = () -> {
-            if (shouldClose()) {
-                loopRunning.set(false);
-                App.runOnUIThread(() -> { /* exit marker */ });
-                return;
+        Thread driver = new Thread(() -> {
+            while (loopRunning.get() && !shouldClose()) {
+                App.runOnUIThread(() -> {
+                    if (shouldClose()) {
+                        return;
+                    }
+                    try {
+                        onFrame.run();
+                    } catch (Throwable t) {
+                        // Throwing into the native dispatcher would abort the
+                        // message loop: report and shut down cleanly instead.
+                        System.err.println("Glyph UI: frame step failed ("
+                            + t.getMessage() + ").");
+                        t.printStackTrace();
+                        setShouldClose(true);
+                    }
+                });
+                try {
+                    Thread.sleep(8); // ~120 Hz cadence; frames stay dirty-gated
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
-            onFrame.run();
-        };
-        while (loopRunning.get() && !shouldClose()) {
-            App.runOnUIThread(pump);
+            if (nativeLoopActive) {
+                try {
+                    App.runOnUIThread(App::terminate);
+                } catch (Throwable ignored) {
+                    // Native loop already gone.
+                }
+            }
+        }, "glyphui-jwm-driver");
+        driver.setDaemon(true);
+        this.frameDriver = driver;
+        driver.start();
+    }
+
+    /** Stops the frame driver (idempotent). */
+    private void stopFrameDriver() {
+        loopRunning.set(false);
+        Thread driver = this.frameDriver;
+        this.frameDriver = null;
+        if (driver != null) {
+            driver.interrupt();
             try {
-                Thread.sleep(8); // ~120 Hz wake-up cadence; frames stay dirty-gated
+                driver.join(1000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
             }
         }
-        loopRunning.set(false);
     }
 
     @Override
@@ -346,45 +592,87 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     @Override
     public boolean isGlCapable() {
+        // Raster by construction: the Skija surface is created during
+        // Application.init(), i.e. BEFORE the deferred native window (and
+        // therefore before any GL context exists), so a GPU surface cannot
+        // be built on this backend. Application then routes every frame
+        // through present(). See create() for the flag handling.
         return useGl && hasLiveWindow();
     }
 
+    /**
+     * Blits the application's CPU surface onto JWM's raster layer and asks
+     * the native loop for a frame (that frame is what pushes the layer
+     * pixels to the window through {@code LayerRasterSkija.swapBuffers()}).
+     *
+     * <p>The layer surface is resolved lazily because JWM allocates it on
+     * the <b>first native frame</b>; before that this method reports the
+     * frame as not presented so {@code Application} repaints once the layer
+     * is ready.</p>
+     *
+     * @param result the surface result currently bound to the app canvas
+     * @return true when the frame reached the native layer
+     */
     @Override
-    public void present(SurfaceResult result) {
+    public boolean present(SurfaceResult result) {
         Window w = jwmWindow;
         if (w == null) {
-            return;
+            return true; // headless: there is no window to present to
         }
-        if (useGl) {
-            // Skija GL draws straight into the default framebuffer (fbId 0)
-            // bound by JWM's makeCurrent(); just ask for a new frame.
-            w.requestFrame();
-            return;
+        if (framebufferWidth <= 0 || framebufferHeight <= 0) {
+            // Minimized: JWM resized its layer to 0x0, and requestFrame()
+            // would make LayerRasterSkija.frame() wrap empty pixels — an
+            // IllegalArgumentException thrown from inside the native
+            // dispatch. Nothing to show anyway, so just skip the frame.
+            return false;
         }
-        // Raster path: copy the app surface pixels into the layer surface.
-        if (result == null || rasterLayer == null || layerSurface == null) {
+        if (result == null || rasterLayer == null) {
             w.requestFrame();
-            return;
+            return true;
+        }
+        io.github.humbleui.skija.Surface dst = resolveLayerSurface();
+        if (dst == null) {
+            // Layer pixels not allocated yet: request a native frame (that is
+            // what allocates them) and ask the caller for another paint.
+            w.requestFrame();
+            return false;
         }
         try {
-            io.github.humbleui.skija.Surface src =
-                (io.github.humbleui.skija.Surface) result.surface();
-            io.github.humbleui.skija.Surface dst =
-                (io.github.humbleui.skija.Surface) layerSurface;
+            io.github.humbleui.skija.Surface src = result.surface();
             int dw = dst.getWidth();
             int dh = dst.getHeight();
-            io.github.humbleui.skija.Image img = src.makeImageSnapshot(
-                io.github.humbleui.types.IRect.makeXYWH(0, 0,
-                    Math.min(dw, src.getWidth()), Math.min(dh, src.getHeight())));
-            dst.getCanvas().clear(0x00000000);
-            // Plain drawImage blits 1:1 without resampling (nearest by construction).
-            dst.getCanvas().drawImage(img, 0, 0);
-            img.close();
+            try (io.github.humbleui.skija.Image img = src.makeImageSnapshot(
+                    io.github.humbleui.types.IRect.makeXYWH(0, 0,
+                            Math.min(dw, src.getWidth()), Math.min(dh, src.getHeight())))) {
+                dst.getCanvas().clear(0x00000000);
+                // Plain drawImage blits 1:1 without resampling (nearest by construction).
+                dst.getCanvas().drawImage(img, 0, 0);
+            }
             dst.flush();
+            return true;
         } catch (Throwable t) {
             // Surface recreated concurrently with resize: skip this frame.
+            return false;
+        } finally {
+            w.requestFrame();
         }
-        w.requestFrame();
+    }
+
+    /**
+     * Returns the layer's Skija surface, refreshing the cache when JWM has
+     * (re)allocated it. {@code LayerRasterSkija.getSurface()} returns null
+     * until its first {@code frame()}, and a resize nulls the cache, so a
+     * null result is retried on the next paint.
+     *
+     * @return the layer surface, or null while it is not allocated yet
+     */
+    private io.github.humbleui.skija.Surface resolveLayerSurface() {
+        io.github.humbleui.skija.Surface surface = layerSurface;
+        if (surface == null && rasterLayer != null) {
+            surface = rasterLayer.getSurface();
+            layerSurface = surface;
+        }
+        return surface;
     }
 
     // ------------------------------------------------------------------
@@ -542,6 +830,9 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     @Override
     public void setTextInputEnabled(boolean enabled) {
+        // Remember the request: Application.init() enables the IME before the
+        // deferred native window exists (see create()/enterEventLoop()).
+        this.textInputEnabled = enabled;
         Window w = jwmWindow;
         if (w != null) {
             w.setTextInputEnabled(enabled);
@@ -555,21 +846,50 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     // Event dispatch (called by JWM from the UI thread)
     // ------------------------------------------------------------------
 
+    /**
+     * Listener entry point registered with {@code Window.setEventListener}.
+     * JWM invokes it from inside its native event dispatch (a JNI upcall), so
+     * <b>no exception may escape</b>: a pending Java exception there surfaces
+     * in the middle of the message loop, spraying errors and aborting the
+     * whole run. Failures are reported and the loop keeps going.
+     *
+     * @param event the JWM event to process
+     */
     private void onJwmEvent(io.github.humbleui.jwm.Event event) {
+        try {
+            handleJwmEvent(event);
+        } catch (Throwable t) {
+            System.err.println("Glyph UI: JWM event handler failed ("
+                + t.getMessage() + ").");
+            t.printStackTrace();
+        }
+    }
+
+    /** Body of {@link #onJwmEvent}; runs on the JWM UI thread. */
+    private void handleJwmEvent(io.github.humbleui.jwm.Event event) {
         Window w = jwmWindow;
-        if (event instanceof EventWindowResize) {
-            EventWindowResize e = (EventWindowResize) event;
+        if (event instanceof EventWindowResize e) {
             // Logical size = content area (window rect includes decorations)
             notifyWindowSize(e.getContentWidth(), e.getContentHeight());
             Screen s = w != null ? w.getScreen() : null;
             float scale = s != null && s._scale > 0f ? s._scale : 1f;
             notifyFramebufferSize(Math.round(e.getContentWidth() * scale),
                                   Math.round(e.getContentHeight() * scale));
-            resizeLayer();
+            if (w != null) {
+                if (e.getContentWidth() <= 0 || e.getContentHeight() <= 0) {
+                    // Minimized: drop the layer *before* JWM re-feeds the
+                    // EventFrame it dispatches after this listener, so that
+                    // frame finds no layer and cannot throw (see detachLayer).
+                    detachLayer();
+                } else {
+                    // First real size, or back from minimize.
+                    ensureLayerAttached(w);
+                }
+                invalidateLayerSurface();
+            }
         } else if (event instanceof EventWindowScreenChange) {
             applyScreenScale(w != null ? w.getScreen() : null);
-        } else if (event instanceof EventWindowMove) {
-            EventWindowMove e = (EventWindowMove) event;
+        } else if (event instanceof EventWindowMove e) {
             posX = e.getWindowLeft();
             posY = e.getWindowTop();
         } else if (event instanceof EventWindowCloseRequest) {
@@ -577,31 +897,26 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         } else if (event instanceof EventWindowClose) {
             shouldClose = true;
             loopRunning.set(false);
-        } else if (event instanceof EventKey) {
-            EventKey e = (EventKey) event;
+        } else if (event instanceof EventKey e) {
             Integer code = KEY_MAP.get(e._key);
             if (code != null) {
                 notifyKey(code, e._isPressed, mapNativeModifiers(e._modifiers));
             }
-        } else if (event instanceof EventTextInput) {
-            EventTextInput e = (EventTextInput) event;
+        } else if (event instanceof EventTextInput e) {
             notifyTextInput(e._text, e._replacementStart, e._replacementEnd);
         } else if (event instanceof EventTextInputMarked) {
             // Pre-edit (composing) text: not surfaced through the neutral
             // API yet; ignore so the committed EventTextInput drives input.
-        } else if (event instanceof EventMouseButton) {
-            EventMouseButton e = (EventMouseButton) event;
+        } else if (event instanceof EventMouseButton e) {
             cursorX = e._x;
             cursorY = e._y;
             notifyMouseButton(buttonToToolkit(e._button), e._isPressed,
                 e._x, e._y, mapNativeModifiers(e._modifiers));
-        } else if (event instanceof EventMouseMove) {
-            EventMouseMove e = (EventMouseMove) event;
+        } else if (event instanceof EventMouseMove e) {
             cursorX = e._x;
             cursorY = e._y;
             notifyCursorPos(e._x, e._y);
-        } else if (event instanceof EventMouseScroll) {
-            EventMouseScroll e = (EventMouseScroll) event;
+        } else if (event instanceof EventMouseScroll e) {
             // Map wheel to toolkit buttons 3 (up) / 4 (down), like GLFW.
             int btn = e._deltaY >= 0 ? 3 : 4;
             notifyMouseButton(btn, true, e._x, e._y, mapNativeModifiers(e._modifiers));
@@ -609,34 +924,19 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         }
     }
 
-    /** Re-sizes the raster/GL layer to the current physical size. */
-    private void resizeLayer() {
-        Window w = jwmWindow;
-        if (w == null) {
-            return;
-        }
-        try {
-            io.github.humbleui.jwm.Layer layer = w.getLayer();
-            if (layer != null) {
-                layer.resize(framebufferWidth, framebufferHeight);
-                if (rasterLayer != null) {
-                    Class<?> ciCls = Class.forName("io.github.humbleui.skija.ColorInfo");
-                    colorInfo = ciCls.getMethod("makeARGB", int.class, int.class,
-                            Class.forName("io.github.humbleui.skija.ColorType"),
-                            Class.forName("io.github.humbleui.skija.AlphaType"))
-                        .invoke(null, framebufferWidth, framebufferHeight,
-                            Class.forName("io.github.humbleui.skija.ColorType")
-                                .getField("RGBA_8888").get(null),
-                            Class.forName("io.github.humbleui.skija.AlphaType")
-                                .getField("UNPREMUL").get(null));
-                    rasterLayer.getClass().getMethod("setColorInfo", ciCls)
-                        .invoke(rasterLayer, colorInfo);
-                    layerSurface = rasterLayer.getClass().getMethod("getSurface").invoke(rasterLayer);
-                }
-            }
-        } catch (Throwable ignored) {
-            // layer may be mid-recreation; next frame retries
-        }
+    /**
+     * Drops the cached layer-surface reference after a window resize.
+     *
+     * <p>JWM resizes its own layer ({@code Window.accept(EventWindowResize)}
+     * runs {@code Layer.resize(...)} <b>before</b> this backend's listener),
+     * and {@code LayerRasterSkija} closes and nulls its Skija surface on
+     * that resize. Only the cache has to be invalidated here: re-wrapping
+     * with the wrong size (the old code resized the layer again with the
+     * toolkit's framebuffer value) would fight JWM's own bookkeeping, and
+     * the surface is rebuilt lazily on the next frame anyway.</p>
+     */
+    private void invalidateLayerSurface() {
+        layerSurface = null;
     }
 
     /** Applies the monitor scale as content scale (uniform on all platforms). */
@@ -712,7 +1012,9 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         KEY_MAP.put(Key.F11, GlyphKeys.F11); KEY_MAP.put(Key.F12, GlyphKeys.F12);
     }
 
-    /** Maps JWM modifier bits (KeyModifier._mask) onto GlyphMods bits. */
+    /** Maps JWM modifier bits (KeyModifier._mask) onto GlyphMods bits.
+     * @param nativeMods
+     * @return  */
     @Override
     protected int mapNativeModifiers(int nativeMods) {
         int out = 0;
@@ -728,13 +1030,13 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     /** JWM MouseButton → toolkit ids (0=left, 1=right, 2=middle). */
     private static int buttonToToolkit(io.github.humbleui.jwm.MouseButton b) {
-        switch (b) {
-            case PRIMARY:   return 0;
-            case SECONDARY: return 1;
-            case MIDDLE:    return 2;
-            case BACK:      return 3;
-            case FORWARD:   return 4;
-            default:        return 0;
-        }
+        return switch (b) {
+            case PRIMARY -> 0;
+            case SECONDARY -> 1;
+            case MIDDLE -> 2;
+            case BACK -> 3;
+            case FORWARD -> 4;
+            default -> 0;
+        };
     }
 }

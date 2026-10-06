@@ -110,6 +110,19 @@ public class Window implements AutoCloseable {
         backend.swapBuffers();
     }
 
+    /**
+     * Presents the given frame through the active backend: GL backends swap
+     * buffers, raster-only backends (JWM) blit the CPU surface onto the
+     * native window layer.
+     *
+     * @param result the surface result currently bound to the app canvas
+     * @return false when the backend could not display the frame yet and the
+     *         caller should request another repaint
+     */
+    public boolean present(com.glyphui.core.backend.SurfaceResult result) {
+        return backend.present(result);
+    }
+
     /** @return true when a close has been requested */
     public boolean shouldClose() {
         return backend.shouldClose();
