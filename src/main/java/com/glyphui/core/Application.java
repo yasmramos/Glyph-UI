@@ -1,30 +1,21 @@
 package com.glyphui.core;
 
+import com.glyphui.core.backend.GlSurfaceFactory;
+import com.glyphui.core.backend.RasterSurfaceFactory;
+import com.glyphui.core.backend.SurfaceFactory;
+import com.glyphui.core.backend.SurfaceResult;
 import com.glyphui.graphics.Canvas;
 import com.glyphui.ui.Component;
 import com.glyphui.ui.Panel;
 import com.glyphui.ui.TextField;
 import com.glyphui.events.*;
 import io.github.humbleui.skija.*;
-import org.lwjgl.glfw.GLFWKeyCallback;
-import org.lwjgl.glfw.GLFWMouseButtonCallback;
-import org.lwjgl.glfw.GLFWCursorPosCallback;
-import org.lwjgl.glfw.GLFWKeyCallbackI;
-import org.lwjgl.glfw.GLFWMouseButtonCallbackI;
-import org.lwjgl.glfw.GLFWCursorPosCallbackI;
-import org.lwjgl.glfw.GLFWCharCallback;
-import org.lwjgl.glfw.GLFWCharCallbackI;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL30;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-import static org.lwjgl.glfw.GLFW.*;
-import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL30.*;
 
 /**
  * Main application class that manages the event loop, rendering, and window lifecycle.
@@ -53,7 +44,20 @@ public class Application implements AutoCloseable {
     private Surface surface;
     private Canvas canvas;
     private Panel rootPanel;
+    /**
+     * The GPU context of the active backend, or null for raster. Owned by
+     * {@link #surfaceFactory} once created (the factory hands over closing
+     * responsibility to {@link #close()} through this field). Kept here only
+     * as a cached handle for per-frame flushes.
+     */
     private DirectContext directContext;
+    /**
+     * Backend strategy that creates/recreates the Skija surface. Selected in
+     * {@link #init(String, int, int, boolean)} from the raster flag and
+     * swapped to {@link RasterSurfaceFactory} on GPU-init failure. All GL /
+     * render-target ownership logic lives in the factory implementations.
+     */
+    private SurfaceFactory surfaceFactory;
     private boolean running;
     private double lastFrameTime;
     private int targetFPS;
@@ -244,16 +248,26 @@ public class Application implements AutoCloseable {
 
             // Initialize Skija surface: try GPU first, automatically degrade to
             // raster when the GPU backend is unavailable (headless / no driver).
+            // All native-resource creation and ownership now lives in the
+            // SurfaceFactory implementations; Application only adopts the
+            // returned handles.
             if (useRasterSurface) {
-                initRasterSurface();
+                this.surfaceFactory = new RasterSurfaceFactory();
+                initSurfaceFromFactory();
             } else {
                 try {
-                    initSurface();
+                    this.surfaceFactory = new GlSurfaceFactory();
+                    initSurfaceFromFactory();
                 } catch (Throwable gpuFailure) {
                     System.err.println("Warning: GPU backend unavailable ("
                         + gpuFailure.getMessage() + "). Falling back to raster surface.");
+                    // The failed GL factory already released its DirectContext
+                    // on every internal failure path; belt and braces here so
+                    // the raster fallback never leaves an orphaned context.
+                    closeDirectContextAndNull();
                     this.forceRasterSurface = true;
-                    initRasterSurface();
+                    this.surfaceFactory = new RasterSurfaceFactory();
+                    initSurfaceFromFactory();
                 }
             }
 
@@ -278,7 +292,7 @@ public class Application implements AutoCloseable {
             rootPanel.setWidth(window.getWidth());
             rootPanel.setHeight(window.getHeight());
 
-            lastFrameTime = glfwGetTime();
+            lastFrameTime = nowSeconds();
             running = true;
             paintDirty = true; // always paint the first frame
 
@@ -296,104 +310,67 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Initializes the Skija surface with GPU backend.
+     * Creates the initial Skija surface through the active
+     * {@link SurfaceFactory} (GPU or raster) and wires the canvas wrapper to
+     * it. The factory owns all backend-specific native handles; this method
+     * only adopts the returned {@link SurfaceResult}.
      *
-     * <p>The {@link BackendRenderTarget} is created with the <b>physical</b>
+     * <p>The render target/surface is created with the <b>physical</b>
      * framebuffer dimensions; the {@link Canvas} wrapper (and therefore the
      * component tree) uses the <b>logical</b> window dimensions.</p>
+     *
+     * @throws RuntimeException if the factory fails; by contract the factory
+     *         has already released any partially created native resources,
+     *         so {@link #init()} can safely fall back to raster
      */
-    private void initSurface() {
-        int fbWidth = window.getFramebufferWidth();
-        int fbHeight = window.getFramebufferHeight();
-        int logicalWidth = window.getWidth();
-        int logicalHeight = window.getHeight();
+    private void initSurfaceFromFactory() {
+        SurfaceResult result = surfaceFactory.create(window);
 
-        // Create OpenGL context is already current from Window.create()
-        
-        // Create Skija DirectContext for GPU backend
-        directContext = DirectContext.makeGL();
-        if (directContext == null) {
-            throw new RuntimeException("Failed to create Skija DirectContext");
-        }
-
-        // Get framebuffer ID (0 for default framebuffer)
-        int[] fbIdArray = new int[1];
-        GL11.glGetIntegerv(GL_FRAMEBUFFER_BINDING, fbIdArray);
-        int fbId = fbIdArray[0];
-        
-        // Create BackendRenderTarget for the OpenGL framebuffer using the
-        // PHYSICAL (framebuffer) size — HiDPI: this is larger than logical
-        // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
-        BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
-            fbWidth, 
-            fbHeight, 
-            0,      // samples
-            0,      // stencil
-            fbId, 
-            0x8058  // GL_RGBA8 constant
-        );
-
-        if (renderTarget == null) {
-            throw new RuntimeException("Failed to create BackendRenderTarget");
-        }
-
-        // Create surface wrapping the OpenGL framebuffer.
-        // Skija throws IllegalStateException when the GL context is not usable,
-        // so wrap it to allow callers to fall back to raster.
-        try {
-            surface = Surface.wrapBackendRenderTarget(
-                directContext,
-                renderTarget,
-                SurfaceOrigin.BOTTOM_LEFT,
-                SurfaceColorFormat.RGBA_8888,
-                ColorSpace.getSRGB()
-            );
-        } catch (RuntimeException e) {
-            throw new RuntimeException("Failed to wrap backend render target: " + e.getMessage(), e);
-        }
-
-        if (surface == null) {
-            throw new RuntimeException("Failed to create Skija surface");
-        }
+        this.surface = result.surface();
+        this.directContext = result.directContext();
 
         // Create canvas wrapper in LOGICAL coordinates; the content-scale
         // transform is applied per-frame in render()
         io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
-        canvas = new Canvas(skijaCanvas, surface, logicalWidth, logicalHeight);
+        canvas = new Canvas(skijaCanvas, surface,
+            result.logicalWidth(), result.logicalHeight(), this);
+    }
+
+    /**
+     * Closes and clears {@link #directContext} if set. Used by the GPU-init
+     * failure fallback in {@link #init()} as a belt-and-braces release for
+     * contexts that predate the current factory split (or were installed via
+     * reflection in tests); the active {@link SurfaceFactory} performs the
+     * authoritative release on its own failure paths. Safe to call multiple
+     * times.
+     */
+    private void closeDirectContextAndNull() {
+        if (directContext != null) {
+            try {
+                directContext.close();
+            } catch (RuntimeException ignored) {
+                // Best-effort release during an already-failing init path.
+            }
+            directContext = null;
+        }
     }
 
     /**
      * Initializes the Skija surface with raster backend (for testing).
-     *
-     * <p>The raster surface is allocated at the <b>physical</b> framebuffer
-     * resolution; the canvas wrapper reports <b>logical</b> size and the
-     * content scale is applied per-frame in render(), exactly like the GPU
-     * path.</p>
+     * Delegates to {@link RasterSurfaceFactory} and rebinds the canvas
+     * wrapper, exactly like the GPU init path.
      */
     private void initRasterSurface() {
-        int fbWidth = window.getFramebufferWidth();
-        int fbHeight = window.getFramebufferHeight();
-        int logicalWidth = window.getWidth();
-        int logicalHeight = window.getHeight();
-
-        // Create raster surface at physical resolution (no OpenGL context needed).
-        // Skija raster surfaces always store rows top-to-bottom, so pixel
-        // sampling matches the UI coordinate system without any flip.
-        surface = Surface.makeRasterN32Premul(fbWidth, fbHeight);
-        
-        if (surface == null) {
-            throw new RuntimeException("Failed to create raster surface");
-        }
-
-        // Create canvas wrapper in LOGICAL coordinates
-        io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
-        canvas = new Canvas(skijaCanvas, surface, logicalWidth, logicalHeight);
+        this.surfaceFactory = new RasterSurfaceFactory();
+        initSurfaceFromFactory();
     }
 
     /**
      * Recreates a CPU-backed raster surface at the given size and rebinds it
-     * to the existing canvas wrapper. Extracted from {@link #recreateSurface}
-     * so tests can exercise the raster resize path without a GL context.
+     * to the existing canvas wrapper. Public shim kept for tests that
+     * exercise the raster resize path without a GL context (and without a
+     * fully initialized application); delegates to
+     * {@link RasterSurfaceFactory} so allocation stays in one place.
      *
      * @param width  the new width
      * @param height the new height
@@ -408,14 +385,14 @@ public class Application implements AutoCloseable {
             surface = null;
         }
 
-        // Same factory as initRasterSurface(): keep both allocation paths
-        // consistent (makeRasterN32Premul is the idiomatic premultiplied
-        // N32 variant of makeRaster(ImageInfo)).
-        surface = Surface.makeRasterN32Premul(width, height);
-
-        if (surface == null) {
-            throw new RuntimeException("Failed to recreate raster surface");
-        }
+        // Same factory as initRasterSurface()/the raster branch of
+        // recreateSurface(): keep every allocation path consistent
+        // (makeRasterN32Premul is the idiomatic premultiplied N32 variant of
+        // makeRaster(ImageInfo)). The window may be absent in unit tests, so
+        // the logical size equals the physical one here.
+        SurfaceResult result = new RasterSurfaceFactory()
+            .recreate(null, width, height);
+        surface = result.surface();
 
         io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
         // Always rebind canvas AND surface together: flush() goes through the
@@ -448,76 +425,76 @@ public class Application implements AutoCloseable {
      * canvas transform). No manual fb/window ratio conversion is needed.</p>
      */
     private void setupCallbacks() {
-        long windowHandle = window.getWindowHandle();
-
-        // Framebuffer resize: Window.create() already installs the internal
-        // GLFW framebuffer callback that caches the physical size and keeps
-        // the logical cache in sync. GLFW keeps only ONE callback per event
-        // type per window, so registering a second one here would silently
-        // replace it and orphan Window's cached state. Subscribe through the
-        // listener API instead; by the time this runs, Window has already
-        // updated its own caches from the raw callback values.
-        window.setFramebufferSizeListener((w, fbWidth, fbHeight) -> {
-            recreateSurface(window.getFramebufferWidth(), window.getFramebufferHeight());
+        // The backend owns the native event plumbing; every subscription here
+        // goes through Window's neutral listener API (see WindowBackend).
+        final Application app = this;
+        // Framebuffer resize: the active backend caches the physical size and
+        // keeps the logical dimensions in sync before firing this listener,
+        // so by the time it runs Window's getters already report the new
+        // values. Subscribe through the neutral listener API (never a raw
+        // native callback) so the toolkit works with any backend.
+        window.setFramebufferSizeListener((fbWidth, fbHeight) -> {
+            recreateSurface(fbWidth, fbHeight);
             requestRepaint();
         });
 
         // Content scale (DPI) change — e.g. window moved across monitors:
         // only the per-frame scale factor changes; render() reads it live,
         // so we just need a repaint.
-        window.setContentScaleListener((w, xscale, yscale) -> {
+        window.setContentScaleListener((xscale, yscale) -> {
             this.contentScaleX = xscale;
             this.contentScaleY = yscale;
             requestRepaint();
         });
 
-        // Mouse button callback — coordinates stay in LOGICAL space
-        GLFWMouseButtonCallbackI mouseButtonCallback = (w, button, action, mods) -> {
+        // Mouse button listener — coordinates arrive in LOGICAL space
+        // (backends translate their native identifiers onto the toolkit
+        // vocabulary: 0 = left, 1 = right, 2 = middle).
+        window.setMouseListener((button, pressed, x, y, mods) -> {
             MouseButton glyphButton = convertMouseButton(button);
-            MouseEventType type = (action == GLFW_PRESS) ? MouseEventType.PRESS : MouseEventType.RELEASE;
+            MouseEventType type = pressed ? MouseEventType.PRESS : MouseEventType.RELEASE;
 
-            // Guard the state array: GLFW exposes more buttons than we track
-            // (gaming mice report up to GLFW_MOUSE_BUTTON_LAST = 8+).
+            // Guard the state array: some backends report extra buttons
+            // (gaming mice can exceed the three we track).
             if (button >= 0 && button < mouseButtons.length) {
-                mouseButtons[button] = (action == GLFW_PRESS);
+                mouseButtons[button] = pressed;
             }
 
             MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, glyphButton, 1);
             rootPanel.onMouseEvent(event);
             requestRepaint();
-        };
-        GLFWMouseButtonCallback.create(mouseButtonCallback).set(windowHandle);
+        });
 
-        // Cursor position callback — GLFW reports LOGICAL coordinates, which
-        // match the logical-space component tree directly (HiDPI-safe)
-        GLFWCursorPosCallbackI cursorCallback = (w, xpos, ypos) -> {
+        // Cursor position listener — backends report LOGICAL coordinates,
+        // which match the logical-space component tree directly (HiDPI-safe)
+        window.setCursorPosListener((xpos, ypos) -> {
             mouseX = xpos;
             mouseY = ypos;
 
             MouseEvent event = new MouseEvent(MouseEventType.MOVE, (int) mouseX, (int) mouseY, MouseButton.LEFT, 0);
             rootPanel.onMouseEvent(event);
             requestRepaint();
-        };
-        GLFWCursorPosCallback.create(cursorCallback).set(windowHandle);
+        });
 
         // Focus manager: owns Tab / Shift+Tab traversal and the focused widget
         focusManager = new FocusManager(this::requestRepaint);
         focusManager.setRoot(rootPanel);
         FocusManager.setGlobalFocusManager(focusManager);
 
-        // Clipboard bridge for TextField (copy/paste via GLFW clipboard API)
+        // Clipboard bridge for TextField (copy/paste through the backend-
+        // agnostic clipboard API of Window).
         TextField.setClipboardHooks(
             () -> {
                 Component focused = focusManager.getFocused();
                 if (focused instanceof TextField) {
                     String sel = ((TextField) focused).getSelectedTextOrNull();
                     if (sel != null) {
-                        glfwSetClipboardString(windowHandle, sel);
+                        window.setClipboardString(sel);
                     }
                 }
             },
             () -> {
-                String clip = glfwGetClipboardString(windowHandle);
+                String clip = window.getClipboardString();
                 if (clip != null && !clip.isEmpty()) {
                     Component focused = focusManager.getFocused();
                     if (focused instanceof TextField) {
@@ -526,17 +503,18 @@ public class Application implements AutoCloseable {
                 }
             });
 
-        // Key callback -- Tab / Shift+Tab are intercepted by the FocusManager;
+        // Key listener -- Tab / Shift+Tab are intercepted by the FocusManager;
         // every other key is dispatched down the tree (widgets only react
-        // when they hold the keyboard focus).
-        GLFWKeyCallbackI keyCallback = (w, key, scancode, action, mods) -> {
-            if (action == GLFW_RELEASE && key == GLFW_KEY_ESCAPE) {
+        // when they hold the keyboard focus). Key codes use the toolkit's own
+        // GlyphKeys vocabulary mapped by each backend.
+        window.setKeyListener((key, pressed, mods) -> {
+            if (!pressed && key == GlyphKeys.ESCAPE) {
                 window.setShouldClose(true);
                 return;
             }
 
-            if (key == GLFW_KEY_TAB && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
-                boolean shift = (mods & GLFW_MOD_SHIFT) != 0;
+            if (key == GlyphKeys.TAB && pressed) {
+                boolean shift = (mods & GlyphMods.SHIFT) != 0;
                 if (shift) {
                     focusManager.focusPrevious();
                 } else {
@@ -545,27 +523,49 @@ public class Application implements AutoCloseable {
                 return; // Tab never reaches individual widgets
             }
 
-            KeyEventType type = (action == GLFW_PRESS) ? KeyEventType.PRESS : KeyEventType.RELEASE;
+            KeyEventType type = pressed ? KeyEventType.PRESS : KeyEventType.RELEASE;
             EnumSet<KeyModifier> modifiers = getModifiers(mods);
 
-            char keyChar = (action == GLFW_RELEASE) ? 0 : mapKeyToChar(key);
+            char keyChar = pressed ? mapKeyToChar(key) : 0;
             KeyEvent event = new KeyEvent(type, key, keyChar, modifiers);
             rootPanel.onKeyEvent(event);
             requestRepaint();
-        };
-        GLFWKeyCallback.create(keyCallback).set(windowHandle);
+        });
 
-        // Char callback -- printable text input goes straight to the focused
-        // TextField. NOTE: GLFW has no IME API, so real input-method
-        // composition (CJK candidate windows, dead-key composition) is not
-        // supported in v0.1; see README.
-        GLFWCharCallbackI charCallback = (w, codepoint) -> {
+        // Char listener -- printable text input goes straight to the focused
+        // TextField. On backends without a native IME bridge (GLFW) this is
+        // the only text path; on JWM the TextInputListener below takes
+        // precedence for composed input and the default forwarding (see
+        // AbstractWindowBackend#notifyTextInput) keeps plain characters
+        // flowing here as well.
+        window.setCharListener(codepoint -> {
             Component focused = focusManager.getFocused();
             if (focused instanceof TextField) {
-                ((TextField) focused).onCharTyped((char) codepoint);
+                ((TextField) focused).onCharTyped((char) (int) codepoint);
             }
-        };
-        GLFWCharCallback.create(charCallback).set(windowHandle);
+        });
+
+        // IME text-input listener -- committed/composed strings from the
+        // platform input method (JWM's EventTextInput). The replacement
+        // range marks the currently composing region inside the focused
+        // TextField, so candidate-window commits replace the marked text.
+        window.setTextInputListener((text, replacementStart, replacementEnd) -> {
+            Component focused = focusManager.getFocused();
+            if (focused instanceof TextField) {
+                TextField tf = (TextField) focused;
+                int lo = Math.max(0, Math.min(replacementStart, tf.getText().length()));
+                int hi = Math.max(lo, Math.min(replacementEnd, tf.getText().length()));
+                // Place the caret right after the committed/composed text.
+                tf.replaceRange(lo, hi, text, lo + text.length());
+            }
+            requestRepaint();
+        });
+
+        // IME caret geometry: the backend asks this client where the caret
+        // is (in physical screen pixels) so the OS positions its candidate
+        // window correctly. Backends without IME support ignore it.
+        window.setImeClient(new ImeBridge(app, window));
+        window.setTextInputEnabled(true);
     }
 
     /**
@@ -577,16 +577,25 @@ public class Application implements AutoCloseable {
      * @param glfwKey the GLFW key code
      * @return the mapped character, or 0 when there is no mapping
      */
-    private static char mapKeyToChar(int glfwKey) {
-        switch (glfwKey) {
-            case GLFW_KEY_ENTER:
-            case GLFW_KEY_KP_ENTER:
+    /**
+     * Backend-neutral monotonic clock in seconds (replaces GLFW's
+     * {@code glfwGetTime()} so the loop does not depend on LWJGL).
+     *
+     * @return elapsed seconds from an arbitrary fixed origin
+     */
+    private static double nowSeconds() {
+        return System.nanoTime() / 1_000_000_000.0;
+    }
+
+    private static char mapKeyToChar(int key) {
+        switch (key) {
+            case GlyphKeys.ENTER:
                 return '\r';
-            case GLFW_KEY_TAB:
+            case GlyphKeys.TAB:
                 return '\t';
-            case GLFW_KEY_BACKSPACE:
+            case GlyphKeys.BACKSPACE:
                 return 8;
-            case GLFW_KEY_ESCAPE:
+            case GlyphKeys.ESCAPE:
                 return 27;
             default:
                 return 0;
@@ -594,9 +603,12 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Recreates the Skija surface after window resize.
-     * Branches on the active backend: raster surfaces are recreated with
-     * {@code Surface.makeRaster}, GPU surfaces wrap the window framebuffer.
+     * Recreates the Skija surface after window resize. Delegates entirely to
+     * the active {@link SurfaceFactory}, which encapsulates the backend's
+     * native-resource ownership (raster reallocates a CPU buffer; GPU wraps
+     * the window framebuffer in a fresh render target — see
+     * {@link GlSurfaceFactory} for the issue #24 ownership rule). This
+     * method only rebinds the canvas wrapper and updates the logical sizes.
      *
      * @param fbWidth  the new physical framebuffer width
      * @param fbHeight the new physical framebuffer height
@@ -607,75 +619,28 @@ public class Application implements AutoCloseable {
             surface = null;
         }
 
-        // Logical size derived from the physical framebuffer via the DPI factor
-        int logicalWidth = Math.max(1, Math.round(fbWidth / contentScaleX));
-        int logicalHeight = Math.max(1, Math.round(fbHeight / contentScaleY));
-
-        if (!isGpuBackend()) {
-            // Raster backend: allocate a fresh CPU-backed surface at the new
-            // PHYSICAL size. recreateRasterSurface() rebinds BOTH the native
-            // canvas and the surface in the wrapper (flush() needs the live
-            // surface) and marks paint dirty; we then override the wrapper
-            // dimensions with the LOGICAL size below.
-            recreateRasterSurface(fbWidth, fbHeight);
-        } else {
-            // GPU backend: wrap the window framebuffer in a new render target
-            int[] fbIdArray = new int[1];
-            GL11.glGetIntegerv(GL_FRAMEBUFFER_BINDING, fbIdArray);
-            int fbId = fbIdArray[0];
-
-            // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
-            BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
-                fbWidth,
-                fbHeight,
-                0,      // samples
-                0,      // stencil
-                fbId,
-                0x8058  // GL_RGBA8 constant
-            );
-
-            if (renderTarget == null) {
-                throw new RuntimeException("Failed to recreate BackendRenderTarget");
-            }
-
-            try {
-                surface = Surface.wrapBackendRenderTarget(
-                    directContext,
-                    renderTarget,
-                    SurfaceOrigin.BOTTOM_LEFT,
-                    SurfaceColorFormat.RGBA_8888,
-                    ColorSpace.getSRGB()
-                );
-            } catch (RuntimeException e) {
-                // wrap failed: Skija did not take ownership, release it here
-                renderTarget.close();
-                throw new RuntimeException("Failed to wrap backend render target: "
-                    + e.getMessage(), e);
-            }
-
-            // Consistent with initSurface(): do NOT close the render target
-            // after wrapping. Skija's wrapped surface may keep referencing the
-            // native target for its lifetime; closing it eagerly risks use of
-            // a freed handle on the next flush/draw. The DirectContext owns
-            // the lifecycle once wrapped (see also issue #24: both paths must
-            // follow the same ownership rule).
-
-            if (surface == null) {
-                renderTarget.close();
-                throw new RuntimeException("Failed to recreate Skija surface");
-            }
-
-            io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
-            // Rebind canvas AND surface together — Canvas.flush() delegates to
-            // surface.flushAndSubmit(), so a stale surface reference would
-            // flush into the closed (previous) surface.
-            canvas.setNativeCanvas(skijaCanvas, surface);
-            canvas.resize(logicalWidth, logicalHeight);
+        // Ensure a factory exists even on partially initialized instances
+        // (e.g. resize callbacks racing a failed init); the backend choice
+        // mirrors isGpuBackend()/the raster fallback flag.
+        if (surfaceFactory == null) {
+            surfaceFactory = isGpuBackend()
+                ? new GlSurfaceFactory() : new RasterSurfaceFactory();
         }
 
+        SurfaceResult result = surfaceFactory.recreate(window, fbWidth, fbHeight);
+        this.surface = result.surface();
+        this.directContext = result.directContext();
+
+        io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
+        // Rebind canvas AND surface together — Canvas.flush() delegates to
+        // surface.flushAndSubmit(), so a stale surface reference would
+        // flush into the closed (previous) surface.
+        canvas.setNativeCanvas(skijaCanvas, surface);
+        canvas.resize(result.logicalWidth(), result.logicalHeight());
+
         // Update root panel size (logical coordinates)
-        rootPanel.setWidth(logicalWidth);
-        rootPanel.setHeight(logicalHeight);
+        rootPanel.setWidth(result.logicalWidth());
+        rootPanel.setHeight(result.logicalHeight());
 
         requestRepaint();
     }
@@ -688,9 +653,9 @@ public class Application implements AutoCloseable {
      */
     private MouseButton convertMouseButton(int button) {
         switch (button) {
-            case GLFW_MOUSE_BUTTON_RIGHT:
+            case 1: // toolkit button id: right
                 return MouseButton.RIGHT;
-            case GLFW_MOUSE_BUTTON_MIDDLE:
+            case 2: // toolkit button id: middle
                 return MouseButton.MIDDLE;
             default:
                 return MouseButton.LEFT;
@@ -706,13 +671,13 @@ public class Application implements AutoCloseable {
     private EnumSet<KeyModifier> getModifiers(int mods) {
         EnumSet<KeyModifier> modifiers = EnumSet.noneOf(KeyModifier.class);
         
-        if ((mods & GLFW_MOD_SHIFT) != 0) {
+        if ((mods & GlyphMods.SHIFT) != 0) {
             modifiers.add(KeyModifier.SHIFT);
         }
-        if ((mods & GLFW_MOD_CONTROL) != 0) {
+        if ((mods & GlyphMods.CTRL) != 0) {
             modifiers.add(KeyModifier.CTRL);
         }
-        if ((mods & GLFW_MOD_ALT) != 0) {
+        if ((mods & GlyphMods.ALT) != 0) {
             modifiers.add(KeyModifier.ALT);
         }
         
@@ -1020,7 +985,7 @@ public class Application implements AutoCloseable {
         // once GLFW is initialized; before that the queue is drained on the
         // first run() iteration anyway.
         if (window != null) {
-            glfwPostEmptyEvent();
+            window.postEmptyEvent();
         }
     }
 
@@ -1095,12 +1060,14 @@ public class Application implements AutoCloseable {
     /**
      * Returns true when the GPU (OpenGL) backend is active, false for raster.
      * The raster backend never creates a DirectContext, so a null context
-     * identifies it reliably.
+     * identifies it reliably; an installed {@link GlSurfaceFactory} counts as
+     * GPU even before its first successful create().
      *
      * @return true if GPU backend is active
      */
     public boolean isGpuBackend() {
-        return directContext != null;
+        return directContext != null
+            || (surfaceFactory != null && surfaceFactory.isGpu());
     }
 
     /**
@@ -1118,6 +1085,10 @@ public class Application implements AutoCloseable {
         // Publish this instance so lazily created widget properties can find
         // the marshalling target (see Application.getCurrent()).
         current = this;
+        // Let Canvas wrappers created from now on (e.g. per-widget offscreen
+        // surfaces) inherit this application's UI-thread affinity, so a draw
+        // from a foreign thread fails fast instead of corrupting Skija.
+        Canvas.setThreadCheckOwner(() -> uiThread == null ? null : this);
 
         while (!window.shouldClose()) {
             // Poll events (callbacks may mark paintDirty)
@@ -1148,7 +1119,7 @@ public class Application implements AutoCloseable {
             }
 
             if (needPaint) {
-                lastFrameTime = glfwGetTime();
+                lastFrameTime = nowSeconds();
                 render();
             } else if (!isGpuBackend()) {
                 // Raster backend has no hardware vsync: sleep a short interval
@@ -1239,6 +1210,13 @@ public class Application implements AutoCloseable {
         if (current == this) {
             current = null;
         }
+        // Drop the Canvas thread-check hook once this instance stops being
+        // the marshalling target, so wrappers created later (e.g. by other
+        // applications or tests) do not inherit a closed instance's affinity.
+        if (uiThread != null) {
+            Canvas.setThreadCheckOwner(null);
+            uiThread = null;
+        }
 
         // Clear every process-wide static this application installed, so a
         // closed instance is never retained through global hooks (important
@@ -1277,6 +1255,15 @@ public class Application implements AutoCloseable {
         if (directContext != null) {
             directContext.close();
             directContext = null;
+        }
+
+        // Release whatever the active factory still owns (e.g. a GL context
+        // created during a failed init that was never adopted above). The
+        // application already closed the adopted context, and factory close()
+        // is idempotent, so this is a no-op on every successful path.
+        if (surfaceFactory != null) {
+            surfaceFactory.close();
+            surfaceFactory = null;
         }
 
         // Destroy window (GLFW) last
