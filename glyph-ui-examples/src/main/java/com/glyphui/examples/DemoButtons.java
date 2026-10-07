@@ -1,13 +1,17 @@
-package com.glyphui;
+package com.glyphui.examples;
 
 import com.glyphui.core.Application;
 import com.glyphui.ui.Button;
 import com.glyphui.layout.FlowLayout;
 
 /**
- * Main entry point for the Glyph UI example application.
+ * Example application: three buttons laid out with a FlowLayout.
+ *
+ * <p>Moved out of the core library into the standalone
+ * {@code glyph-ui-examples} module so the published toolkit jar stays free
+ * of demo entry points.</p>
  */
-public class Main {
+public class DemoButtons {
     public static void main(String[] args) {
         // Application owns all native resources (surface, GPU context, window);
         // try-with-resources guarantees they are released in the correct order.

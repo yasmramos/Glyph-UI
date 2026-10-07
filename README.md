@@ -25,7 +25,7 @@ A modern UI toolkit built on Skija and LWJGL for Java 17+.
 On macOS, you need to add the `-XstartOnFirstThread` JVM argument:
 
 ```bash
-mvn exec:java -Dexec.mainClass="com.glyphui.Main" -Dexec.vmArgs="-XstartOnFirstThread"
+cd glyph-ui-examples && mvn exec:java -Dexec.vmArgs="-XstartOnFirstThread"
 ```
 
 Or configure your IDE to include this VM argument when running the application.
@@ -36,15 +36,21 @@ Or configure your IDE to include this VM argument when running the application.
 mvn clean compile
 ```
 
-## Running
+## Running the examples
+
+Runnable demos live in the separate [`glyph-ui-examples`](glyph-ui-examples)
+Maven project, which depends on the toolkit jar. Install the library locally
+first, then run any example from the examples directory:
 
 ```bash
-mvn exec:java -Dexec.mainClass="com.glyphui.Main"
+mvn install -DskipTests          # from the repository root (installs glyph-ui)
+cd glyph-ui-examples
+mvn exec:java                    # runs com.glyphui.examples.DemoButtons
 ```
 
 On macOS:
 ```bash
-mvn exec:java -Dexec.mainClass="com.glyphui.Main" -Dexec.vmArgs="-XstartOnFirstThread"
+mvn exec:java -Dexec.vmArgs="-XstartOnFirstThread"
 ```
 
 ### Choosing a window backend
@@ -59,7 +65,7 @@ The native window backend is resolved at runtime by `BackendFactory`:
 | `<fqcn>` | Any `WindowBackend` implementation with a `(String, int, int, WindowConfig)` constructor |
 
 ```bash
-java -Dglyphui.backend=glfw -cp target/classes:<deps> com.glyphui.Main
+java -Dglyphui.backend=glfw -cp target/classes:<deps> com.glyphui.examples.DemoButtons
 ```
 
 JWM owns the process UI thread: its native message loop is started by
@@ -72,7 +78,6 @@ blitted from the CPU surface onto the window layer via
 
 ```
 src/main/java/com/glyphui/
-├── Main.java                 # Example application entry point
 ├── core/
 │   ├── Application.java      # Main application class with event loop
 │   └── Window.java           # Window abstraction using GLFW
@@ -94,6 +99,12 @@ src/main/java/com/glyphui/
 └── layout/
     ├── LayoutManager.java    # Base class for layout managers
     └── FlowLayout.java       # Flow layout implementation
+
+glyph-ui-examples/            # Separate Maven project with runnable demos
+├── pom.xml                   # Depends on the glyph-ui artifact
+└── src/main/
+    ├── java/com/glyphui/examples/DemoButtons.java
+    └── resources/demo/       # ui.html + app.css declarative markup demo
 ```
 
 ## Usage Example

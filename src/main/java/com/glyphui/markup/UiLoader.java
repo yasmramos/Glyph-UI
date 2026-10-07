@@ -172,7 +172,8 @@ public final class UiLoader {
 
     /**
      * Loads a markup document from the classpath, e.g.
-     * {@code load("/demo/ui.html", controller)}.
+     * {@code load("/demo/ui.html", controller)} (the demo files ship with
+     * the separate {@code glyph-ui-examples} module).
      *
      * @param resource   the classpath resource name
      * @param controller object for {@code onclick}/{@code onchange} resolution

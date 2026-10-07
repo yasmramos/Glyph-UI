@@ -173,14 +173,12 @@
                     <target>17</target>
                 </configuration>
             </plugin>
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>3.1.0</version>
-                <configuration>
-                    <mainClass>com.glyphui.Main</mainClass>
-                </configuration>
-            </plugin>
+            <!--
+                The runnable demo entry point (DemoButtons) now lives in the
+                separate glyph-ui-examples module, so this library jar has no
+                main class. Run the examples from that module instead:
+                  cd glyph-ui-examples && mvn exec:java
+            -->
             <!-- Maven Surefire Plugin for JUnit 5 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
