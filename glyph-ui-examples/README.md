@@ -10,7 +10,7 @@ class, no demo resources).
 | Example | Entry point | Description |
 |---------|-------------|-------------|
 | Buttons demo | `com.glyphui.examples.DemoButtons` | Three buttons in a `FlowLayout`, click handlers |
-| Declarative markup demo | `src/main/resources/demo/ui.html` + `app.css` | HTML-like markup + CSS subset loaded by `UiLoader` |
+| Declarative markup demo | `src/main/resources/demo/ui.glyph` + `app.css` | `.glyph` markup + CSS subset loaded by `UiLoader` |
 
 ## Requirements
 

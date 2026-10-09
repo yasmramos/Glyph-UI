@@ -96,6 +96,10 @@ src/main/java/com/glyphui/
 │   ├── MouseButton.java      # Mouse button enum
 │   ├── KeyEventType.java     # Key event type enum
 │   └── KeyModifier.java      # Key modifier enum
+├── markup/
+│   ├── Tokenizer.java        # .glyph lexer (three-mode scanner)
+│   ├── Parser.java           # .glyph recursive-descent parser -> AST
+│   └── UiLoader.java         # AST -> widget tree mapper
 └── layout/
     ├── LayoutManager.java    # Base class for layout managers
     └── FlowLayout.java       # Flow layout implementation
@@ -104,7 +108,7 @@ glyph-ui-examples/            # Separate Maven project with runnable demos
 ├── pom.xml                   # Depends on the glyph-ui artifact
 └── src/main/
     ├── java/com/glyphui/examples/DemoButtons.java
-    └── resources/demo/       # ui.html + app.css declarative markup demo
+    └── resources/demo/       # ui.glyph + app.css declarative markup demo
 ```
 
 ## Usage Example
@@ -213,10 +217,12 @@ of waiting for the next poll tick.
 
 This project is open source. See the LICENSE file for details.
 
-## Declarative UI: HTML-like markup + CSS subset
+## Declarative UI: `.glyph` markup + CSS subset
 
-Glyph-UI lets you declare interfaces in an HTML-like markup file and style them
-with a CSS subset, resolved against the live widget tree.
+Glyph-UI lets you declare interfaces in a `.glyph` markup file and style them
+with a CSS subset, resolved against the live widget tree. `.glyph` is scanned
+by the built-in `Tokenizer`/`Parser` (no third-party HTML parser) into a raw
+AST that `UiLoader` maps onto widgets.
 
 > **This is NOT a browser.** There is no JavaScript engine, no DOM, and only a
 > documented subset of CSS is supported. Unknown properties/selectors are
@@ -225,10 +231,38 @@ with a CSS subset, resolved against the live widget tree.
 ### Markup (`UiLoader`)
 
 ```java
-StyleSheet sheet = StyleSheet.fromResource("/demo/app.css");
-Panel root = UiLoader.loadFromResource("/demo/ui.html", new MyController());
-StyleEngine.apply(root, sheet);
+UiLoader loader = new UiLoader();
+Panel root = (Panel) loader.load("/demo/ui.glyph", new MyController());
+
+// A <link rel="stylesheet" href="app.css"/> found while parsing is exposed here:
+StyleSheet sheet = loader.getLastStyleSheet();
+if (sheet != null) {
+    StyleEngine.apply(root, sheet);
+}
 ```
+
+`.glyph` syntax is XML-like:
+
+```glyph
+<!-- comments use the HTML form -->
+<link rel="stylesheet" href="app.css"/>
+<body>
+  <div id="card" class="card" layout="flex">
+    <label class="title">Hello</label>
+    <button id="ok" onclick="onOk">OK</button>
+  </div>
+</body>
+```
+
+- Elements use `<Tag attr="value">children</Tag>` or the self-closing
+  `<Tag/>` form; unquoted values (`layout=flex`) are accepted.
+- Content may contain `{path.to.value}` interpolations and the literal-brace
+  escapes `{{` / `}}`. The parser captures interpolations as `BindingNode`s,
+  but wiring them to reactive properties is not implemented yet, so
+  `UiLoader` reports them as warnings.
+- Inline `<style>` blocks are **not** supported (the `{` delimiter collides
+  with interpolations). Link an external sheet with
+  `<link rel="stylesheet" href="app.css"/>` instead.
 
 Supported tags (unknown tags become a generic `Panel` with a warning):
 
@@ -238,12 +272,14 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `button`   | `Button`    | text from tag body; `onclick="methodName"`   |
 | `label`, `p` | `Label`   | text from tag body                           |
 | `input`    | `TextField` | `value` attribute; `onchange="methodName"`   |
-| `img`      | `ImageView` | `src` resolved via classpath resource        |
+| `img`      | `ImageView` | `src` resolved through the loader's `ImageProvider` |
 
 Attributes: `class`, `id`, `style="..."` (inline CSS), `layout="flex"` /
 `layout="flow"` on containers, and `onclick`/`onchange` which are resolved by
 name against a registered controller object via reflection (no-arg or
-component-arg public methods).
+component-arg public methods). `head`, `title`, `meta`, `link`, `style`,
+`script` and `base` are document metadata and never become widgets; a `body`
+element, when present, becomes the root container.
 
 ### CSS subset
 
