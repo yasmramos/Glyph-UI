@@ -13,6 +13,18 @@ import io.github.humbleui.types.RRect;
  * closes them during {@code Application.close()}. This wrapper never closes
  * them; it only holds references and rebinds them when the application
  * recreates its surface (e.g. on window resize).</p>
+ *
+ * <p><strong>Threading:</strong> Skija native objects are not safe to use
+ * from multiple threads concurrently; drawing from a foreign thread causes
+ * silent native corruption rather than a Java exception. Every public draw
+ * operation therefore starts with {@link #checkUiThread()}, which fails fast
+ * with an {@link IllegalStateException} when called off the UI thread (see
+ * {@code Application.checkThread()}). The check is skipped for canvases
+ * bound explicitly via {@link #bindToApplication(com.glyphui.core.Application)}
+ * or created through the owning-application constructor, plus the static
+ * {@link #setThreadCheckOwner(java.util.function.Supplier)} hook used by
+ * {@link com.glyphui.core.Application} itself. Wrappers created directly
+ * (tests, offscreen rendering) keep no thread affinity.</p>
  */
 public class Canvas {
     private io.github.humbleui.skija.Canvas canvas;
@@ -21,7 +33,29 @@ public class Canvas {
     private int height;
 
     /**
-     * Creates a new Canvas wrapper.
+     * The application whose UI-thread affinity this wrapper enforces, or
+     * {@code null} when no affinity was established (wrapper created
+     * directly by tests / offscreen code). Set by the
+     * {@link #Canvas(io.github.humbleui.skija.Canvas, Surface, int, int, com.glyphui.core.Application)}
+     * constructor and by {@link #bindToApplication(com.glyphui.core.Application)}.
+     */
+    private volatile com.glyphui.core.Application ownerApp;
+
+    /**
+     * Optional static hook returning the application that new unbound
+     * wrappers should enforce thread affinity against. Used by
+     * {@link com.glyphui.core.Application} so every wrapper it creates
+     * (and any created later, e.g. per-widget surfaces) inherits the check
+     * without threading an explicit reference through every call site.
+     * Must be cleared when the application closes.
+     */
+    private static volatile java.util.function.Supplier<com.glyphui.core.Application>
+            threadCheckOwnerSupplier;
+
+    /**
+     * Creates a new Canvas wrapper without thread affinity (the caller is
+     * responsible for single-threaded use — typical for tests and offscreen
+     * raster rendering).
      *
      * @param canvas the Skija canvas
      * @param surface the Skija surface
@@ -29,10 +63,79 @@ public class Canvas {
      * @param height the canvas height
      */
     public Canvas(io.github.humbleui.skija.Canvas canvas, Surface surface, int width, int height) {
+        this(canvas, surface, width, height, null);
+    }
+
+    /**
+     * Creates a new Canvas wrapper that fail-fasts when drawn from a thread
+     * other than the owning application's UI thread.
+     *
+     * @param canvas the Skija canvas
+     * @param surface the Skija surface
+     * @param width the canvas width
+     * @param height the canvas height
+     * @param ownerApp the owning application for the thread check (may be null)
+     */
+    public Canvas(io.github.humbleui.skija.Canvas canvas, Surface surface, int width, int height,
+                  com.glyphui.core.Application ownerApp) {
         this.canvas = java.util.Objects.requireNonNull(canvas, "canvas");
         this.surface = java.util.Objects.requireNonNull(surface, "surface");
         this.width = width;
         this.height = height;
+        this.ownerApp = ownerApp != null ? ownerApp : currentThreadCheckOwner();
+    }
+
+    /**
+     * Installs (or clears, with {@code null}) the static hook consulted by
+     * newly constructed wrappers to obtain their thread-affinity target.
+     *
+     * @param supplier returns the application to bind new wrappers to, or null
+     */
+    public static void setThreadCheckOwner(
+            java.util.function.Supplier<com.glyphui.core.Application> supplier) {
+        threadCheckOwnerSupplier = supplier;
+    }
+
+    private static com.glyphui.core.Application currentThreadCheckOwner() {
+        java.util.function.Supplier<com.glyphui.core.Application> s = threadCheckOwnerSupplier;
+        if (s == null) {
+            return null;
+        }
+        try {
+            return s.get();
+        } catch (RuntimeException ignored) {
+            // A misbehaving hook must never break canvas creation.
+            return null;
+        }
+    }
+
+    /**
+     * Binds this wrapper to an application instance so the draw methods
+     * enforce that application's UI-thread affinity. Called by
+     * {@link com.glyphui.core.Application} right after construction.
+     *
+     * @param app the owning application (may be null to unbind)
+     */
+    public void bindToApplication(com.glyphui.core.Application app) {
+        this.ownerApp = app;
+    }
+
+    /**
+     * Fails fast when the calling thread is not the owning application's UI
+     * thread. No-op when the wrapper has no bound application (headless /
+     * test usage) or when the application's event loop has not started yet
+     * (no UI thread exists before {@code run()}, matching
+     * {@code Application.isUiThread()} semantics).
+     *
+     * @throws IllegalStateException when drawing from a foreign thread
+     */
+    private void checkUiThread() {
+        com.glyphui.core.Application app = ownerApp;
+        if (app != null && !app.isUiThread()) {
+            throw new IllegalStateException(
+                "Canvas drawing must run on the Glyph UI thread; use "
+                + "Application.invokeLater(...) to marshal drawing operations.");
+        }
     }
 
     /**
@@ -117,6 +220,7 @@ public class Canvas {
      * @param color the color to fill the canvas with (as ARGB int)
      */
     public void clear(int color) {
+        checkUiThread();
         canvas.clear(color);
     }
 
@@ -129,6 +233,7 @@ public class Canvas {
      * @param sy the vertical scale factor
      */
     public void scale(float sx, float sy) {
+        checkUiThread();
         canvas.scale(sx, sy);
     }
 
@@ -140,6 +245,7 @@ public class Canvas {
      * @return the current canvas matrix as a 9-element array [a,b,c, d,e,f, g,h,i]
      */
     public float[] getMatrixArray() {
+        checkUiThread();
         io.github.humbleui.skija.Matrix33 m = canvas.getLocalToDeviceAsMatrix33();
         return m.getMat();
     }
@@ -154,6 +260,7 @@ public class Canvas {
      * @param paint  the paint to use for drawing
      */
     public void drawRect(float x, float y, float width, float height, Paint paint) {
+        checkUiThread();
         Rect rect = Rect.makeXYWH(x, y, width, height);
         canvas.drawRect(rect, paint);
     }
@@ -170,6 +277,7 @@ public class Canvas {
      * @param paint      the paint to use for drawing
      */
     public void drawRRect(float x, float y, float width, float height, float radiusX, float radiusY, Paint paint) {
+        checkUiThread();
         RRect rrect = RRect.makeXYWH(x, y, width, height, radiusX, radiusY);
         canvas.drawRRect(rrect, paint);
     }
@@ -183,6 +291,7 @@ public class Canvas {
      * @param paint   the paint to use for drawing
      */
     public void drawCircle(float centerX, float centerY, float radius, Paint paint) {
+        checkUiThread();
         canvas.drawCircle(centerX, centerY, radius, paint);
     }
 
@@ -196,6 +305,7 @@ public class Canvas {
      * @param paint the paint to use for drawing
      */
     public void drawLine(float x1, float y1, float x2, float y2, Paint paint) {
+        checkUiThread();
         canvas.drawLine(x1, y1, x2, y2, paint);
     }
 
@@ -209,6 +319,7 @@ public class Canvas {
      * @param font   the font to use
      */
     public void drawString(String text, float x, float y, Paint paint, Font font) {
+        checkUiThread();
         canvas.drawString(text, x, y, font, paint);
     }
 
@@ -220,6 +331,7 @@ public class Canvas {
      * @return the width of the text
      */
     public float measureText(String text, Font font) {
+        checkUiThread();
         return font.measureTextWidth(text);
     }
 
@@ -234,6 +346,7 @@ public class Canvas {
      * @return the text height
      */
     public float getTextHeight(Font font) {
+        checkUiThread();
         // Cache the metrics object: some Skija versions allocate a new
         // FontMetrics per getMetrics() call.
         FontMetrics metrics = font.getMetrics();
@@ -248,6 +361,7 @@ public class Canvas {
      * @param y     the y-coordinate
      */
     public void drawImage(io.github.humbleui.skija.Image image, float x, float y) {
+        checkUiThread();
         canvas.drawImage(image, x, y);
     }
 
@@ -262,6 +376,7 @@ public class Canvas {
      * @param h     the destination height
      */
     public void drawImage(Image image, float x, float y, float w, float h) {
+        checkUiThread();
         if (image == null || !image.isLoaded()) {
             return;
         }
@@ -280,6 +395,7 @@ public class Canvas {
      * raster surface has no command queue — pixels are written synchronously.</p>
      */
     public void flush() {
+        checkUiThread();
         surface.flushAndSubmit();
     }
 
@@ -290,6 +406,7 @@ public class Canvas {
      * @return the saved stack depth, to be passed to {@link #restoreToCount(int)}
      */
     public int save() {
+        checkUiThread();
         return canvas.save();
     }
 
@@ -297,6 +414,7 @@ public class Canvas {
      * Restores the most recently saved canvas state.
      */
     public void restore() {
+        checkUiThread();
         canvas.restore();
     }
 
@@ -307,6 +425,7 @@ public class Canvas {
      * @param saveCount the stack depth captured by {@link #save()}
      */
     public void restoreToCount(int saveCount) {
+        checkUiThread();
         canvas.restoreToCount(saveCount);
     }
 
@@ -321,6 +440,7 @@ public class Canvas {
      * @param height height of the clipping rectangle
      */
     public void clipRect(float x, float y, float width, float height) {
+        checkUiThread();
         canvas.clipRect(Rect.makeXYWH(x, y, width, height), ClipMode.INTERSECT, true);
     }
 
@@ -333,6 +453,7 @@ public class Canvas {
      * @param dy vertical translation
      */
     public void translate(float dx, float dy) {
+        checkUiThread();
         canvas.translate(dx, dy);
     }
 }

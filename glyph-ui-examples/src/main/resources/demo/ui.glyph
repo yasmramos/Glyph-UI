@@ -1,17 +1,19 @@
-<!DOCTYPE html>
 <!--
-  Glyph-UI declarative markup demo.
+  Glyph-UI declarative markup demo (.glyph).
 
   This is NOT a web page: there is no JavaScript engine and no DOM.
-  UiLoader parses this fixed tag subset (div, button, label, p, input, img)
-  into the native widget tree; everything else is CSS-styled through
-  app.css (a documented subset of CSS 2.1 selectors + custom properties).
+  UiLoader scans this fixed tag subset (div, button, label, p, input, img)
+  into the native widget tree; everything else is styled through app.css
+  (a documented subset of CSS selectors + custom properties).
+
+  .glyph notes:
+    - Tags are XML-like: <Tag attr="value">children</Tag> or <Tag/>.
+    - {path} is an interpolation. It is captured by the parser as a raw
+      binding node; reactive evaluation is not wired to UiLoader yet.
+    - Inline <style> is NOT supported, because '{' is the interpolation
+      delimiter. Link an external sheet with <link rel="stylesheet" .../>.
 -->
-<html>
-<head>
-    <title>Glyph-UI Demo</title>
-    <link rel="stylesheet" href="app.css">
-</head>
+<link rel="stylesheet" href="app.css"/>
 <body>
     <div id="root" class="column gap-md" layout="flex" style="flex-direction: column;">
         <label class="title">Glyph-UI</label>
@@ -28,4 +30,3 @@
         </div>
     </div>
 </body>
-</html>

@@ -11,12 +11,19 @@ import com.glyphui.ui.Panel;
 import com.glyphui.ui.TextField;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests for the declarative markup loader: tag mapping, attribute handling,
- * controller event binding and stylesheet extraction.
+ * Tests for the declarative {@code .glyph} loader: tag mapping, attribute
+ * handling, controller event binding and stylesheet extraction. The loader is
+ * backed by {@link Tokenizer}/{@link Parser}, not by a third-party HTML
+ * parser.
  */
 class UiLoaderTest {
 
@@ -34,9 +41,18 @@ class UiLoaderTest {
         }
     }
 
+    /** Controller exposing a Component-argument handler. */
+    public static class ComponentArgController {
+        Component received;
+
+        public void onGo(Component component) {
+            received = component;
+        }
+    }
+
     @Test
     void mapsTagsToWidgets() {
-        String html = """
+        String glyph = """
                 <body>
                   <div id="root-panel" class="card toolbar">
                     <button id="ok">OK</button>
@@ -48,7 +64,7 @@ class UiLoaderTest {
                 </body>
                 """;
         UiLoader loader = new UiLoader();
-        Component root = loader.loadFromString(html);
+        Component root = loader.loadFromString(glyph);
 
         assertTrue(root instanceof Panel);
         Panel container = (Panel) UiLoader.findById(root, "root-panel");
@@ -137,6 +153,19 @@ class UiLoaderTest {
     }
 
     @Test
+    void componentArgHandlerReceivesTheWidget() {
+        ComponentArgController controller = new ComponentArgController();
+        UiLoader loader = new UiLoader(controller);
+        Component root = loader.loadFromString(
+                "<body><button id=\"go\" onclick=\"onGo\">Go</button></body>");
+        Button go = (Button) UiLoader.findById(root, "go");
+        assertNotNull(go);
+        go.performClick();
+        assertSame(go, controller.received,
+                "Component-arg handler must receive the widget matched by id");
+    }
+
+    @Test
     void onchangeIsBoundForTextFields() {
         DemoController controller = new DemoController();
         UiLoader loader = new UiLoader(controller);
@@ -159,16 +188,64 @@ class UiLoaderTest {
     }
 
     @Test
-    void embeddedStyleElementIsExtractedIntoStyleSheet() {
-        UiLoader loader = new UiLoader();
-        Component root = loader.loadFromString("""
-                <html><head>
-                  <style>#hit { padding: 3px; }</style>
-                </head>
-                <body><button id="hit">x</button></body></html>
+    void linkedStyleSheetIsResolvedRelativeToTheDocument(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("app.css"), "#hit { padding: 3px; }");
+        Path ui = dir.resolve("ui.glyph");
+        Files.writeString(ui, """
+                <link rel="stylesheet" href="app.css"/>
+                <body><button id="hit">x</button></body>
                 """);
+        UiLoader loader = new UiLoader();
+        Component root = loader.load(ui);
+        assertNotNull(root);
         assertNotNull(loader.getLastStyleSheet());
         assertEquals(1, loader.getLastStyleSheet().getRules().size());
+    }
+
+    @Test
+    void inlineStyleElementIsUnsupportedAndWarns() {
+        UiLoader loader = new UiLoader();
+        loader.loadFromString("<style>#x { color: red; }</style><body></body>");
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("inline <style>")),
+                "inline <style> must warn because '{' is the binding delimiter");
+    }
+
+    @Test
+    void bindingInterpolationsWarnAndAreNotResolved() {
+        UiLoader loader = new UiLoader();
+        loader.loadFromString("<body><label>Hi {name}</label></body>");
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("Binding {name}")),
+                "unsupported interpolations should be reported");
+    }
+
+    @Test
+    void recoverableParseErrorsSurfaceAsWarnings() {
+        UiLoader loader = new UiLoader();
+        loader.loadFromString("<body><button>x</body>");
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("parse error")),
+                "recoverable syntax problems should be collected as warnings");
+    }
+
+    @Test
+    void singleTopLevelElementBecomesTheRoot() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<div id=\"root\" class=\"page\"><label>Hi</label></div>");
+        assertTrue(root instanceof Panel);
+        assertTrue(((Panel) root).hasStyleClass("page"));
+        assertSame(root, UiLoader.findById(root, "root"));
+        assertEquals(1, ((Panel) root).getChildren().size());
+    }
+
+    @Test
+    void htmlWithoutBodyUsesItselfAsTheContainerAndSkipsMetadata() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<html><head><title>x</title></head>"
+                        + "<div id=\"app\"><label>Hi</label></div></html>");
+        assertNotNull(UiLoader.findById(root, "app"));
+        assertEquals(1, ((Panel) root).getChildren().size(),
+                "head/title must not become widgets");
     }
 
     private static int countByType(Component c, Class<?> type) {

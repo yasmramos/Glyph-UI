@@ -97,7 +97,7 @@ public class WindowHiDpiTest {
         Window window = new Window("HiDPI", 800, 600);
 
         AtomicReference<float[]> received = new AtomicReference<>();
-        window.setContentScaleListener((w, xs, ys) -> received.set(new float[]{xs, ys}));
+        window.setContentScaleListener((xs, ys) -> received.set(new float[]{xs, ys}));
 
         window.setContentScale(1.5f, 1.5f);
 

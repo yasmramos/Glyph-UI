@@ -210,6 +210,42 @@ public class TextField extends Component {
         return caret;
     }
 
+    /**
+     * Gets the font used to lay out this field's text (the shared theme BODY
+     * font, owned by {@code FontManager}). Exposed for the IME bridge, which
+     * must measure the caret position exactly like {@link #render} does.
+     *
+     * @return the rendering font (never null once a theme exists)
+     */
+    public Font getFontForIme() {
+        return getFont();
+    }
+
+    /**
+     * Replaces the current selection with {@code newText}, placing the caret
+     * at {@code newCaret}. Used by the IME commit path (JWM backend), whose
+     * replacement ranges are absolute buffer offsets rather than "insert at
+     * caret".
+     *
+     * @param lo       start of the range to replace (clamped)
+     * @param hi       end of the range to replace (clamped, >= lo)
+     * @param newText  the committed text
+     * @param newCaret caret position after the replacement (clamped)
+     */
+    public void replaceRange(int lo, int hi, String newText, int newCaret) {
+        if (!isEnabled()) {
+            return;
+        }
+        int length = text.length();
+        int from = Math.max(0, Math.min(lo, length));
+        int to = Math.max(from, Math.min(hi, length));
+        String inserted = newText == null ? "" : newText;
+        text = text.substring(0, from) + inserted + text.substring(to);
+        caret = Math.max(0, Math.min(newCaret, text.length()));
+        selectionAnchor = caret;
+        invalidate();
+    }
+
     /** @return true if a non-empty selection exists */
     public boolean hasSelection() {
         return caret != selectionAnchor;

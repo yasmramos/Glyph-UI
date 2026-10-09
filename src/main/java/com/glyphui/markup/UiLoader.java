@@ -12,10 +12,6 @@ import com.glyphui.ui.Label;
 import com.glyphui.ui.Panel;
 import com.glyphui.ui.TextField;
 
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -23,16 +19,32 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
- * Builds a {@link Component} tree from an HTML-like markup document.
+ * Builds a {@link Component} tree from a {@code .glyph} declarative markup
+ * document.
  *
- * <p>This is the declarative front-end of Glyph-UI: UI structure is written
- * in a small HTML subset and styling comes from CSS (see
- * {@link com.glyphui.style}). The loader maps tags to widgets:</p>
+ * <p>This is the declarative front-end of Glyph-UI. The document is scanned
+ * by {@link Tokenizer} and turned into a {@link Document} AST by {@link Parser}
+ * (no third-party HTML parser is involved), then this loader maps the AST onto
+ * widgets and styling comes from CSS (see {@link com.glyphui.style}).</p>
  *
+ * <h2>Syntax</h2>
+ * <p>{@code .glyph} markup looks like XML: {@code <Tag attr="value">children
+ * </Tag>} or the self-closing {@code <Tag/>} form. Comments use
+ * {@code <!-- ... -->}. Content may contain {@code {path}} interpolations and
+ * the literal brace escapes {@code &#123;&#123;} / {@code &#125;&#125;}; the
+ * parser keeps those as {@link BindingNode} children, but this loader does not
+ * yet wire them to reactive properties (it records a warning and ignores
+ * them).</p>
+ *
+ * <h2>Tag mapping</h2>
  * <ul>
  *   <li>{@code div}, {@code body}, {@code section}, {@code span}, unknown
  *       tags → {@link Panel} (unknown tags log a warning and keep their tag
@@ -42,9 +54,18 @@ import java.util.logging.Logger;
  *   <li>{@code input}, {@code textarea} → {@link TextField}</li>
  *   <li>{@code img} → {@link ImageView} (loaded through the optional
  *       {@link ImageProvider})</li>
+ *   <li>{@code head}/{@code title}/{@code meta}/{@code link}/{@code style}/
+ *       {@code script}/{@code base} are document metadata and never become
+ *       widgets</li>
  * </ul>
  *
- * <p>Recognized attributes:</p>
+ * <h2>Document root</h2>
+ * <p>If the document contains a {@code body} element, it becomes the root
+ * container (its children populate the returned root {@link Panel}). Otherwise
+ * a single top-level widget element is used as the root; with several
+ * top-level elements a synthetic {@code body} panel wraps them all.</p>
+ *
+ * <h2>Recognized attributes</h2>
  * <ul>
  *   <li>{@code id} → {@link Component#setId(String)}</li>
  *   <li>{@code class} → space-separated {@link Component#addStyleClass(String)}</li>
@@ -54,9 +75,15 @@ import java.util.logging.Logger;
  *   <li>{@code x}, {@code y}, {@code width}, {@code height} → numeric bounds</li>
  *   <li>{@code text} or the element's own text content → widget text</li>
  *   <li>{@code src} (img) → resolved through the {@link ImageProvider}</li>
- *   <li>{@code onclick} / {@code onchange} → zero-argument method looked up
- *       by name on the registered controller object (reflection)</li>
+ *   <li>{@code onclick} / {@code onchange} → method looked up by name on the
+ *       registered controller object (reflection)</li>
  * </ul>
+ *
+ * <p><b>Stylesheets:</b> link an external sheet with
+ * {@code <link rel="stylesheet" href="app.css"/>}; the resolved sheet is
+ * exposed through {@link #getLastStyleSheet()}. Inline {@code <style>} blocks
+ * are <b>not</b> supported because {@code &#123;} is the interpolation
+ * delimiter in {@code .glyph}.</p>
  *
  * <p><b>Not a browser:</b> there is no JavaScript engine and no DOM — this
  * is a structural loader for a fixed tag subset.</p>
@@ -64,6 +91,13 @@ import java.util.logging.Logger;
 public final class UiLoader {
 
     private static final Logger LOG = Logger.getLogger(UiLoader.class.getName());
+
+    /**
+     * Tags that describe the document rather than the widget tree. They are
+     * skipped both when locating the root container and when walking children.
+     */
+    private static final Set<String> METADATA_TAGS = Set.of(
+            "head", "title", "meta", "link", "style", "script", "base");
 
     /** Loads image bytes for {@code <img src="...">} elements. */
     @FunctionalInterface
@@ -80,7 +114,9 @@ public final class UiLoader {
     private Object controller;
     private ImageProvider imageProvider;
     private StyleSheet lastStyleSheet;
+    private Document lastDocument;
     private final List<String> warnings = new ArrayList<>();
+    private final Map<String, Component> componentsById = new HashMap<>();
 
     /**
      * Creates a loader without a controller.
@@ -92,7 +128,7 @@ public final class UiLoader {
      * Creates a loader whose {@code onclick}/{@code onchange} handlers are
      * resolved against the given controller object.
      *
-     * @param controller object exposing zero-argument public handler methods
+     * @param controller object exposing public handler methods
      */
     public UiLoader(Object controller) {
         this.controller = controller;
@@ -118,19 +154,28 @@ public final class UiLoader {
     }
 
     /**
-     * The stylesheet discovered while parsing (an {@code <style>} block or a
-     * linked {@code .css} file next to the document). Callers can feed it to
-     * {@link com.glyphui.style.StyleEngine}.
+     * The stylesheet discovered while parsing (a linked {@code .css} file next
+     * to the document, or resolvable from the classpath). Callers can feed it
+     * to {@link com.glyphui.style.StyleEngine}.
      *
-     * @return the discovered sheet, or null when the document has none
+     * @return the discovered sheet, or null when the document links none
      */
     public StyleSheet getLastStyleSheet() {
         return lastStyleSheet;
     }
 
     /**
+     * The raw AST produced by the last load, useful for tooling and tests.
+     *
+     * @return the parsed document, or null before the first load
+     */
+    public Document getLastDocument() {
+        return lastDocument;
+    }
+
+    /**
      * Non-fatal problems encountered during the last load (unknown tags,
-     * missing handlers, unparsable numbers, ...).
+     * missing handlers, unparsable numbers, ignored bindings, ...).
      *
      * @return unmodifiable list of warning messages
      */
@@ -143,36 +188,34 @@ public final class UiLoader {
     // ------------------------------------------------------------------
 
     /**
-     * Parses a markup string and builds the component tree. Any
-     * {@code <style>} block found in the document is exposed through
-     * {@link #getLastStyleSheet()}.
+     * Parses a {@code .glyph} markup string and builds the component tree.
      *
-     * @param html the markup source
-     * @return the root component (a {@link Panel} wrapping {@code <body>})
+     * @param glyph the markup source
+     * @return the root component (a {@link Panel} wrapping the container)
+     * @throws MarkupException on an unrecoverable lexical error
      */
-    public Component loadFromString(String html) {
-        Document doc = Jsoup.parse(html);
-        return loadDocument(doc, null);
+    public Component loadFromString(String glyph) {
+        return loadSource(glyph, null);
     }
 
     /**
-     * Loads a markup file from disk. If the document references stylesheets
-     * via {@code <link rel="stylesheet" href="app.css">}, the first existing
-     * sibling file is parsed into {@link #getLastStyleSheet()}.
+     * Loads a {@code .glyph} markup file from disk. When the document links a
+     * stylesheet through {@code <link rel="stylesheet" href="app.css">}, the
+     * file is resolved relative to the document's directory.
      *
-     * @param file the {@code .html} / {@code .ui.xml} path
+     * @param file the {@code .glyph} path
      * @return the root component
      * @throws IOException when the file cannot be read
      */
     public Component load(Path file) throws IOException {
         String source = Files.readString(file, StandardCharsets.UTF_8);
-        Document doc = Jsoup.parse(source);
-        return loadDocument(doc, file.toAbsolutePath().getParent());
+        return loadSource(source, file.toAbsolutePath().getParent());
     }
 
     /**
-     * Loads a markup document from the classpath, e.g.
-     * {@code load("/demo/ui.html", controller)}.
+     * Loads a {@code .glyph} document from the classpath, e.g.
+     * {@code load("/demo/ui.glyph", controller)} (the demo files ship with
+     * the separate {@code glyph-ui-examples} module).
      *
      * @param resource   the classpath resource name
      * @param controller object for {@code onclick}/{@code onchange} resolution
@@ -186,8 +229,25 @@ public final class UiLoader {
             throw new IOException("Markup resource not found: " + resource);
         }
         String source = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        Document doc = Jsoup.parse(source);
-        return loadDocument(doc, null);
+        return loadSource(source, null);
+    }
+
+    /**
+     * Shared front-end: tokenize/parse, surface recoverable diagnostics as
+     * warnings and build the tree.
+     *
+     * @param source  the markup text
+     * @param baseDir directory used to resolve linked stylesheets, or null
+     * @return the root component
+     */
+    private Component loadSource(String source, Path baseDir) {
+        warnings.clear();
+        componentsById.clear();
+        ParseResult result = new Parser().parse(source);
+        for (ParseError error : result.errors()) {
+            warn("parse error " + error);
+        }
+        return loadDocument(result.document(), baseDir);
     }
 
     // ------------------------------------------------------------------
@@ -195,23 +255,30 @@ public final class UiLoader {
     // ------------------------------------------------------------------
 
     private Component loadDocument(Document doc, Path baseDir) {
+        lastDocument = doc;
         lastStyleSheet = extractStyleSheet(doc, baseDir);
 
-        Element body = doc.body();
-        Element root = body != null ? body : doc.selectFirst("root, ui, panel");
-        if (root == null) {
-            root = doc.getAllElements().isEmpty() ? doc.createElement("div")
-                    : doc.getAllElements().first();
-        }
-
         Panel rootPanel = new Panel(0, 0, Float.NaN, Float.NaN);
-        rootPanel.setStyleTag(root.tagName());
-        applyCommonAttributes(root, rootPanel);
-        applyLayout(root, rootPanel);
-        for (Element child : root.children()) {
-            Component c = buildComponent(child);
-            if (c != null) {
-                rootPanel.add(c);
+        Element container = findContainer(doc);
+        if (container != null) {
+            rootPanel.setStyleTag(container.getTagName());
+            applyCommonAttributes(container, rootPanel);
+            applyLayout(container, rootPanel);
+            for (Element child : widgetChildren(container)) {
+                Component c = buildComponent(child);
+                if (c != null) {
+                    rootPanel.add(c);
+                }
+            }
+        } else {
+            rootPanel.setStyleTag("body");
+            for (AstNode node : doc.getChildren()) {
+                if (node instanceof Element element && !isMetadata(element)) {
+                    Component c = buildComponent(element);
+                    if (c != null) {
+                        rootPanel.add(c);
+                    }
+                }
             }
         }
         return rootPanel;
@@ -221,11 +288,11 @@ public final class UiLoader {
      * Recursively builds a component from one element. Exposed for tests and
      * embedding scenarios where a caller already owns the root.
      *
-     * @param element the jsoup element
+     * @param element the AST element
      * @return the constructed component, or null when the element was skipped
      */
     public Component buildComponent(Element element) {
-        String tag = element.tagName().toLowerCase(java.util.Locale.ROOT);
+        String tag = element.getTagName().toLowerCase(Locale.ROOT);
         Component component = createForTag(element, tag);
         if (component == null) {
             return null;
@@ -234,9 +301,12 @@ public final class UiLoader {
         applyCommonAttributes(element, component);
         applyLayout(element, component);
         bindHandlers(element, component);
+        if (component instanceof Button button) {
+            bindClick(button, element);
+        }
 
         if (component instanceof Panel panel) {
-            for (Element child : element.children()) {
+            for (Element child : widgetChildren(element)) {
                 Component c = buildComponent(child);
                 if (c != null) {
                     panel.add(c);
@@ -250,7 +320,6 @@ public final class UiLoader {
         switch (tag) {
             case "button": {
                 Button b = new Button(0, 0, 120, 32, textOf(element));
-                bindClick(b, element);
                 return b;
             }
             case "label":
@@ -261,7 +330,7 @@ public final class UiLoader {
             case "h4":
             case "h5":
             case "h6": {
-                String sizeAttr = element.attr("font-size");
+                String sizeAttr = attr(element, "font-size");
                 Label l = new Label(0, 0, 200, 24, textOf(element));
                 if (!sizeAttr.isEmpty()) {
                     try {
@@ -275,8 +344,8 @@ public final class UiLoader {
             case "input":
             case "textarea": {
                 TextField tf = new TextField();
-                String value = !element.attr("value").isEmpty()
-                        ? element.attr("value") : textOf(element);
+                String value = !attr(element, "value").isEmpty()
+                        ? attr(element, "value") : textOf(element);
                 if (!value.isEmpty()) {
                     tf.setText(value);
                 }
@@ -284,7 +353,7 @@ public final class UiLoader {
             }
             case "img": {
                 ImageView iv = new ImageView();
-                String src = element.attr("src");
+                String src = attr(element, "src");
                 if (!src.isEmpty()) {
                     if (imageProvider != null) {
                         Image image = imageProvider.load(src);
@@ -318,11 +387,12 @@ public final class UiLoader {
     }
 
     private void applyCommonAttributes(Element element, Component component) {
-        String id = element.attr("id");
+        String id = attr(element, "id");
         if (!id.isEmpty()) {
             component.setId(id);
+            componentsById.put(id, component);
         }
-        String classes = element.attr("class");
+        String classes = attr(element, "class");
         if (!classes.isEmpty()) {
             for (String cls : classes.split("\\s+")) {
                 if (!cls.isEmpty()) {
@@ -330,7 +400,7 @@ public final class UiLoader {
                 }
             }
         }
-        String inline = element.attr("style");
+        String inline = attr(element, "style");
         if (!inline.isEmpty()) {
             try {
                 Style style = Style.parseInline(inline,
@@ -341,18 +411,14 @@ public final class UiLoader {
                 warn("Unparsable inline style '" + inline + "': " + e.getMessage());
             }
         }
-        applyNumber(element, "x", v -> component.setX(v));
-        applyNumber(element, "y", v -> component.setY(v));
-        applyNumber(element, "width", v -> component.setWidth(v));
-        applyNumber(element, "height", v -> component.setHeight(v));
+        applyNumber(element, "x", component::setX);
+        applyNumber(element, "y", component::setY);
+        applyNumber(element, "width", component::setWidth);
+        applyNumber(element, "height", component::setHeight);
     }
 
-    private interface FloatConsumer {
-        void accept(float value);
-    }
-
-    private void applyNumber(Element element, String attr, FloatConsumer consumer) {
-        String raw = element.attr(attr);
+    private void applyNumber(Element element, String attr, java.util.function.Consumer<Float> consumer) {
+        String raw = attr(element, attr);
         if (raw.isEmpty()) {
             return;
         }
@@ -360,12 +426,12 @@ public final class UiLoader {
             consumer.accept(Float.parseFloat(raw.trim()));
         } catch (NumberFormatException e) {
             warn("Bad numeric attribute " + attr + "='" + raw + "' on <"
-                    + element.tagName() + ">");
+                    + element.getTagName() + ">");
         }
     }
 
     private void applyLayout(Element element, Component component) {
-        String layout = element.attr("layout").trim().toLowerCase(java.util.Locale.ROOT);
+        String layout = attr(element, "layout").trim().toLowerCase(Locale.ROOT);
         if (layout.isEmpty() || !(component instanceof Panel panel)) {
             return;
         }
@@ -377,12 +443,12 @@ public final class UiLoader {
                 panel.setLayoutManager(new FlowLayout());
                 break;
             default:
-                warn("Unknown layout '" + layout + "' on <" + element.tagName() + ">");
+                warn("Unknown layout '" + layout + "' on <" + element.getTagName() + ">");
         }
     }
 
     private void bindHandlers(Element element, Component component) {
-        String change = element.attr("onchange");
+        String change = attr(element, "onchange");
         if (!change.isEmpty() && component instanceof TextField field) {
             Runnable r = resolveHandler(change, element, "onchange");
             if (r != null) {
@@ -392,7 +458,7 @@ public final class UiLoader {
     }
 
     private void bindClick(Button button, Element element) {
-        String click = element.attr("onclick");
+        String click = attr(element, "onclick");
         if (click.isEmpty()) {
             return;
         }
@@ -404,8 +470,8 @@ public final class UiLoader {
 
     /**
      * Resolves a handler name to a Runnable bound to the controller. The
-     * method must be public and take no arguments (a {@code Runnable} /
-     * {@code Consumer<Component>} overload is also accepted).
+     * method must be public and take no arguments (a {@code Component}
+     * parameter overload is also accepted).
      */
     private Runnable resolveHandler(String name, Element element, String attr) {
         if (controller == null) {
@@ -443,19 +509,14 @@ public final class UiLoader {
         }
     }
 
-    /** Best-effort lookup of the component currently being built. */
+    /** Looks up the component built for an element, by its {@code id}. */
     private Component findComponentFor(Element element) {
-        String id = element.attr("id");
-        if (!id.isEmpty() && lastRoot != null) {
-            Component found = findById(lastRoot, id);
-            if (found != null) {
-                return found;
-            }
+        String id = attr(element, "id");
+        if (id.isEmpty()) {
+            return null;
         }
-        return null;
+        return componentsById.get(id);
     }
-
-    private Component lastRoot;
 
     /**
      * Finds a descendant (or self) by id in a component tree.
@@ -482,44 +543,147 @@ public final class UiLoader {
         return null;
     }
 
+    // ------------------------------------------------------------------
+    // AST helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Reads an attribute value from the raw AST.
+     *
+     * @param element the element to query
+     * @param name    the raw attribute name
+     * @return the value, or the empty string when the attribute is absent or
+     *         valueless
+     */
+    private static String attr(Element element, String name) {
+        Attribute attribute = element.findAttribute(name);
+        return attribute == null || attribute.value() == null ? "" : attribute.value();
+    }
+
+    /**
+     * Concatenates the direct text children of an element; an explicit
+     * {@code text} attribute takes precedence. Binding interpolations are not
+     * resolved here — a warning is emitted instead.
+     *
+     * @param element the element whose text is requested
+     * @return the element text (may be empty)
+     */
     private String textOf(Element element) {
-        String explicit = element.attr("text");
+        String explicit = attr(element, "text");
         if (!explicit.isEmpty()) {
             return explicit;
         }
-        return element.ownText();
+        StringBuilder sb = new StringBuilder();
+        for (AstNode child : element.getChildren()) {
+            if (child instanceof TextNode textNode) {
+                sb.append(textNode.getText());
+            } else if (child instanceof BindingNode binding) {
+                warn("Binding {" + binding.getRawPath() + "} in <"
+                        + element.getTagName()
+                        + "> ignored: reactive bindings are not wired yet");
+            }
+        }
+        return sb.toString();
+    }
+
+    /** @return child elements that map to widgets (metadata tags excluded). */
+    private static List<Element> widgetChildren(Element parent) {
+        List<Element> out = new ArrayList<>();
+        for (AstNode node : parent.getChildren()) {
+            if (node instanceof Element element && !isMetadata(element)) {
+                out.add(element);
+            }
+        }
+        return out;
+    }
+
+    private static boolean isMetadata(Element element) {
+        return METADATA_TAGS.contains(element.getTagName().toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * Locates the document's root container: a {@code body} element when
+     * present, otherwise the single top-level widget element, otherwise null
+     * (callers wrap all top-level widgets in a synthetic panel).
+     */
+    private static Element findContainer(Document doc) {
+        Element body = findFirst(doc.getChildren(), "body");
+        if (body != null) {
+            return body;
+        }
+        List<Element> topLevel = new ArrayList<>();
+        for (AstNode node : doc.getChildren()) {
+            if (node instanceof Element element && !isMetadata(element)) {
+                topLevel.add(element);
+            }
+        }
+        return topLevel.size() == 1 ? topLevel.get(0) : null;
+    }
+
+    private static Element findFirst(List<AstNode> nodes, String tag) {
+        for (AstNode node : nodes) {
+            if (node instanceof Element element) {
+                if (element.getTagName().equalsIgnoreCase(tag)) {
+                    return element;
+                }
+                Element found = findFirst(element.getChildren(), tag);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void findAll(List<AstNode> nodes, String tag, List<Element> out) {
+        for (AstNode node : nodes) {
+            if (node instanceof Element element) {
+                if (element.getTagName().equalsIgnoreCase(tag)) {
+                    out.add(element);
+                }
+                findAll(element.getChildren(), tag, out);
+            }
+        }
     }
 
     private StyleSheet extractStyleSheet(Document doc, Path baseDir) {
-        StringBuilder css = new StringBuilder();
-        for (Element style : doc.select("style")) {
-            css.append(style.data()).append('\n');
+        List<Element> inlineStyles = new ArrayList<>();
+        findAll(doc.getChildren(), "style", inlineStyles);
+        if (!inlineStyles.isEmpty()) {
+            warn("inline <style> is not supported in .glyph (its '{' delimiter "
+                    + "conflicts with bindings); use <link rel=\"stylesheet\"> "
+                    + "or load the sheet directly");
         }
-        if (css.length() == 0) {
-            for (Element link : doc.select("link[rel=stylesheet]")) {
-                String href = link.attr("href");
-                if (href.isEmpty()) {
-                    continue;
-                }
-                try {
-                    if (baseDir != null) {
-                        Path p = baseDir.resolve(href);
-                        if (Files.isRegularFile(p)) {
-                            css.append(Files.readString(p, StandardCharsets.UTF_8));
-                            continue;
-                        }
+
+        StringBuilder css = new StringBuilder();
+        List<Element> links = new ArrayList<>();
+        findAll(doc.getChildren(), "link", links);
+        for (Element link : links) {
+            if (!"stylesheet".equalsIgnoreCase(attr(link, "rel"))) {
+                continue;
+            }
+            String href = attr(link, "href");
+            if (href.isEmpty()) {
+                continue;
+            }
+            try {
+                if (baseDir != null) {
+                    Path p = baseDir.resolve(href);
+                    if (Files.isRegularFile(p)) {
+                        css.append(Files.readString(p, StandardCharsets.UTF_8));
+                        continue;
                     }
-                    var stream = UiLoader.class.getResourceAsStream(
-                            href.startsWith("/") ? href : "/" + href);
-                    if (stream != null) {
-                        css.append(new String(stream.readAllBytes(),
-                                StandardCharsets.UTF_8));
-                    } else {
-                        warn("Stylesheet not found: " + href);
-                    }
-                } catch (IOException e) {
-                    warn("Failed to read stylesheet '" + href + "': " + e.getMessage());
                 }
+                var stream = UiLoader.class.getResourceAsStream(
+                        href.startsWith("/") ? href : "/" + href);
+                if (stream != null) {
+                    css.append(new String(stream.readAllBytes(),
+                            StandardCharsets.UTF_8));
+                } else {
+                    warn("Stylesheet not found: " + href);
+                }
+            } catch (IOException e) {
+                warn("Failed to read stylesheet '" + href + "': " + e.getMessage());
             }
         }
         if (css.length() == 0) {
