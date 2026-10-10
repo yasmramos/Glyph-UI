@@ -175,6 +175,126 @@ class WidgetRasterTest extends com.glyphui.TestBase {
                 right.dispose();
             }
         }
+
+        @Test
+        @DisplayName("multi-line caption draws every line and centers the block")
+        void renderDrawsEveryLine() {
+            canvas.clear(OPAQUE_BLUE);
+            Label one = new Label(10, 0, 300, 120, "AAA");
+            Label two = new Label(10, 0, 300, 120, "AAA\nAAA");
+            try {
+                one.setTextColor(OPAQUE_RED);
+                two.setTextColor(OPAQUE_RED);
+
+                one.render(canvas);
+                canvas.flush();
+                int[] single = redRowSpan(10, 0, 310, 120);
+
+                canvas.clear(OPAQUE_BLUE);
+                two.render(canvas);
+                canvas.flush();
+                int[] block = redRowSpan(10, 0, 310, 120);
+
+                assertTrue(block[1] - block[0] > single[1] - single[0],
+                        "two lines must occupy more rows than one: "
+                                + (block[1] - block[0]) + " vs " + (single[1] - single[0]));
+                // Two identical lines are symmetric about the block centre, and the
+                // block is centred in the box, so the ink midpoint is the box centre.
+                double mid = (block[0] + block[1]) / 2.0;
+                assertEquals(60.0, mid, 4.0, "the block of lines must be vertically centered");
+            } finally {
+                one.dispose();
+                two.dispose();
+            }
+        }
+
+        @Test
+        @DisplayName("a trailing CRLF still yields two lines")
+        void renderToleratesWindowsLineEndings() {
+            canvas.clear(OPAQUE_BLUE);
+            Label lf = new Label(10, 0, 300, 120, "AAA\nAAA");
+            Label crlf = new Label(10, 0, 300, 120, "AAA\r\nAAA");
+            try {
+                lf.setTextColor(OPAQUE_RED);
+                crlf.setTextColor(OPAQUE_RED);
+
+                lf.render(canvas);
+                canvas.flush();
+                int[] unix = redRowSpan(10, 0, 310, 120);
+
+                canvas.clear(OPAQUE_BLUE);
+                crlf.render(canvas);
+                canvas.flush();
+                int[] windows = redRowSpan(10, 0, 310, 120);
+
+                assertEquals(unix[0], windows[0], "\"\\r\\n\" must not open a third line");
+                assertEquals(unix[1], windows[1], "\"\\r\\n\" must not open a third line");
+            } finally {
+                lf.dispose();
+                crlf.dispose();
+            }
+        }
+
+        @Test
+        @DisplayName("height grows by one line step per line break")
+        void preferredHeightAddsOneLinePerBreak() {
+            Label one = new Label("A");
+            Label two = new Label("A\nB");
+            Label three = new Label("A\nB\nC");
+            try {
+                assertTrue(two.getPreferredHeight() > one.getPreferredHeight(),
+                        "a second line must add height");
+                assertEquals(two.getPreferredHeight() - one.getPreferredHeight(),
+                        three.getPreferredHeight() - two.getPreferredHeight(), 0.01f,
+                        "every line break must add the same line step");
+            } finally {
+                one.dispose();
+                two.dispose();
+                three.dispose();
+            }
+        }
+
+        @Test
+        @DisplayName("width measures the widest line, not the joined string")
+        void preferredWidthUsesWidestLine() {
+            Label single = new Label("MMMM");
+            Label twoLines = new Label("MMMM\nMMMM");
+            try {
+                assertEquals(single.getPreferredWidth(), twoLines.getPreferredWidth(), 1.0f,
+                        "stacking lines must not widen the label");
+            } finally {
+                single.dispose();
+                twoLines.dispose();
+            }
+        }
+
+        /**
+         * Scans a region for red text ink and returns the first and last row
+         * that contain any, or fails if nothing was painted.
+         */
+        private int[] redRowSpan(int x0, int y0, int x1, int y1) {
+            int first = Integer.MAX_VALUE;
+            int last = Integer.MIN_VALUE;
+            long ink = 0;
+            try (Pixmap pixmap = new Pixmap()) {
+                assertTrue(surfaceHolder[0].peekPixels(pixmap), "peekPixels should succeed");
+                for (int py = y0; py < y1; py++) {
+                    for (int px = x0; px < x1; px++) {
+                        int c = pixmap.getColor(px, py);
+                        int r = (c >> 16) & 0xFF;
+                        int g = (c >> 8) & 0xFF;
+                        int b = c & 0xFF;
+                        if (r > 200 && g < 80 && b < 80) {
+                            ink++;
+                            first = Math.min(first, py);
+                            last = Math.max(last, py);
+                        }
+                    }
+                }
+            }
+            assertTrue(ink > 0, "expected red text ink inside the region");
+            return new int[] { first, last };
+        }
     }
 
     // ---- Button: state + interaction ---------------------------------------
@@ -278,16 +398,74 @@ class WidgetRasterTest extends com.glyphui.TestBase {
         @DisplayName("render paints rounded background covering button bounds")
         void renderPaintsBackground() {
             canvas.clear(OPAQUE_BLUE);
+            // Sample the upper-left interior: the caption is centered, so the
+            // very middle of the button belongs to the glyphs.
             Button button = new Button(20, 20, 100, 40, "OK");
             button.setNormalColor(OPAQUE_RED);
             button.renderInternal(canvas);
             canvas.flush();
 
-            assertEquals(OPAQUE_RED, pixelAt(70, 40),
-                    "center of button should show its background color");
+            assertEquals(OPAQUE_RED, pixelAt(30, 26),
+                    "interior of button should show its background color");
             assertNotEquals(OPAQUE_RED, pixelAt(2, 2),
                     "outside the button the clear color must remain");
             button.dispose();
+        }
+
+        @Test
+        @DisplayName("caption is centered horizontally and vertically inside the button")
+        void renderCentersCaption() {
+            // Render the same caption in three geometries and compare where the
+            // ink lands. If the text is centered, growing the button by N moves
+            // the caption by exactly N/2 — an invariant that depends on neither
+            // the font metrics nor the ink distribution of the specific glyphs
+            // (a plain centroid comparison fails here: "Hello" is optically
+            // heavier on the left than its advance-width center).
+            double[] small = renderCaptionInk(0, 0, 100, 20);
+            double[] wide  = renderCaptionInk(0, 0, 200, 20);
+            double[] tall  = renderCaptionInk(0, 0, 100, 60);
+
+            assertTrue(small[2] > 50, "the caption must actually be rendered (ink="
+                    + (long) small[2] + ")");
+            assertEquals(50.0, wide[0] - small[0], 0.5,
+                    "width 100 -> 200 must shift the caption 50px right");
+            assertEquals(20.0, tall[1] - small[1], 0.5,
+                    "height 20 -> 60 must shift the caption 20px down");
+        }
+
+        /**
+         * Renders a white button with a black caption at the given size and
+         * returns the ink centroid as {@code {x, y, inkCount}}.
+         */
+        private double[] renderCaptionInk(float bx, float by, float bw, float bh) {
+            final int white = 0xFFFFFFFF;
+            final int black = 0xFF000000;
+            canvas.clear(white);
+
+            Button button = new Button(bx, by, bw, bh, "Hello");
+            button.setNormalColor(white);
+            button.setTextColor(black);
+            button.setBorderColor(white);
+            button.render(canvas);
+            canvas.flush();
+
+            long ink = 0, sumX = 0, sumY = 0;
+            try (Pixmap pixmap = new Pixmap()) {
+                assertTrue(surfaceHolder[0].peekPixels(pixmap), "peekPixels should succeed");
+                for (int py = (int) by; py < (int) (by + bh); py++) {
+                    for (int px = (int) bx; px < (int) (bx + bw); px++) {
+                        int c = pixmap.getColor(px, py);
+                        int lum = ((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF);
+                        if (lum < 3 * 128) {
+                            ink++;
+                            sumX += px;
+                            sumY += py;
+                        }
+                    }
+                }
+            }
+            button.dispose();
+            return new double[] { sumX / (double) ink + 0.5, sumY / (double) ink + 0.5, ink };
         }
 
         @Test
@@ -310,6 +488,61 @@ class WidgetRasterTest extends com.glyphui.TestBase {
             button.dispose();
             // After dispose the object still answers basic queries without crashing
             assertEquals("X", button.getText());
+        }
+    }
+
+    // ---- TextField: rendering tests ----------------------------------------
+
+    @Nested
+    @DisplayName("TextField rendering")
+    class TextFieldRendering {
+
+        @Test
+        @DisplayName("field is filled with the entry surface, not the page background")
+        void renderUsesEntrySurfaceFill() {
+            canvas.clear(0xFFFF0000);
+            TextField field = new TextField(0, 0, 200, 40);
+            field.render(canvas);
+            canvas.flush();
+
+            int fill = pixelAt(100, 20);
+            assertNotEquals(0xFFFF0000, fill, "the field must paint its own background");
+            assertNotEquals(com.glyphui.graphics.Theme.current().getBackgroundColor(), fill,
+                    "an entry filled with the page color is invisible but for its border");
+            field.dispose();
+        }
+
+        @Test
+        @DisplayName("text is centered vertically inside the field")
+        void renderCentersTextVertically() {
+            // Taller-than-needed field: a top-anchored baseline leaves the text
+            // riding high, which is how it used to render (ink at rows 13..22 of
+            // 40 instead of a centered 16..25).
+            canvas.clear(0xFFFF0000);
+            TextField field = new TextField(0, 0, 200, 40);
+            field.setPlaceholder("Your name");
+            field.render(canvas);
+            canvas.flush();
+
+            int fill = pixelAt(100, 20);
+            int top = -1, bottom = -1;
+            for (int y = 4; y < 36; y++) {          // skip the border stroke
+                for (int x = 4; x < 196; x++) {
+                    if (pixelAt(x, y) != fill) {
+                        if (top < 0) {
+                            top = y;
+                        }
+                        bottom = y;
+                    }
+                }
+            }
+            assertTrue(top >= 0, "the placeholder must actually be rendered");
+            double inkCenter = (top + bottom) / 2.0 + 0.5;
+            // Glyph shapes make the optical center approximate, so allow a
+            // couple of pixels; the old code was off by ~2.5px and the fix is
+            // a full baseline re-derivation.
+            assertEquals(20.0, inkCenter, 2.0, "placeholder vertical center");
+            field.dispose();
         }
     }
 

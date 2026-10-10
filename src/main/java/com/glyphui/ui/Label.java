@@ -188,7 +188,14 @@ public class Label extends Component {
         if (sizeExplicitlySet) {
             return width;
         }
-        return getFont().measureTextWidth(text == null ? "" : text) + 2.0f * getTheme().getPadding();
+        // The widest line governs: a wrapped caption must not be measured as if
+        // every line started at the same x.
+        io.github.humbleui.skija.Font f = getFont();
+        float widest = 0.0f;
+        for (String line : textLines()) {
+            widest = Math.max(widest, f.measureTextWidth(line));
+        }
+        return widest + 2.0f * getTheme().getPadding();
     }
 
     /**
@@ -203,7 +210,21 @@ public class Label extends Component {
             return height;
         }
         FontMetrics metrics = getFont().getMetrics();
-        return (metrics.getDescent() - metrics.getAscent()) + 2.0f * getTheme().getPadding();
+        float line = metrics.getDescent() - metrics.getAscent();
+        return line * textLines().length + 2.0f * getTheme().getPadding();
+    }
+
+    /**
+     * Splits the caption into rendered lines. {@code null} and the empty
+     * string both yield a single empty line so the label keeps a sane height,
+     * and a trailing break still counts as a line rather than being dropped.
+     *
+     * @return the lines to render (never null or empty)
+     */
+    private String[] textLines() {
+        String value = text == null ? "" : text;
+        // Normalise Windows line endings so "a\r\nb" is two lines, not three.
+        return value.split("\r?\n", -1);
     }
 
     /**
@@ -277,30 +298,40 @@ public class Label extends Component {
             return;
         }
 
-        // Calculate text position based on alignment
         io.github.humbleui.skija.Font f = getFont();
-        float textWidth = canvas.measureText(text, f);
-        float textHeight = canvas.getTextHeight(f);
-        float textX;
+        io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
+        String[] lines = textLines();
+        float lineStep = metrics.getDescent() - metrics.getAscent();
 
-        switch (alignment) {
-            case CENTER:
-                textX = x + (width - textWidth) / 2.0f;
-                break;
-            case RIGHT:
-                textX = x + width - textWidth;
-                break;
-            default:
-                textX = x;
-                break;
-        }
-
-        float textY = y + (height + textHeight) / 2.0f;
+        // The whole block is centered vertically, so with a single line this
+        // reduces exactly to the single-line baseline below. drawString takes
+        // a baseline: the glyph box spans [baseline + ascent, baseline +
+        // descent] (ascent is negative), so centering that box puts the first
+        // baseline at top + (height - blockHeight) / 2 - ascent.
+        float blockHeight = lineStep * lines.length;
+        float firstBaseline = y + (height - blockHeight) / 2.0f - metrics.getAscent();
 
         // Draw text using the reusable paint field (no per-frame allocations)
         ensureTextPaint();
         textPaint.setColor(enabled ? getTextColor() : getTheme().getControlTextDisabledColor());
-        canvas.drawString(text, textX, textY, textPaint, f);
+
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            float lineWidth = canvas.measureText(line, f);
+            float textX;
+            switch (alignment) {
+                case CENTER:
+                    textX = x + (width - lineWidth) / 2.0f;
+                    break;
+                case RIGHT:
+                    textX = x + width - lineWidth;
+                    break;
+                default:
+                    textX = x;
+                    break;
+            }
+            canvas.drawString(line, textX, firstBaseline + i * lineStep, textPaint, f);
+        }
     }
 
     /**

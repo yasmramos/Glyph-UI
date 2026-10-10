@@ -579,7 +579,13 @@ public class Button extends Component {
         float textWidth = canvas.measureText(caption, f);
         float textHeight = canvas.getTextHeight(f);
         float textX = x + (width - textWidth) / 2.0f;
-        float textY = y + (height + textHeight) / 2.0f;
+        // drawString takes a baseline. The glyph box spans
+        // [baseline + ascent, baseline + descent] (ascent is negative), so
+        // centering that box in the button puts the baseline at
+        // top + (height - textHeight) / 2 - ascent. The former
+        // (height + textHeight) / 2 sat descent pixels too low.
+        io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
+        float textY = y + (height - textHeight) / 2.0f - metrics.getAscent();
 
         // Update text color based on enabled state
         textPaint.setColor(enabled ? getTextColor() : getTheme().getControlTextDisabledColor());

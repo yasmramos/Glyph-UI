@@ -543,8 +543,9 @@ public class TextField extends Component
     protected void render(Canvas canvas) {
         Theme theme = getTheme();
 
-        // Background
-        backgroundPaint.setColor(theme.getBackgroundColor());
+        // Background: the entry surface token, not the page background — a
+        // field painted with the page color shows nothing but its border.
+        backgroundPaint.setColor(theme.getInputBackgroundColor());
         canvas.drawRRect(x, y, width, height,
                 theme.getControlCornerRadius(), theme.getControlCornerRadius(), backgroundPaint);
 
@@ -557,7 +558,10 @@ public class TextField extends Component
         float padding = theme.getPadding();
         io.github.humbleui.skija.FontMetrics metrics = font.getMetrics();
         float lineHeight = metrics.getDescent() - metrics.getAscent();
-        float baseline = y + padding + metrics.getAscent() * -1.0f;
+        // Vertically center the glyph box ([baseline+ascent, baseline+descent],
+        // ascent negative) in the field. The previous top-anchored
+        // "y + padding - ascent" left the text sitting high in taller fields.
+        float baseline = y + (height - lineHeight) / 2.0f - metrics.getAscent();
 
         // Selection highlight
         if (isFocused() && hasSelection()) {
@@ -566,8 +570,8 @@ public class TextField extends Component
             float startX = x + padding + font.measureTextWidth(text.substring(0, lo));
             float endX = x + padding + font.measureTextWidth(text.substring(0, hi));
             selectionPaint.setColor(withAlpha(theme.getAccentColor(), 90));
-            canvas.drawRect(startX, y + padding - 2.0f, Math.max(0.0f, endX - startX),
-                    lineHeight + 4.0f, selectionPaint);
+            canvas.drawRect(startX, baseline + metrics.getAscent() - 2.0f,
+                    Math.max(0.0f, endX - startX), lineHeight + 4.0f, selectionPaint);
         }
 
         // Text or placeholder
@@ -583,7 +587,8 @@ public class TextField extends Component
         if (isFocused() && enabled) {
             float caretX = x + padding + font.measureTextWidth(text.substring(0, caret));
             cursorPaint.setColor(theme.getAccentColor());
-            canvas.drawRect(caretX, y + padding - 2.0f, 1.5f, lineHeight + 4.0f, cursorPaint);
+            canvas.drawRect(caretX, baseline + metrics.getAscent() - 2.0f,
+                    1.5f, lineHeight + 4.0f, cursorPaint);
         }
     }
 

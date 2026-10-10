@@ -59,6 +59,7 @@ public final class Theme {
     private final int controlTextColor;
     private final int controlTextDisabledColor;
     private final int borderColor;
+    private final int inputBackgroundColor;
     private final float controlCornerRadius;
     private final float focusRingRadius;
     private final float padding;
@@ -80,6 +81,7 @@ public final class Theme {
         this.controlTextColor = b.controlTextColor;
         this.controlTextDisabledColor = b.controlTextDisabledColor;
         this.borderColor = b.borderColor;
+        this.inputBackgroundColor = b.inputBackgroundColor;
         this.controlCornerRadius = b.controlCornerRadius;
         this.focusRingRadius = b.focusRingRadius;
         this.padding = b.padding;
@@ -160,6 +162,7 @@ public final class Theme {
         b.controlTextColor = controlTextColor;
         b.controlTextDisabledColor = controlTextDisabledColor;
         b.borderColor = borderColor;
+        b.inputBackgroundColor = inputBackgroundColor;
         b.controlCornerRadius = controlCornerRadius;
         b.focusRingRadius = focusRingRadius;
         b.padding = padding;
@@ -225,6 +228,19 @@ public final class Theme {
     /** @return border color for controls (ARGB) */
     public int getBorderColor() {
         return borderColor;
+    }
+
+    /**
+     * Gets the fill color of text-entry surfaces (text fields).
+     *
+     * <p>Entries need their own surface token: painting them with the page
+     * background makes the field invisible except for its border, so the
+     * editable area cannot be seen at all.</p>
+     *
+     * @return text-entry background color (ARGB)
+     */
+    public int getInputBackgroundColor() {
+        return inputBackgroundColor;
     }
 
     /** @return corner radius for controls, logical units */
@@ -312,6 +328,7 @@ public final class Theme {
         private int controlTextColor;
         private int controlTextDisabledColor;
         private int borderColor;
+        private int inputBackgroundColor;
         private float controlCornerRadius;
         private float focusRingRadius;
         private float padding;
@@ -348,6 +365,9 @@ public final class Theme {
                 this.controlTextColor = Color.makeARGB(255, 25, 25, 25);
                 this.controlTextDisabledColor = Color.makeARGB(255, 160, 160, 160);
                 this.borderColor = Color.makeARGB(255, 150, 150, 150);
+                // Text-entry surface: a clean white well so the field reads as
+                // an editable area rather than a hole in the background.
+                this.inputBackgroundColor = Color.makeARGB(255, 255, 255, 255);
             } else {
                 this.backgroundColor = Color.makeARGB(255, 30, 30, 30);
                 this.foregroundColor = Color.makeARGB(255, 240, 240, 240);
@@ -359,6 +379,9 @@ public final class Theme {
                 this.controlTextColor = Color.makeARGB(255, 255, 255, 255);
                 this.controlTextDisabledColor = Color.makeARGB(255, 150, 150, 150);
                 this.borderColor = Color.makeARGB(255, 120, 120, 120);
+                // Text-entry surface: slightly above the page background so the
+                // field reads as an editable well instead of vanishing into it.
+                this.inputBackgroundColor = Color.makeARGB(255, 42, 42, 42);
             }
             return this;
         }
@@ -373,6 +396,7 @@ public final class Theme {
         public Builder controlTextColor(int argb) { this.controlTextColor = argb; return this; }
         public Builder controlTextDisabledColor(int argb) { this.controlTextDisabledColor = argb; return this; }
         public Builder borderColor(int argb) { this.borderColor = argb; return this; }
+        public Builder inputBackgroundColor(int argb) { this.inputBackgroundColor = argb; return this; }
         public Builder controlCornerRadius(float r) { this.controlCornerRadius = r; return this; }
         public Builder focusRingRadius(float r) { this.focusRingRadius = r; return this; }
         public Builder padding(float p) { this.padding = p; return this; }
