@@ -226,4 +226,50 @@ class FlexLayoutTest {
         flex.layout(panel); // no children
         assertTrue(panel.getChildren().isEmpty());
     }
+
+    // ---- Default padding --------------------------------------------------
+
+    @Test
+    void unpaddedContainerDoesNotShrinkChildCrossSize() {
+        // A container the caller never padded must not inset its children: CSS
+        // flexbox defaults padding to 0. The former implicit 10 ate 20px of a
+        // 44px row, leaving 24px of cross space, and any child taller than that
+        // got clamped down to it by measure().
+        FlexLayout flex = new FlexLayout(FlexLayout.Direction.ROW,
+                FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER);
+        Panel panel = new Panel(0, 0, 520, 44);
+        panel.setComputedStyle(Style.builder().build());
+        panel.setLayoutManager(flex);
+
+        // Width/height styles pin the measured size so the assertion is about
+        // the layout, not about font metrics.
+        Button tall = sizedButton("Tall", 80, 34);
+        panel.add(tall);
+        flex.layout(panel);
+
+        assertEquals(34f, tall.getHeight(), 0.01f,
+                "an unpadded container must pass its full cross space through");
+        assertEquals((44f - 34f) / 2.0f, tall.getY(), 0.01f,
+                "align-items: center centers the child in the now-uninset cross axis");
+    }
+
+    @Test
+    void explicitPaddingStillInsetsChildren() {
+        // Setting padding must keep working: the default change is only about
+        // the value used when the caller asks for nothing.
+        FlexLayout flex = new FlexLayout(FlexLayout.Direction.ROW,
+                FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER);
+        flex.setPadding(10);
+        Panel panel = new Panel(0, 0, 520, 44);
+        panel.setComputedStyle(Style.builder().build());
+        panel.setLayoutManager(flex);
+
+        Button tall = sizedButton("Tall", 80, 34);
+        panel.add(tall);
+        flex.layout(panel);
+
+        assertEquals(24f, tall.getHeight(), 0.01f,
+                "a padded container still caps the child at the inset space");
+        assertEquals(10f, tall.getY(), 0.01f);
+    }
 }

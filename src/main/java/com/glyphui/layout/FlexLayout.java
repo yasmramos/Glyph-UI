@@ -94,8 +94,14 @@ public class FlexLayout extends LayoutManager {
                 : alignItems;
         float gap = gapOverride != null ? gapOverride
                 : (style != null ? style.getFloat(StyleProperty.GAP, 10f) : 10f);
+        // Padding defaults to 0, matching CSS flexbox: a container the caller
+        // never padded must not silently eat 10px off every child's measured
+        // size. That implicit inset capped a 44px row's cross space at 24px,
+        // which made TextField.measure clamp a 34.62px field down to 24px and
+        // left the control looking like bare text. Opt in via setPadding or a
+        // style declaration.
         float pad = paddingOverride != null ? paddingOverride
-                : (style != null ? style.getFloat(StyleProperty.PADDING, 10f) : 10f);
+                : (style != null ? style.getFloat(StyleProperty.PADDING, 0f) : 0f);
 
         boolean row = dir == Direction.ROW;
         float contentX = pad;
