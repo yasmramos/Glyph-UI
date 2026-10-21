@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StyleEngine.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.style</a> &gt; <span class="el_source">StyleEngine.java</span></div><h1>StyleEngine.java</h1><pre class="source lang-java linenums">package com.glyphui.style;
+
+import com.glyphui.graphics.Theme;
+import com.glyphui.ui.Component;
+import com.glyphui.ui.Panel;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Applies a {@link StyleSheet} to a live component tree.
+ *
+ * &lt;p&gt;The engine performs the classic CSS cascade for every component:&lt;/p&gt;
+ * &lt;ol&gt;
+ *   &lt;li&gt;collect matching rules via {@link StyleSheet#matchingRules(StyleNode)}
+ *       (already sorted lowest → highest priority);&lt;/li&gt;
+ *   &lt;li&gt;merge them into a rule style (later wins);&lt;/li&gt;
+ *   &lt;li&gt;inherit textual properties from the parent's computed style;&lt;/li&gt;
+ *   &lt;li&gt;store the result on the component with
+ *       {@link Component#setComputedStyle(Style)}. Inline styles are merged
+ *       last by {@link Component#getComputedStyle()} so they always win.&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;{@code :root} custom properties are resolved at parse time; in addition,
+ * theme-derived variables ({@code --bg}, {@code --fg}, {@code --accent},
+ * {@code --border}) are injected so stylesheets can reference the active
+ * {@link Theme} through {@code var(--accent)} and friends.&lt;/p&gt;
+ *
+ * &lt;h2&gt;State re-evaluation&lt;/h2&gt;
+ * Pseudo-class rules ({@code :hover}, {@code :focus}, {@code :disabled},
+ * {@code :active}) depend on the mutable {@link com.glyphui.ui.ComponentState}.
+ * Rather than tracking state changes per component, {@code Application} calls
+ * {@link #apply(Component)} once per frame before rendering — the tree is
+ * small and recomputation is cheap. Alternatively callers may invoke
+ * {@code apply} whenever a state change occurs.
+ */
+public final class StyleEngine {
+
+    private StyleSheet styleSheet;
+    private Theme theme;
+    /**
+     * Per-rule resolved-style cache (keyed by {@link StyleSheet#ruleId}).
+     * Reused across {@link #apply(Component)} passes — the dominant cost it
+     * avoids is re-running {@code resolveVars} on every frame for rules that
+     * carry unresolved {@code var()} declarations. Cleared whenever the
+     * stylesheet or the variable-affecting theme changes, so stale entries
+     * can never be served.
+     */
+<span class="fc" id="L51">    private final Map&lt;Integer, Style&gt; resolvedCache = new HashMap&lt;&gt;();</span>
+    /** Last theme identity seen while building variables (change detection). */
+    private Theme lastThemeSource;
+
+    /**
+     * Creates an engine bound to a stylesheet. The active theme
+     * ({@link Theme#current()}) is consulted lazily on each pass.
+     *
+     * @param styleSheet the stylesheet to apply (may be replaced later)
+     */
+    public StyleEngine(StyleSheet styleSheet) {
+<span class="fc" id="L62">        this(styleSheet, null);</span>
+<span class="fc" id="L63">    }</span>
+
+    /**
+     * Creates an engine with an explicit theme source for
+     * {@code var(--bg/--fg/--accent/--border)} resolution.
+     *
+     * @param styleSheet the stylesheet (null treated as empty sheet)
+     * @param theme      the theme (null → {@link Theme#current()} per pass)
+     */
+<span class="fc" id="L72">    public StyleEngine(StyleSheet styleSheet, Theme theme) {</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">        this.styleSheet = styleSheet != null ? styleSheet : StyleSheet.empty();</span>
+<span class="fc" id="L74">        this.theme = theme;</span>
+<span class="fc" id="L75">    }</span>
+
+    /**
+     * Replaces the current stylesheet. The per-rule resolved cache is keyed
+     * by rule identity, so it is cleared here to avoid holding styles (and
+     * rule references) from the discarded sheet.
+     *
+     * @param styleSheet the new stylesheet
+     */
+    public void setStyleSheet(StyleSheet styleSheet) {
+<span class="nc bnc" id="L85" title="All 2 branches missed.">        this.styleSheet = styleSheet != null ? styleSheet : StyleSheet.empty();</span>
+<span class="nc" id="L86">        this.resolvedCache.clear();</span>
+<span class="nc" id="L87">    }</span>
+
+    /**
+     * The currently applied stylesheet.
+     *
+     * @return the stylesheet, never null
+     */
+    public StyleSheet getStyleSheet() {
+<span class="nc" id="L95">        return styleSheet;</span>
+    }
+
+    /**
+     * Convenience entry point: computes styles for the whole subtree rooted
+     * at {@code root} using the given stylesheet.
+     *
+     * &lt;p&gt;This overload uses the active theme ({@link Theme#current()}) for
+     * {@code var()} resolution. Note that theme-derived custom properties
+     * such as {@code --bg} carry non-zero defaults in several components, so
+     * a mismatching theme can silently override intended colors. Prefer
+     * {@link #apply(Component, StyleSheet, Theme)} in tests and anywhere
+     * the expected theme is known.&lt;/p&gt;
+     *
+     * @param root       the subtree root component
+     * @param styleSheet the stylesheet to apply
+     */
+    public static void apply(Component root, StyleSheet styleSheet) {
+<span class="fc" id="L113">        apply(root, styleSheet, Theme.current());</span>
+<span class="fc" id="L114">    }</span>
+
+    /**
+     * Convenience entry point with an explicit theme source for custom
+     * property resolution ({@code var(--bg)}, {@code var(--accent)}, ...).
+     *
+     * @param root       the subtree root component
+     * @param styleSheet the stylesheet to apply
+     * @param theme      the theme providing derived variables (not null)
+     */
+    public static void apply(Component root, StyleSheet styleSheet, Theme theme) {
+<span class="fc" id="L125">        new StyleEngine(styleSheet, theme).apply(root);</span>
+<span class="fc" id="L126">    }</span>
+
+    /**
+     * Runs a full cascade pass over the subtree rooted at {@code root}.
+     *
+     * &lt;p&gt;Before cascading, each component's stored computed style is reset
+     * to empty. Without this, a second pass over the same tree would merge
+     * stale values from the previous pass into the fresh one (the merge in
+     * {@code applyRecursive} treats the previously stored style as the
+     * lowest-priority layer), leaking e.g. padding or margin declarations
+     * onto nodes whose selectors no longer match.&lt;/p&gt;
+     *
+     * @param root the subtree root (no-op when null)
+     */
+    public void apply(Component root) {
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">        if (root == null) {</span>
+<span class="nc" id="L142">            return;</span>
+        }
+<span class="fc" id="L144">        resetComputedStyles(root);</span>
+<span class="fc" id="L145">        Map&lt;String, String&gt; variables = buildVariables();</span>
+        // Theme-derived variables are not known at parse time, so rules that
+        // reference var(--accent) &amp; friends keep their raw declaration text
+        // under StyleProperty.RAW_VALUES. Re-parse those lazily with this
+        // engine's variable map (results cached per rule identity). The cache
+        // is kept across passes and keyed by StyleSheet#ruleId, which is
+        // stable for the lifetime of an immutable stylesheet; entries from a
+        // replaced sheet are dropped eagerly on setStyleSheet().
+<span class="fc" id="L153">        applyRecursive(root, null, variables, resolvedCache);</span>
+<span class="fc" id="L154">    }</span>
+
+    /**
+     * Clears every stored computed style in the subtree so the upcoming
+     * cascade starts from a clean slate. Inline styles are untouched — they
+     * live separately and always win via {@code Component#getComputedStyle()}.
+     *
+     * @param component the subtree root
+     */
+    private static void resetComputedStyles(Component component) {
+<span class="fc" id="L164">        component.setComputedStyle(Style.EMPTY);</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        if (component instanceof Panel panel) {</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            for (Component child : new ArrayList&lt;&gt;(panel.getChildren())) {</span>
+<span class="fc" id="L167">                resetComputedStyles(child);</span>
+<span class="fc" id="L168">            }</span>
+        }
+<span class="fc" id="L170">    }</span>
+
+    private void applyRecursive(Component component, Style parentComputed,
+                                Map&lt;String, String&gt; variables,
+                                Map&lt;Integer, Style&gt; resolvedCache) {
+<span class="fc" id="L175">        List&lt;StyleNode&gt; path = buildPath(component);</span>
+<span class="fc" id="L176">        Style.Builder builder = Style.builder();</span>
+        // Cascade: matchingRules returns lowest-priority first, merge in order.
+        // RAW_VALUES is a synthetic per-rule carrier of unresolved var()
+        // declarations; it must never leak typed values from a lower-priority
+        // rule into a higher-priority merge (see Style#withoutRawValues).
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        for (StyleSheet.Rule rule : styleSheet.matchingRules(path)) {</span>
+<span class="fc" id="L182">            int id = rule.id();</span>
+            // resolveVars() drops RAW_VALUES and folds unresolved var()
+            // declarations into typed values; the result is a clean style.
+<span class="fc" id="L185">            Style resolved = resolvedCache.computeIfAbsent(id,</span>
+<span class="fc" id="L186">                    i -&gt; rule.style().resolveVars(variables));</span>
+<span class="fc" id="L187">            builder.putAll(resolved);</span>
+<span class="fc" id="L188">        }</span>
+        // Inheritance source for this node's children. Only the stylesheet
+        // cascade result is inherited — NOT the inline style overlay. Inline
+        // declarations live solely on the component itself (applied at read
+        // time via Component#getEffectiveStyle); inheriting them would leak
+        // non-inherited box values (width/height seeded by constructors) into
+        // descendants, where they would out-rank ancestor stylesheet rules
+        // and break child/descendant combinators for grandchildren.
+<span class="fc" id="L196">        Style cascaded = builder.build();</span>
+<span class="fc" id="L197">        Style inheritBase = cascaded.inheritFrom(parentComputed);</span>
+<span class="fc" id="L198">        component.setComputedStyle(inheritBase);</span>
+
+        // Highest cascade priority after the sheet: the component's own
+        // inline style overrides matched rules for exactly the properties it
+        // declares (CSS semantics). Applied last so it never propagates.
+<span class="fc" id="L203">        Style inline = component.getInlineStyle();</span>
+<span class="pc bpc" id="L204" title="1 of 4 branches missed.">        if (inline != null &amp;&amp; !inline.isEmpty()) {</span>
+<span class="fc" id="L205">            component.setComputedStyle(inheritBase.overrideWith(inline));</span>
+        }
+
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        if (component instanceof Panel panel) {</span>
+            // Iterate over a snapshot: the children list is mutable and a
+            // widget reacting to its newly computed style could add or remove
+            // children mid-cascade (ConcurrentModificationException otherwise).
+<span class="fc bfc" id="L212" title="All 2 branches covered.">            for (Component child : new ArrayList&lt;&gt;(panel.getChildren())) {</span>
+<span class="fc" id="L213">                applyRecursive(child, inheritBase, variables, resolvedCache);</span>
+<span class="fc" id="L214">            }</span>
+        }
+<span class="fc" id="L216">    }</span>
+
+    /**
+     * Builds the ancestor path (root → component) used for descendant
+     * selector matching. Kept local so the engine does not rely on cached
+     * paths across frames (the tree may mutate between passes).
+     */
+    private static List&lt;StyleNode&gt; buildPath(Component component) {
+<span class="fc" id="L224">        List&lt;StyleNode&gt; path = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">        for (Component c = component; c != null; ) {</span>
+<span class="fc" id="L226">            path.add(c);</span>
+<span class="fc" id="L227">            c = c.getParent();</span>
+        }
+<span class="fc" id="L229">        java.util.Collections.reverse(path);</span>
+<span class="fc" id="L230">        return path;</span>
+    }
+
+    /**
+     * Variable map used for {@code var()} resolution: stylesheet custom
+     * properties first, then theme-derived values (which override, mirroring
+     * &quot;theme wins&quot; for the well-known names).
+     */
+    private Map&lt;String, String&gt; buildVariables() {
+<span class="fc" id="L239">        Map&lt;String, String&gt; vars = new HashMap&lt;&gt;(styleSheet.getRootVariables());</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        Theme t = theme != null ? theme : Theme.current();</span>
+        // Cached resolutions depend on the theme-derived variables; if the
+        // active theme instance changed since the last pass, drop the cache
+        // so no stale var() result is served.
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        if (t != lastThemeSource) {</span>
+<span class="fc" id="L245">            resolvedCache.clear();</span>
+<span class="fc" id="L246">            lastThemeSource = t;</span>
+        }
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        if (t != null) {</span>
+            // Format as 6-digit hex (#RRGGBB): the engine's own theme colors
+            // are opaque, and emitting #RRGGBBAA would be re-parsed with the
+            // CSS Color 4 RGBA ordering (alpha last), swapping channels.
+<span class="fc" id="L252">            vars.put(&quot;--bg&quot;, String.format(&quot;#%06X&quot;, t.getBackgroundColor() &amp; 0xFFFFFF));</span>
+<span class="fc" id="L253">            vars.put(&quot;--fg&quot;, String.format(&quot;#%06X&quot;, t.getForegroundColor() &amp; 0xFFFFFF));</span>
+<span class="fc" id="L254">            vars.put(&quot;--accent&quot;, String.format(&quot;#%06X&quot;, t.getAccentColor() &amp; 0xFFFFFF));</span>
+<span class="fc" id="L255">            vars.put(&quot;--border&quot;, String.format(&quot;#%06X&quot;, t.getBorderColor() &amp; 0xFFFFFF));</span>
+        }
+<span class="fc" id="L257">        return vars;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

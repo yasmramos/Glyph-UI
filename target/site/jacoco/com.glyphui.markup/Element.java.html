@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Element.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.markup</a> &gt; <span class="el_source">Element.java</span></div><h1>Element.java</h1><pre class="source lang-java linenums">package com.glyphui.markup;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * A markup element: {@code &lt;Box ...&gt;children&lt;/Box&gt;} or the self-closing form
+ * {@code &lt;Button/&gt;}.
+ *
+ * &lt;p&gt;The node keeps attributes and children in source order and records the
+ * position of its opening {@code &amp;lt;} character. Attribute prefixes such as
+ * {@code bind:} / {@code on:} and control attributes such as {@code if} or
+ * {@code for-each} are &lt;b&gt;not&lt;/b&gt; interpreted here — this is the raw tree.&lt;/p&gt;
+ */
+public final class Element extends AstNode {
+
+    /** Tag name exactly as written (case preserved). */
+    private final String tagName;
+
+    /** Whether the element was written in self-closing form {@code &lt;Tag/&gt;}. */
+    private boolean selfClosing;
+
+    /** Position of the matching end tag, or -1:-1 when absent/self-closing. */
+<span class="fc" id="L25">    private int closeLine = -1;</span>
+<span class="fc" id="L26">    private int closeColumn = -1;</span>
+
+<span class="fc" id="L28">    private final List&lt;Attribute&gt; attributes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L29">    private final List&lt;AstNode&gt; children = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * Creates an element.
+     *
+     * @param tagName     tag name, must not be null/empty
+     * @param selfClosing true for {@code &lt;Tag/&gt;} syntax
+     * @param line        1-based line of the opening {@code &amp;lt;}
+     * @param column      1-based column of the opening {@code &amp;lt;}
+     */
+    public Element(String tagName, boolean selfClosing, int line, int column) {
+<span class="fc" id="L40">        super(line, column);</span>
+<span class="pc bpc" id="L41" title="2 of 4 branches missed.">        if (tagName == null || tagName.isEmpty()) {</span>
+<span class="nc" id="L42">            throw new IllegalArgumentException(&quot;tag name must not be empty&quot;);</span>
+        }
+<span class="fc" id="L44">        this.tagName = tagName;</span>
+<span class="fc" id="L45">        this.selfClosing = selfClosing;</span>
+<span class="fc" id="L46">    }</span>
+
+    /**
+     * @return the tag name as written in the source
+     */
+    public String getTagName() {
+<span class="fc" id="L52">        return tagName;</span>
+    }
+
+    /**
+     * @return true when declared as {@code &lt;Tag/&gt;}
+     */
+    public boolean isSelfClosing() {
+<span class="fc" id="L59">        return selfClosing;</span>
+    }
+
+    /**
+     * Marks this element as self-closing (parser-internal, set when the
+     * start tag ends with {@code /&gt;}).
+     *
+     * @param selfClosing true for the {@code &lt;Tag/&gt;} form
+     */
+    void setSelfClosing(boolean selfClosing) {
+<span class="fc" id="L69">        this.selfClosing = selfClosing;</span>
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * Adds an attribute to this element (parser-internal).
+     *
+     * @param attribute the attribute to append
+     */
+    void addAttribute(Attribute attribute) {
+<span class="fc" id="L78">        attributes.add(attribute);</span>
+<span class="fc" id="L79">    }</span>
+
+    /**
+     * Appends a child node (parser-internal).
+     *
+     * @param child the child to append
+     */
+    void addChild(AstNode child) {
+<span class="fc" id="L87">        children.add(child);</span>
+<span class="fc" id="L88">    }</span>
+
+    /**
+     * Records the position of the matching end tag (parser-internal).
+     *
+     * @param closeLine   1-based line of {@code &amp;lt;/}
+     * @param closeColumn 1-based column of {@code &amp;lt;/}
+     */
+    void setClosePosition(int closeLine, int closeColumn) {
+<span class="fc" id="L97">        this.closeLine = closeLine;</span>
+<span class="fc" id="L98">        this.closeColumn = closeColumn;</span>
+<span class="fc" id="L99">    }</span>
+
+    /**
+     * @return unmodifiable list of attributes in source order
+     */
+    public List&lt;Attribute&gt; getAttributes() {
+<span class="fc" id="L105">        return Collections.unmodifiableList(attributes);</span>
+    }
+
+    /**
+     * Finds an attribute by exact (case-sensitive) raw name.
+     *
+     * @param name the attribute name to look up
+     * @return the attribute, or null when absent
+     */
+    public Attribute findAttribute(String name) {
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        for (Attribute a : attributes) {</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">            if (a.name().equals(name)) {</span>
+<span class="fc" id="L117">                return a;</span>
+            }
+<span class="fc" id="L119">        }</span>
+<span class="fc" id="L120">        return null;</span>
+    }
+
+    /**
+     * @return unmodifiable list of children (text, bindings, elements) in
+     *         source order
+     */
+    public List&lt;AstNode&gt; getChildren() {
+<span class="fc" id="L128">        return Collections.unmodifiableList(children);</span>
+    }
+
+    /**
+     * @return 1-based line of the matching end tag, or -1 when there is none
+     */
+    public int getCloseLine() {
+<span class="fc" id="L135">        return closeLine;</span>
+    }
+
+    /**
+     * @return 1-based column of the matching end tag, or -1 when there is none
+     */
+    public int getCloseColumn() {
+<span class="fc" id="L142">        return closeColumn;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L147">        StringBuilder sb = new StringBuilder(&quot;Element(&lt;&quot;).append(tagName);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        for (Attribute a : attributes) {</span>
+<span class="nc" id="L149">            sb.append(' ').append(a);</span>
+<span class="nc" id="L150">        }</span>
+<span class="nc bnc" id="L151" title="All 2 branches missed.">        sb.append(selfClosing ? &quot;/&gt;&quot; : &quot;&gt;&quot;);</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">        if (!children.isEmpty()) {</span>
+<span class="nc" id="L153">            sb.append(formatChildren(children)).append(&quot;&lt;/&quot;).append(tagName).append('&gt;');</span>
+        }
+<span class="nc" id="L155">        sb.append(&quot; at &quot;).append(line).append(':').append(column);</span>
+<span class="nc" id="L156">        return sb.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

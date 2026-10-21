@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import com.glyphui.core.Application;
 import com.glyphui.core.RepaintRequester;
+import com.glyphui.core.internal.TestHooks;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -67,9 +68,9 @@ public class InvalidatePropagationTest {
         // observe the effect of a single invalidate() call.
         repaintRequests.set(0);
         paintDirty = false;
-        leaf.resetInvalidateCount();
-        nested.resetInvalidateCount();
-        root.resetInvalidateCount();
+        TestHooks.resetInvalidateCount(leaf);
+        TestHooks.resetInvalidateCount(nested);
+        TestHooks.resetInvalidateCount(root);
 
         leaf.invalidate();
 
@@ -77,9 +78,9 @@ public class InvalidatePropagationTest {
                 "invalidate() on a deep child must propagate to the root and mark dirty");
         assertEquals(1, repaintRequests.get(),
                 "propagation must stop at the root (one repaint request per invalidate)");
-        assertEquals(1, leaf.getInvalidateCount());
-        assertEquals(1, nested.getInvalidateCount());
-        assertEquals(1, root.getInvalidateCount());
+        assertEquals(1, TestHooks.getInvalidateCount(leaf));
+        assertEquals(1, TestHooks.getInvalidateCount(nested));
+        assertEquals(1, TestHooks.getInvalidateCount(root));
     }
 
     @Test

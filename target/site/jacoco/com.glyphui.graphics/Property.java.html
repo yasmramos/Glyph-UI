@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Property.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.graphics</a> &gt; <span class="el_source">Property.java</span></div><h1>Property.java</h1><pre class="source lang-java linenums">package com.glyphui.graphics;
+
+import com.glyphui.core.Application;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+/**
+ * An observable, thread-safe value holder — the basic building block of the
+ * Glyph UI data model.
+ *
+ * &lt;h2&gt;Threading&lt;/h2&gt;
+ * &lt;p&gt;{@link #set(Object)} is safe to call from &lt;em&gt;any&lt;/em&gt; thread:&lt;/p&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;On the UI thread (or before {@code Application.run()} has started) the
+ *       new value is applied and listeners are notified synchronously.&lt;/li&gt;
+ *   &lt;li&gt;From any other thread the change is marshalled onto the UI thread via
+ *       {@link Application#invokeLater(Runnable)}, which also marks the frame
+ *       dirty and wakes up an idle event loop. Listeners therefore always run
+ *       on the UI thread and widget repaints stay race-free.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;h2&gt;Binding&lt;/h2&gt;
+ * &lt;p&gt;{@link #bind(Property)} mirrors another property's value one-way (source
+ * → this). Bindings are idempotent and propagate transitively because each
+ * link simply forwards sets through the same thread-safe path.&lt;/p&gt;
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class Property&lt;T&gt; {
+
+    /** Current value. Volatile so {@link #get()} is lock-free and fresh. */
+    private volatile T value;
+
+    /** The application used for UI-thread marshalling; may be null. */
+    private final Application application;
+
+    /** Optional hook applied on every set (e.g. widget state update + repaint). */
+    private final Consumer&lt;T&gt; onChange;
+
+    /** Registered change listeners (iteration-safe for add/remove during notify). */
+<span class="fc" id="L45">    private final List&lt;ChangeListener&lt;T&gt;&gt; listeners = new CopyOnWriteArrayList&lt;&gt;();</span>
+
+    /**
+     * Creates a property with an initial value.
+     *
+     * @param application the owning application (used for thread marshalling);
+     *                    may be {@code null} in headless/test contexts, in
+     *                    which case cross-thread sets apply directly
+     * @param initialValue the starting value
+     * @param onChange     hook invoked with the new value on the UI thread
+     *                     whenever it actually changes; may be {@code null}
+     */
+<span class="fc" id="L57">    public Property(Application application, T initialValue, Consumer&lt;T&gt; onChange) {</span>
+<span class="fc" id="L58">        this.application = application;</span>
+<span class="fc" id="L59">        this.value = initialValue;</span>
+<span class="fc" id="L60">        this.onChange = onChange;</span>
+<span class="fc" id="L61">    }</span>
+
+    /**
+     * Convenience constructor without an application or change hook.
+     *
+     * @param initialValue the starting value
+     */
+    public Property(T initialValue) {
+<span class="fc" id="L69">        this(null, initialValue, null);</span>
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * Returns the current value. Safe to call from any thread.
+     *
+     * @return the current value (may be null)
+     */
+    public T get() {
+<span class="fc" id="L78">        return value;</span>
+    }
+
+    /**
+     * Sets the property value.
+     *
+     * &lt;p&gt;If called from a non-UI thread the set is re-invoked on the UI
+     * thread through {@link Application#invokeLater(Runnable)}; otherwise the
+     * value is applied immediately. Equal values (per {@code Objects.equals})
+     * are ignored and do not notify listeners.&lt;/p&gt;
+     *
+     * @param newValue the new value (may be null)
+     */
+    public void set(T newValue) {
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if (application != null) {</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            if (!application.isUiThread()) {</span>
+                // Marshal onto the UI thread; re-entering set() there will
+                // find isUiThread() true and apply the value exactly once.
+<span class="fc" id="L96">                application.invokeLater(() -&gt; set(newValue));</span>
+<span class="fc" id="L97">                return;</span>
+            }
+<span class="pc bpc" id="L99" title="3 of 4 branches missed.">        } else if (Application.getCurrent() != null &amp;&amp; !Application.getCurrent().isUiThread()) {</span>
+            // Property created before any application was running: fall back
+            // to the current application's queue so background sets still get
+            // marshalled onto the UI thread.
+<span class="nc" id="L103">            Application.invokeOnCurrent(() -&gt; set(newValue));</span>
+<span class="nc" id="L104">            return;</span>
+        }
+<span class="fc" id="L106">        applyOnUiThread(newValue);</span>
+<span class="fc" id="L107">    }</span>
+
+    /**
+     * Applies the value, notifies listeners and runs the change hook. Must
+     * only execute on the UI thread (see {@link #set(Object)}).
+     */
+    private void applyOnUiThread(T newValue) {
+<span class="fc" id="L114">        T oldValue = this.value;</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        if (Objects.equals(oldValue, newValue)) {</span>
+<span class="fc" id="L116">            return;</span>
+        }
+<span class="fc" id="L118">        this.value = newValue;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (onChange != null) {</span>
+<span class="fc" id="L120">            onChange.accept(newValue);</span>
+        }
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (ChangeListener&lt;T&gt; listener : listeners) {</span>
+<span class="fc" id="L123">            listener.changed(this, oldValue, newValue);</span>
+<span class="fc" id="L124">        }</span>
+<span class="fc" id="L125">    }</span>
+
+    /**
+     * Registers a change listener. Listeners are invoked on the UI thread in
+     * registration order, after the value has been updated.
+     *
+     * @param listener the listener to add
+     */
+    public void addListener(ChangeListener&lt;T&gt; listener) {
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        if (listener != null) {</span>
+<span class="fc" id="L135">            listeners.add(listener);</span>
+        }
+<span class="fc" id="L137">    }</span>
+
+    /**
+     * Removes a previously registered change listener.
+     *
+     * @param listener the listener to remove
+     */
+    public void removeListener(ChangeListener&lt;T&gt; listener) {
+<span class="fc" id="L145">        listeners.remove(listener);</span>
+<span class="fc" id="L146">    }</span>
+
+    /**
+     * Binds this property one-way to {@code source}: every future change of
+     * the source is mirrored into this property. The current source value is
+     * applied immediately. Binding twice to the same source is a no-op.
+     *
+     * @param source the property to observe; must not be this instance
+     */
+    public void bind(Property&lt;T&gt; source) {
+<span class="fc" id="L156">        Objects.requireNonNull(source, &quot;source&quot;);</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        if (source == this) {</span>
+<span class="fc" id="L158">            throw new IllegalArgumentException(&quot;Cannot bind a property to itself&quot;);</span>
+        }
+        // Idempotency: drop any previous binding to this same source.
+<span class="fc" id="L161">        ChangeListener&lt;T&gt; existing = boundListeners.get(source);</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (existing != null) {</span>
+<span class="nc" id="L163">            source.removeListener(existing);</span>
+        }
+<span class="fc" id="L165">        ChangeListener&lt;T&gt; forwarder = (prop, oldV, newV) -&gt; set(newV);</span>
+<span class="fc" id="L166">        boundListeners.put(source, forwarder);</span>
+<span class="fc" id="L167">        source.addListener(forwarder);</span>
+<span class="fc" id="L168">        set(source.get());</span>
+<span class="fc" id="L169">    }</span>
+
+    /** Tracks forwarder listeners so re-binding the same source is idempotent. */
+<span class="fc" id="L172">    private final java.util.Map&lt;Property&lt;T&gt;, ChangeListener&lt;T&gt;&gt; boundListeners =</span>
+            new java.util.HashMap&lt;&gt;();
+
+    /**
+     * Unbinds this property from a previously bound source.
+     *
+     * @param source the source property to detach from
+     */
+    public void unbind(Property&lt;T&gt; source) {
+<span class="fc" id="L181">        ChangeListener&lt;T&gt; forwarder = boundListeners.remove(source);</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        if (forwarder != null) {</span>
+<span class="fc" id="L183">            source.removeListener(forwarder);</span>
+        }
+<span class="fc" id="L185">    }</span>
+
+    /**
+     * Static factory mirroring common JavaFX-style APIs.
+     *
+     * @param initialValue the starting value
+     * @param &lt;T&gt;          value type
+     * @return a new simple property
+     */
+    public static &lt;T&gt; Property&lt;T&gt; of(T initialValue) {
+<span class="fc" id="L195">        return new Property&lt;&gt;(initialValue);</span>
+    }
+
+    /**
+     * Returns a read-only view of this property.
+     *
+     * @return a supplier that reads the current value
+     */
+    public Supplier&lt;T&gt; readOnly() {
+<span class="nc" id="L204">        return this::get;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L209">        return &quot;Property[&quot; + value + &quot;]&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

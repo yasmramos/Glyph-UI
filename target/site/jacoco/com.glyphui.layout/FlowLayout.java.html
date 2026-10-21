@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FlowLayout.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.layout</a> &gt; <span class="el_source">FlowLayout.java</span></div><h1>FlowLayout.java</h1><pre class="source lang-java linenums">package com.glyphui.layout;
+
+import com.glyphui.graphics.Dimension;
+import com.glyphui.style.Style;
+import com.glyphui.style.StyleProperty;
+import com.glyphui.ui.Component;
+import com.glyphui.ui.Panel;
+
+/**
+ * A flow layout manager that arranges components in a left-to-right flow.
+ */
+public class FlowLayout extends LayoutManager {
+    private float gap;
+    private float padding;
+
+    /**
+     * Creates a new FlowLayout.
+     *
+     * @param gap     the gap between components
+     * @param padding the padding around the panel
+     */
+<span class="fc" id="L22">    public FlowLayout(float gap, float padding) {</span>
+<span class="fc" id="L23">        this.gap = gap;</span>
+<span class="fc" id="L24">        this.padding = padding;</span>
+<span class="fc" id="L25">    }</span>
+
+    /**
+     * Creates a new FlowLayout with default values.
+     */
+    public FlowLayout() {
+<span class="fc" id="L31">        this(10, 10);</span>
+<span class="fc" id="L32">    }</span>
+
+    /**
+     * Gets the gap between components.
+     *
+     * @return the gap
+     */
+    public float getGap() {
+<span class="fc" id="L40">        return gap;</span>
+    }
+
+    /**
+     * Sets the gap between components.
+     *
+     * @param gap the new gap
+     */
+    public void setGap(float gap) {
+<span class="fc" id="L49">        this.gap = gap;</span>
+<span class="fc" id="L50">    }</span>
+
+    /**
+     * Gets the padding around the panel.
+     *
+     * @return the padding
+     */
+    public float getPadding() {
+<span class="fc" id="L58">        return padding;</span>
+    }
+
+    /**
+     * Sets the padding around the panel.
+     *
+     * @param padding the new padding
+     */
+    public void setPadding(float padding) {
+<span class="fc" id="L67">        this.padding = padding;</span>
+<span class="fc" id="L68">    }</span>
+
+    @Override
+    public void layout(Panel panel) {
+        // Use local coordinates - start at padding within the panel
+<span class="fc" id="L73">        float currentX = padding;</span>
+<span class="fc" id="L74">        float currentY = padding;</span>
+<span class="fc" id="L75">        float maxY = currentY;</span>
+<span class="fc" id="L76">        float panelWidth = panel.getWidth();</span>
+
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (Component component : panel.getChildren()) {</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (!component.isVisible()) {</span>
+<span class="fc" id="L80">                continue;</span>
+            }
+
+            // Preferred (unconstrained) size first, used for line wrapping.
+<span class="fc" id="L84">            Dimension preferred = component.measure(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY);</span>
+
+            // If the preferred width no longer fits in the current row, wrap
+            // to a new row before placing the component.
+<span class="fc" id="L88">            float remainingWidth = Math.max(0.0f, panelWidth - padding - currentX);</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">            if (currentX &gt; padding &amp;&amp; preferred.getWidth() &gt; remainingWidth) {</span>
+<span class="fc" id="L90">                currentX = padding;</span>
+<span class="fc" id="L91">                currentY = maxY + gap;</span>
+<span class="fc" id="L92">                remainingWidth = Math.max(0.0f, panelWidth - padding - currentX);</span>
+            }
+
+            // Re-measure under the actual available constraints so that
+            // components which adapt their size to the given width
+            // (word-wrapping labels, etc.) are laid out with their true size.
+<span class="fc" id="L98">            Dimension size = component.measure(remainingWidth, Float.POSITIVE_INFINITY);</span>
+
+            // Apply the size through applyLayoutSize(), NOT setWidth/setHeight:
+            // those are the user-facing setters and would flag the bounds as
+            // explicit (and pin an inline width/height), so the component
+            // could never be re-measured by later layout passes.
+            // A height the user set explicitly is respected unless CSS
+            // declares one; the row still advances by the measured
+            // (preferred) height so neighbouring rows do not overlap.
+<span class="fc" id="L107">            float appliedHeight = size.getHeight();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            if (component.isSizeExplicitlySet()) {</span>
+<span class="fc" id="L109">                Style cs = component.getComputedStyle();</span>
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">                boolean cssHeight = cs != null &amp;&amp; cs.has(StyleProperty.HEIGHT);</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                if (!cssHeight) {</span>
+<span class="fc" id="L112">                    appliedHeight = component.getHeight();</span>
+                }
+            }
+<span class="fc" id="L115">            component.applyLayoutSize(size.getWidth(), appliedHeight);</span>
+
+            // Position the component in local coordinates
+<span class="fc" id="L118">            component.setX(currentX);</span>
+<span class="fc" id="L119">            component.setY(currentY);</span>
+
+            // Update position for next component
+<span class="fc" id="L122">            currentX += size.getWidth() + gap;</span>
+<span class="fc" id="L123">            maxY = Math.max(maxY, currentY + size.getHeight());</span>
+<span class="fc" id="L124">        }</span>
+<span class="fc" id="L125">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

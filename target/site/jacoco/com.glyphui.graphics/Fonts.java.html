@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Fonts.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.graphics</a> &gt; <span class="el_source">Fonts.java</span></div><h1>Fonts.java</h1><pre class="source lang-java linenums">package com.glyphui.graphics;
+
+import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.FontStyle;
+import io.github.humbleui.skija.Typeface;
+
+/**
+ * Shared, lazily-initialized Skija {@link Typeface} cache.
+ *
+ * &lt;p&gt;{@code Typeface} objects are relatively expensive to create (they load
+ * font data from disk), so all widgets should share a single default instance
+ * instead of calling {@code Typeface.makeFromName} per component. Creating a
+ * {@link Font} from a cached typeface is cheap, so each widget can still own
+ * its own {@code Font} with an individual size.&lt;/p&gt;
+ *
+ * &lt;p&gt;The cached typeface is a process-wide resource owned by this class. It
+ * must be released exactly once via {@link #close()} — typically done by
+ * {@code Application.close()} after all components have been disposed, since
+ * live {@code Font} instances keep a native reference to their typeface.&lt;/p&gt;
+ */
+public final class Fonts {
+
+    private static volatile Typeface defaultTypeface;
+
+    private Fonts() {
+        // Utility class: not instantiable.
+    }
+
+    /**
+     * Returns the shared default typeface, creating it lazily on first use.
+     * The returned instance is owned by this class; callers must NOT close it.
+     *
+     * @return the shared default {@code Typeface}
+     */
+    public static Typeface getDefaultTypeface() {
+<span class="fc" id="L36">        Typeface local = defaultTypeface;</span>
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">        if (local == null || local.isClosed()) {</span>
+<span class="fc" id="L38">            synchronized (Fonts.class) {</span>
+<span class="fc" id="L39">                local = defaultTypeface;</span>
+<span class="pc bpc" id="L40" title="3 of 4 branches missed.">                if (local == null || local.isClosed()) {</span>
+<span class="fc" id="L41">                    local = Typeface.makeFromName(null, FontStyle.NORMAL);</span>
+<span class="fc" id="L42">                    defaultTypeface = local;</span>
+                }
+<span class="fc" id="L44">            }</span>
+        }
+<span class="fc" id="L46">        return local;</span>
+    }
+
+    /**
+     * Convenience method that creates a {@link Font} of the given size using
+     * the shared default typeface. The returned {@code Font} is owned by the
+     * caller and must be closed together with the widget that uses it.
+     *
+     * @param size the font size in points
+     * @return a new {@code Font} backed by the shared typeface
+     */
+    public static Font createDefaultFont(float size) {
+<span class="fc" id="L58">        return new Font(getDefaultTypeface(), size);</span>
+    }
+
+    /**
+     * Releases the shared typeface. Should be called once during application
+     * shutdown, after every component holding a {@code Font} has been closed.
+     * Safe to call multiple times.
+     */
+    public static void close() {
+<span class="fc" id="L67">        synchronized (Fonts.class) {</span>
+<span class="fc" id="L68">            Typeface local = defaultTypeface;</span>
+<span class="fc" id="L69">            defaultTypeface = null;</span>
+<span class="pc bpc" id="L70" title="1 of 4 branches missed.">            if (local != null &amp;&amp; !local.isClosed()) {</span>
+<span class="fc" id="L71">                local.close();</span>
+            }
+<span class="fc" id="L73">        }</span>
+<span class="fc" id="L74">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

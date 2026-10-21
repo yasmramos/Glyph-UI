@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.glyphui.core.WindowHiDpiTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.495 s -- in com.glyphui.core.WindowHiDpiTest

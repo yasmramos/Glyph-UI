@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FocusManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.core</a> &gt; <span class="el_source">FocusManager.java</span></div><h1>FocusManager.java</h1><pre class="source lang-java linenums">package com.glyphui.core;
+
+import com.glyphui.ui.Component;
+import com.glyphui.ui.Panel;
+
+/**
+ * Tracks the keyboard-focused component and implements Tab / Shift+Tab
+ * traversal of the component tree.
+ *
+ * &lt;p&gt;Traversal order is depth-first over {@code Panel.getChildren()} (the
+ * same order widgets are added in), skipping components that are invisible,
+ * disabled or not focusable. A single global instance is used by
+ * {@link Application} (installed via {@link #setGlobalFocusManager}) so that
+ * {@code Component.requestFocus()} works from anywhere in the tree.&lt;/p&gt;
+ */
+public class FocusManager {
+
+    private static volatile FocusManager globalFocusManager;
+
+    private Component focusedComponent;
+    private Panel traversalRoot;
+    private final Runnable repaintCallback;
+
+    /**
+     * Creates a focus manager.
+     *
+     * @param repaintCallback invoked whenever the focus changes so the
+     *                        application can schedule a repaint (may be null)
+     */
+<span class="fc" id="L30">    public FocusManager(Runnable repaintCallback) {</span>
+<span class="fc" id="L31">        this.repaintCallback = repaintCallback;</span>
+<span class="fc" id="L32">    }</span>
+
+    /**
+     * Installs the process-wide focus manager (done by {@link Application}).
+     *
+     * @param manager the manager to install (or null to clear)
+     */
+    public static void setGlobalFocusManager(FocusManager manager) {
+<span class="fc" id="L40">        globalFocusManager = manager;</span>
+<span class="fc" id="L41">    }</span>
+
+    /**
+     * Gets the process-wide focus manager.
+     *
+     * @return the manager, or null when none is installed
+     */
+    public static FocusManager getGlobalFocusManager() {
+<span class="fc" id="L49">        return globalFocusManager;</span>
+    }
+
+    /**
+     * Gets the component that currently holds the keyboard focus.
+     *
+     * @return the focused component, or null
+     */
+    public Component getFocused() {
+<span class="fc" id="L58">        return focusedComponent;</span>
+    }
+
+    /**
+     * Gives the keyboard focus to a component. Non-focusable, hidden or
+     * disabled components are rejected.
+     *
+     * @param component the component to focus (null clears the focus)
+     * @return true if the focus changed as requested
+     */
+    public boolean requestFocus(Component component) {
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (component == null) {</span>
+<span class="fc" id="L70">            return changeFocus(null);</span>
+        }
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (!isFocusCandidate(component)) {</span>
+<span class="nc" id="L73">            return false;</span>
+        }
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (component == focusedComponent) {</span>
+<span class="nc" id="L76">            return false;</span>
+        }
+<span class="fc" id="L78">        return changeFocus(component);</span>
+    }
+
+    /**
+     * Clears the focus if (and only if) the given component currently holds
+     * it. Called when a focused widget becomes hidden/disabled/unfocusable.
+     *
+     * @param component the component that lost eligibility
+     */
+    public void clearFocus(Component component) {
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (focusedComponent == component) {</span>
+<span class="fc" id="L89">            changeFocus(null);</span>
+        }
+<span class="fc" id="L91">    }</span>
+
+    /**
+     * Hook invoked by {@code Component.setVisible(false)}.
+     *
+     * @param component the component whose visibility changed
+     */
+    public void componentVisibilityChanged(Component component) {
+<span class="fc" id="L99">        clearFocusIfIneligible(component);</span>
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Hook invoked by {@code Component.setEnabled(false)}.
+     *
+     * @param component the component that was disabled
+     */
+    public void componentDisabled(Component component) {
+<span class="fc" id="L108">        clearFocusIfIneligible(component);</span>
+<span class="fc" id="L109">    }</span>
+
+    private void clearFocusIfIneligible(Component component) {
+<span class="pc bpc" id="L112" title="1 of 4 branches missed.">        if (focusedComponent == component &amp;&amp; !isFocusCandidate(component)) {</span>
+<span class="fc" id="L113">            changeFocus(null);</span>
+        }
+<span class="fc" id="L115">    }</span>
+
+    /**
+     * Moves the focus to the next focusable component in tree order
+     * (Tab). Wraps around at the end.
+     *
+     * @return true if some component gained the focus
+     */
+    public boolean focusNext() {
+<span class="fc" id="L124">        return moveFocus(true);</span>
+    }
+
+    /**
+     * Moves the focus to the previous focusable component in tree order
+     * (Shift+Tab). Wraps around at the beginning.
+     *
+     * @return true if some component gained the focus
+     */
+    public boolean focusPrevious() {
+<span class="fc" id="L134">        return moveFocus(false);</span>
+    }
+
+    /**
+     * Sets the root of the tree used for traversal. The default
+     * implementation derives the root by walking up from the focused
+     * component, so this is only needed for custom hosting scenarios.
+     *
+     * @param root the traversal root
+     */
+    public void setRoot(Panel root) {
+<span class="fc" id="L145">        this.traversalRoot = root;</span>
+<span class="fc" id="L146">    }</span>
+
+    private boolean moveFocus(boolean forward) {
+<span class="fc" id="L149">        Panel root = resolveRoot();</span>
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        if (root == null) {</span>
+<span class="nc" id="L151">            return false;</span>
+        }
+<span class="fc" id="L153">        java.util.List&lt;Component&gt; order = new java.util.ArrayList&lt;&gt;();</span>
+<span class="fc" id="L154">        collectFocusable(root, order);</span>
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        if (order.isEmpty()) {</span>
+<span class="nc" id="L156">            return changeFocus(null);</span>
+        }
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">        int index = focusedComponent == null ? -1 : order.indexOf(focusedComponent);</span>
+        int next;
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">        if (index &lt; 0) {</span>
+            // No current focus (or it left the tree): start at first/last
+<span class="nc bnc" id="L162" title="All 2 branches missed.">            next = forward ? 0 : order.size() - 1;</span>
+        } else {
+<span class="fc bfc" id="L164" title="All 2 branches covered.">            next = (index + (forward ? 1 : -1) + order.size()) % order.size();</span>
+        }
+<span class="fc" id="L166">        return changeFocus(order.get(next));</span>
+    }
+
+    private Panel resolveRoot() {
+<span class="pc bpc" id="L170" title="1 of 2 branches missed.">        if (traversalRoot != null) {</span>
+<span class="fc" id="L171">            return traversalRoot;</span>
+        }
+<span class="nc" id="L173">        Component c = focusedComponent;</span>
+<span class="nc bnc" id="L174" title="All 2 branches missed.">        if (c != null) {</span>
+<span class="nc" id="L175">            Panel p = c.getParent();</span>
+<span class="nc bnc" id="L176" title="All 4 branches missed.">            while (p != null &amp;&amp; p.getParent() != null) {</span>
+<span class="nc" id="L177">                p = p.getParent();</span>
+            }
+<span class="nc bnc" id="L179" title="All 2 branches missed.">            if (p != null) {</span>
+<span class="nc" id="L180">                return p;</span>
+            }
+        }
+<span class="nc" id="L183">        return null;</span>
+    }
+
+    /**
+     * Depth-first collection of focus-eligible descendants. Panels are
+     * eligible themselves only if they opt in via {@code setFocusable(true)}
+     * on a subclass — the base {@code Panel} keeps the default flag but is
+     * included like any other component.
+     */
+    private void collectFocusable(Component component, java.util.List&lt;Component&gt; out) {
+<span class="pc bpc" id="L193" title="2 of 4 branches missed.">        if (component == null || !component.isVisible()) {</span>
+<span class="nc" id="L194">            return;</span>
+        }
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        if (isFocusCandidate(component)) {</span>
+<span class="fc" id="L197">            out.add(component);</span>
+        }
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        if (component instanceof Panel) {</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            for (Component child : ((Panel) component).getChildren()) {</span>
+<span class="fc" id="L201">                collectFocusable(child, out);</span>
+<span class="fc" id="L202">            }</span>
+        }
+<span class="fc" id="L204">    }</span>
+
+    private boolean isFocusCandidate(Component component) {
+<span class="fc bfc" id="L207" title="All 6 branches covered.">        return component.isFocusable() &amp;&amp; component.isEnabled() &amp;&amp; component.isVisible();</span>
+    }
+
+    private boolean changeFocus(Component newFocus) {
+<span class="fc" id="L211">        Component old = focusedComponent;</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (old == newFocus) {</span>
+<span class="nc" id="L213">            return false;</span>
+        }
+<span class="fc" id="L215">        focusedComponent = newFocus;</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        if (old != null) {</span>
+<span class="fc" id="L217">            old.applyFocusChange(false);</span>
+        }
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        if (newFocus != null) {</span>
+<span class="fc" id="L220">            newFocus.applyFocusChange(true);</span>
+        }
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (repaintCallback != null) {</span>
+<span class="fc" id="L223">            repaintCallback.run();</span>
+        }
+<span class="fc" id="L225">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

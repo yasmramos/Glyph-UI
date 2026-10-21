@@ -1,0 +1,437 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WindowBackend.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.core.backend</a> &gt; <span class="el_source">WindowBackend.java</span></div><h1>WindowBackend.java</h1><pre class="source lang-java linenums">package com.glyphui.core.backend;
+
+import com.glyphui.core.WindowConfig;
+
+/**
+ * Backend-agnostic window interface.
+ *
+ * &lt;p&gt;{@code WindowBackend} abstracts everything the toolkit needs from a
+ * native window: creation/destruction, event pumping, geometry (logical and
+ * physical/framebuffer sizes), HiDPI content scale, runtime window
+ * attributes, clipboard access and input-event dispatch. Keeping this
+ * interface free of native-library types lets the toolkit swap or grow its
+ * windowing layer without touching the rest of the code base.&lt;/p&gt;
+ *
+ * &lt;p&gt;The toolkit's single production implementation is
+ * {@link JwmWindowBackend}, built on &lt;em&gt;io.github.humbleui:jwm&lt;/em&gt; (with
+ * IME support through {@code TextInputClient}). The GLFW/LWJGL backend was
+ * removed; JWM is now the only supported windowing path.&lt;/p&gt;
+ *
+ * &lt;p&gt;The interface deliberately avoids any backend-specific types in its
+ * signatures: listeners are plain functional interfaces declared below. Key
+ * codes arriving at {@link KeyListener} and mouse button ids arriving at
+ * {@link MouseListener} use the toolkit's own numeric vocabulary
+ * ({@link com.glyphui.events.GlyphKeys} / 0=left, 1=right, 2=middle); each
+ * backend translates its native identifiers before dispatching. Modifier
+ * bitmasks follow {@link com.glyphui.events.GlyphMods}.&lt;/p&gt;
+ *
+ * &lt;p&gt;The public API of {@code com.glyphui.core.Window} mirrors this
+ * interface one-to-one and delegates to the active backend; see that class
+ * for user-facing documentation.&lt;/p&gt;
+ *
+ * &lt;p&gt;&lt;strong&gt;Headless contract:&lt;/strong&gt; every method must be safe to call
+ * before {@link #create()} succeeds (no live native window). Setters may
+ * cache their values; size/scale setters ({@link #setSizes},
+ * {@link #setContentScale}) update cached state and fire the corresponding
+ * listeners without touching native code. This keeps unit tests runnable
+ * without a display server.&lt;/p&gt;
+ */
+public interface WindowBackend extends AutoCloseable {
+
+    // ------------------------------------------------------------------
+    // Listener functional interfaces (backend-agnostic replacements for
+    // the native callback types of windowing libraries)
+    // ------------------------------------------------------------------
+
+    /** Receives logical window-size changes, in logical units. */
+    @FunctionalInterface
+    interface WindowSizeListener {
+        void onWindowSizeChanged(int width, int height);
+    }
+
+    /** Receives physical framebuffer-size changes, in pixels. */
+    @FunctionalInterface
+    interface FramebufferSizeListener {
+        void onFramebufferSizeChanged(int width, int height);
+    }
+
+    /** Receives content-scale (DPI) changes. */
+    @FunctionalInterface
+    interface ContentScaleListener {
+        void onContentScaleChanged(float scaleX, float scaleY);
+    }
+
+    /** Receives printable-character (Unicode codepoint) events. */
+    @FunctionalInterface
+    interface CharListener {
+        void onChar(int codepoint);
+    }
+
+    /**
+     * Receives committed / composed text from the platform input method
+     * (IME). Backends without a native IME bridge never fire this listener;
+     * JWM dispatches its {@code EventTextInput} here. The default
+     * implementation forwards to the {@link CharListener} one codepoint at a
+     * time so applications written against the char callback keep working.
+     *
+     * @param text             the committed text (never null, may be empty)
+     * @param replacementStart start of the range to replace in the current
+     *                         marked/composing text (0 when no composition)
+     * @param replacementEnd   end of the range to replace (== start when none)
+     */
+    @FunctionalInterface
+    interface TextInputListener {
+        void onTextInput(String text, int replacementStart, int replacementEnd);
+    }
+
+    /**
+     * Provides the caret/marked-text geometry the native input method needs
+     * to position its candidate window. Implemented by the application layer
+     * (which knows the focused widget); the backend queries it from the UI
+     * thread whenever the OS asks.
+     */
+    interface ImeClient {
+        /**
+         * @param insertionStart caret/composition start offset in the client's
+         *                       text buffer
+         * @param insertionEnd   caret/composition end offset
+         * @return the caret rectangle in &lt;b&gt;physical screen coordinates&lt;/b&gt;,
+         *         or null when there is no editable focus
+         */
+        int[] getCursorRect(int insertionStart, int insertionEnd);
+
+        /** @return the currently edited text, or null when not editing */
+        String getText();
+
+        /**
+         * Current selection as {@code {lo, hi}} offsets into
+         * {@link #getText()}, or null when there is no selection. Used by
+         * IME-capable backends to report the selected range to the OS.
+         */
+        default int[] getSelectionRange() {
+<span class="nc" id="L112">            return null;</span>
+        }
+    }
+
+    /**
+     * Receives raw key events.
+     *
+     * @param keyCode   toolkit key code (see
+     *                  {@link com.glyphui.events.GlyphKeys}); backends
+     *                  translate their native identifiers before dispatching
+     * @param action    true for press/repeat, false for release
+     * @param modifiers modifier bit flags (see
+     *                  {@link com.glyphui.events.GlyphMods})
+     */
+    @FunctionalInterface
+    interface KeyListener {
+        void onKey(int keyCode, boolean action, int modifiers);
+    }
+
+    /**
+     * Receives mouse button events.
+     *
+     * @param button    toolkit button id: 0 = left, 1 = right, 2 = middle
+     * @param action    true for press, false for release
+     * @param x         logical X coordinate
+     * @param y         logical Y coordinate
+     * @param modifiers modifier bit flags (see
+     *                  {@link com.glyphui.events.GlyphMods})
+     */
+    @FunctionalInterface
+    interface MouseListener {
+        void onMouseButton(int button, boolean action, double x, double y, int modifiers);
+    }
+
+    // ------------------------------------------------------------------
+    // Lifecycle
+    // ------------------------------------------------------------------
+
+    /**
+     * Creates the native window and makes its GL context current (when the
+     * backend uses GL).
+     *
+     * @return true if initialization succeeded
+     */
+    boolean create();
+
+    /**
+     * Destroys the window and releases all backend resources. Idempotent.
+     */
+    void destroy();
+
+    // ------------------------------------------------------------------
+    // Event loop plumbing
+    // ------------------------------------------------------------------
+    //
+    // CONTRACT: these are internal plumbing driven exclusively by the
+    // toolkit's own loops — Application.run()/renderFrame() and Window's
+    // package-private delegators. They are NOT part of the application-
+    // facing API (see docs/architecture/internal-boundary.md). NOTE:
+    // interface members are implicitly public and an implementation may
+    // not weaken them (JLS 9.4), so concrete backends must keep these
+    // methods public even though no application ever calls them; the
+    // boundary is enforced at the Window facade, not at the SPI. Keep
+    // new plumbing out of this list unless the toolkit loop genuinely
+    // needs it.
+
+    /** Presents the frame (swaps front/back buffers). */
+    void swapBuffers();
+
+    /** @return true when a close has been requested */
+    boolean shouldClose();
+
+    /** Requests (or cancels) window close. Safe before {@link #create()}. */
+    void setShouldClose(boolean shouldClose);
+
+    /**
+     * Processes all pending events without blocking.
+     *
+     * @return always {@code true} for compatibility with the historical
+     *         GLFW-style contract; no caller relies on the value
+     */
+    boolean pollEvents();
+
+    /** Blocks until at least one event arrives, then processes them. */
+    void waitEvents();
+
+    /** Waits for events with an upper time bound (seconds). */
+    void waitEventsTimeout(double seconds);
+
+    /** Wakes up a thread blocked in {@link #waitEvents()}. */
+    void postEmptyEvent();
+
+    // ------------------------------------------------------------------
+    // Geometry &amp; metadata
+    // ------------------------------------------------------------------
+
+    // NOTE: the former getWindowHandle() accessor was deleted outright.
+    // JWM exposes no numeric handle (it always returned 0) and nothing in
+    // the toolkit or its tests ever called it — a constant with no meaning
+    // is worse than no method at all.
+
+    /** @return the logical window width */
+    int getWidth();
+
+    /** @return the logical window height */
+    int getHeight();
+
+    /** @return the physical framebuffer width in pixels */
+    int getFramebufferWidth();
+
+    /** @return the physical framebuffer height in pixels */
+    int getFramebufferHeight();
+
+    /** @return the content scale (DPI) factor along X */
+    float getContentScaleX();
+
+    /** @return the content scale (DPI) factor along Y */
+    float getContentScaleY();
+
+    /** @return the current window title */
+    String getTitle();
+
+    /** Updates the title immediately (live window) or caches it. */
+    void setTitle(String title);
+
+    /** @return the active window configuration (never null) */
+    WindowConfig getConfig();
+
+    /**
+     * Updates the cached &lt;b&gt;logical&lt;/b&gt; dimensions, deriving the physical
+     * framebuffer size from the content scale when no live window exists.
+     */
+    void updateDimensions(int width, int height);
+
+    /**
+     * Sets both logical and physical dimensions explicitly (headless/test
+     * mode). Does not touch the native window.
+     */
+    void setSizes(int windowWidth, int windowHeight,
+                  int framebufferWidth, int framebufferHeight);
+
+    /**
+     * Sets the cached content scale factors and fires the content-scale
+     * listener (headless/test simulation of a DPI change).
+     */
+    void setContentScale(float scaleX, float scaleY);
+
+    // ------------------------------------------------------------------
+    // Runtime window attributes
+    // ------------------------------------------------------------------
+
+    void show();
+
+    void hide();
+
+    void setDecorated(boolean decorated);
+
+    void setResizable(boolean resizable);
+
+    void setFloating(boolean floating);
+
+    void setOpacity(float opacity);
+
+    void setPosition(int x, int y);
+
+    void setSize(int width, int height);
+
+    void setMaximized(boolean maximized);
+
+    void setFullscreen(boolean fullscreen);
+
+    /**
+     * @return the window position in screen coordinates as {x, y}, or
+     *         {0, 0} when unknown/headless. Used by the IME bridge to map
+     *         caret rects into screen space.
+     */
+    int[] getPosition();
+
+    // ------------------------------------------------------------------
+    // Clipboard
+    // ------------------------------------------------------------------
+
+    /** Places a UTF-8 string on the system clipboard. */
+    void setClipboardString(String text);
+
+    /** @return the current clipboard text, or null when unavailable */
+    String getClipboardString();
+
+    // ------------------------------------------------------------------
+    // Listeners
+    // ------------------------------------------------------------------
+
+    /** Registers the logical window-size listener (null removes). */
+    void setWindowSizeListener(WindowSizeListener listener);
+
+    /** Registers the physical framebuffer-size listener (null removes). */
+    void setFramebufferSizeListener(FramebufferSizeListener listener);
+
+    /** Registers the content-scale (DPI) listener (null removes). */
+    void setContentScaleListener(ContentScaleListener listener);
+
+    /** Registers the printable-character listener (null removes). */
+    void setCharListener(CharListener listener);
+
+    /** Registers the raw key listener (null removes). */
+    void setKeyListener(KeyListener listener);
+
+    /** Registers the IME text-input listener (null restores the default). */
+    void setTextInputListener(TextInputListener listener);
+
+    /**
+     * Installs the IME caret-info client consulted by the native input
+     * method. Backends without IME support may ignore it. Null removes.
+     */
+    void setImeClient(ImeClient client);
+
+    /**
+     * Enables/disables the native text-input (IME) connection for this
+     * window. Backends that always accept text input may treat this as a
+     * hint; safe to call before {@link #create()}.
+     */
+    void setTextInputEnabled(boolean enabled);
+
+    /** Registers the mouse-button listener (null removes). */
+    void setMouseListener(MouseListener listener);
+
+    /**
+     * Receives cursor-position updates in logical window coordinates.
+     * Backends deliver both axes in a single call (native libraries may
+     * report them separately; the backend coalesces before dispatching).
+     */
+    @FunctionalInterface
+    interface CursorPosListener {
+        void onCursorPos(double x, double y);
+    }
+
+    /** Registers the cursor-position listener (null removes). */
+    void setCursorPosListener(CursorPosListener listener);
+
+    // ------------------------------------------------------------------
+    // Backend capabilities / rendering hooks
+    // ------------------------------------------------------------------
+
+    /**
+     * Returns true when this backend renders through OpenGL and the toolkit
+     * should build a GPU (Skija GL) surface. Raster-only backends (e.g. a
+     * headless JWM window without GL support) return false, in which case
+     * {@link #present(SurfaceResult)} is called instead of
+     * {@link #swapBuffers()}.
+     *
+     * @return true for GL-capable backends
+     */
+    default boolean isGlCapable() {
+<span class="nc" id="L365">        return true;</span>
+    }
+
+    /**
+     * Presents the freshly rendered frame after {@code render()} completed a
+     * paint cycle. GL backends swap buffers here ({@link #swapBuffers()} —
+     * Skija draws directly into the window framebuffer); raster-backed
+     * windows blit the CPU surface onto the native window layer. The default
+     * implementation delegates to {@link #swapBuffers()}.
+     *
+     * @param result the surface result currently bound to the application
+     *               canvas (may be null on early frames)
+     * @return true when the frame reached the window; &lt;b&gt;false&lt;/b&gt; when the
+     *         backend could not display it yet (e.g. JWM's raster layer has
+     *         not allocated its pixels before the first native frame), which
+     *         asks the caller to schedule another paint
+     */
+    default boolean present(SurfaceResult result) {
+<span class="nc" id="L383">        swapBuffers();</span>
+<span class="nc" id="L384">        return true;</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Event-loop ownership hooks
+    // ------------------------------------------------------------------
+
+    /**
+     * Returns true when the backend owns the process-wide UI thread and its
+     * event loop cannot be pumped from the caller thread (JWM: the native
+     * library must be started from the main thread via {@code App.start} and
+     * dispatches all window events from it). When this returns false (e.g.
+     * headless test backends) {@code Application.run()} keeps its classical
+     * poll/wait loop driven by the calling thread.
+     *
+     * @return true for app-owned-loop backends
+     */
+    default boolean isAppOwnedLoop() {
+<span class="nc" id="L402">        return false;</span>
+    }
+
+    /**
+     * Called once by {@code Application.run()} immediately before entering
+     * the frame loop, only when {@link #isAppOwnedLoop()} is true. The
+     * backend uses this to hand control to its native event loop, invoking
+     * {@code onFrame} once per dispatched event batch (the loop body), and
+     * returning when the application signals close. The default implementation
+     * simply runs the callback inline (polling loop fallback).
+     *
+     * @param onFrame one full iteration of the toolkit's frame loop
+     */
+    default void enterEventLoop(Runnable onFrame) {
+<span class="nc bnc" id="L416" title="All 2 branches missed.">        while (!shouldClose()) {</span>
+<span class="nc" id="L417">            onFrame.run();</span>
+        }
+<span class="nc" id="L419">    }</span>
+
+    /**
+     * Requests that the native event loop wake up and run another frame as
+     * soon as possible (raster path has no vsync to pace frames). Default:
+     * no-op — polling backends are paced by swap intervals and real events.
+     */
+    default void requestNewFrame() {
+<span class="nc" id="L427">    }</span>
+
+    /**
+     * Releases native resources. Equivalent to {@link #destroy()}.
+     */
+    @Override
+    default void close() {
+<span class="nc" id="L434">        destroy();</span>
+<span class="nc" id="L435">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

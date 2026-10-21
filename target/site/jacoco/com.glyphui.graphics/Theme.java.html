@@ -1,0 +1,381 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Theme.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.graphics</a> &gt; <span class="el_source">Theme.java</span></div><h1>Theme.java</h1><pre class="source lang-java linenums">package com.glyphui.graphics;
+
+import io.github.humbleui.skija.Color;
+import io.github.humbleui.skija.Font;
+
+/**
+ * Central visual theme: colors, per-role fonts, corner radii and paddings.
+ *
+ * &lt;p&gt;Widgets read their appearance from {@link #current()} at render and
+ * measure time instead of hard-coding colors. Two built-in palettes ship with
+ * the toolkit — {@link #light()} and {@link #dark()} — and the dark one is
+ * the process default (matching the historical Glyph UI look).&lt;/p&gt;
+ *
+ * &lt;p&gt;Instances are immutable value objects; use {@link #toBuilder()} to derive
+ * customized themes and {@link #setCurrent(Theme)} to install one globally
+ * (typically once, during application startup).&lt;/p&gt;
+ */
+public final class Theme {
+
+    // ------------------------------------------------------------------
+    // Roles used by FontManager / Theme font lookup
+    // ------------------------------------------------------------------
+
+    /** Semantic font roles available in a theme. */
+<span class="fc" id="L25">    public enum FontRole {</span>
+        /** Regular body text (labels, text fields). */
+<span class="fc" id="L27">        BODY,</span>
+        /** Control captions (buttons). */
+<span class="fc" id="L29">        BUTTON,</span>
+        /** Larger headings. */
+<span class="fc" id="L31">        HEADING</span>
+    }
+
+    /** The shared light palette instance. */
+<span class="fc" id="L35">    private static final Theme LIGHT = builder().mode(Mode.LIGHT).build();</span>
+
+    /** The shared dark palette instance (process default). */
+<span class="fc" id="L38">    private static final Theme DARK = new Theme(Mode.DARK);</span>
+
+    /** Currently installed theme. Volatile: swapped from the UI thread. */
+<span class="fc" id="L41">    private static volatile Theme current = DARK;</span>
+
+    /** Color/theme mode. */
+<span class="fc" id="L44">    public enum Mode {</span>
+        /** Light background with dark foreground. */
+<span class="fc" id="L46">        LIGHT,</span>
+        /** Dark background with light foreground. */
+<span class="fc" id="L48">        DARK</span>
+    }
+
+    private final Mode mode;
+    private final int backgroundColor;
+    private final int foregroundColor;
+    private final int accentColor;
+    private final int controlNormalColor;
+    private final int controlHoverColor;
+    private final int controlPressedColor;
+    private final int controlDisabledColor;
+    private final int controlTextColor;
+    private final int controlTextDisabledColor;
+    private final int borderColor;
+    private final float controlCornerRadius;
+    private final float focusRingRadius;
+    private final float padding;
+    private final float buttonPaddingHorizontal;
+    private final float buttonPaddingVertical;
+
+    /**
+     * Creates a theme with all values supplied explicitly.
+     */
+<span class="fc" id="L71">    private Theme(Builder b) {</span>
+<span class="fc" id="L72">        this.mode = b.mode;</span>
+<span class="fc" id="L73">        this.backgroundColor = b.backgroundColor;</span>
+<span class="fc" id="L74">        this.foregroundColor = b.foregroundColor;</span>
+<span class="fc" id="L75">        this.accentColor = b.accentColor;</span>
+<span class="fc" id="L76">        this.controlNormalColor = b.controlNormalColor;</span>
+<span class="fc" id="L77">        this.controlHoverColor = b.controlHoverColor;</span>
+<span class="fc" id="L78">        this.controlPressedColor = b.controlPressedColor;</span>
+<span class="fc" id="L79">        this.controlDisabledColor = b.controlDisabledColor;</span>
+<span class="fc" id="L80">        this.controlTextColor = b.controlTextColor;</span>
+<span class="fc" id="L81">        this.controlTextDisabledColor = b.controlTextDisabledColor;</span>
+<span class="fc" id="L82">        this.borderColor = b.borderColor;</span>
+<span class="fc" id="L83">        this.controlCornerRadius = b.controlCornerRadius;</span>
+<span class="fc" id="L84">        this.focusRingRadius = b.focusRingRadius;</span>
+<span class="fc" id="L85">        this.padding = b.padding;</span>
+<span class="fc" id="L86">        this.buttonPaddingHorizontal = b.buttonPaddingHorizontal;</span>
+<span class="fc" id="L87">        this.buttonPaddingVertical = b.buttonPaddingVertical;</span>
+<span class="fc" id="L88">    }</span>
+
+    /**
+     * Full constructor used internally for the built-in palettes.
+     *
+     * @param mode light or dark
+     */
+    private Theme(Mode mode) {
+<span class="fc" id="L96">        this(builder().mode(mode));</span>
+<span class="fc" id="L97">    }</span>
+
+    /**
+     * Gets the currently installed global theme.
+     *
+     * @return the current theme (never null)
+     */
+    public static Theme current() {
+<span class="fc" id="L105">        return current;</span>
+    }
+
+    /**
+     * Installs a theme as the process-wide current theme.
+     *
+     * @param theme the theme to install (null restores the dark default)
+     */
+    public static void setCurrent(Theme theme) {
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">        current = (theme != null) ? theme : DARK;</span>
+<span class="fc" id="L115">    }</span>
+
+    /**
+     * Gets the shared light theme.
+     *
+     * @return the light palette
+     */
+    public static Theme light() {
+<span class="fc" id="L123">        return LIGHT;</span>
+    }
+
+    /**
+     * Gets the shared dark theme.
+     *
+     * @return the dark palette
+     */
+    public static Theme dark() {
+<span class="fc" id="L132">        return DARK;</span>
+    }
+
+    /**
+     * Starts building a customized theme. The builder starts from the dark
+     * palette when {@link Builder#mode(Mode)} is DARK and from the light
+     * palette otherwise; individual values can then be overridden.
+     *
+     * @return a new builder
+     */
+    public static Builder builder() {
+<span class="fc" id="L143">        return new Builder(Mode.DARK);</span>
+    }
+
+    /**
+     * Creates a builder pre-populated with this theme's values.
+     *
+     * @return a new builder copying this theme
+     */
+    public Builder toBuilder() {
+<span class="nc" id="L152">        Builder b = new Builder(mode);</span>
+<span class="nc" id="L153">        b.backgroundColor = backgroundColor;</span>
+<span class="nc" id="L154">        b.foregroundColor = foregroundColor;</span>
+<span class="nc" id="L155">        b.accentColor = accentColor;</span>
+<span class="nc" id="L156">        b.controlNormalColor = controlNormalColor;</span>
+<span class="nc" id="L157">        b.controlHoverColor = controlHoverColor;</span>
+<span class="nc" id="L158">        b.controlPressedColor = controlPressedColor;</span>
+<span class="nc" id="L159">        b.controlDisabledColor = controlDisabledColor;</span>
+<span class="nc" id="L160">        b.controlTextColor = controlTextColor;</span>
+<span class="nc" id="L161">        b.controlTextDisabledColor = controlTextDisabledColor;</span>
+<span class="nc" id="L162">        b.borderColor = borderColor;</span>
+<span class="nc" id="L163">        b.controlCornerRadius = controlCornerRadius;</span>
+<span class="nc" id="L164">        b.focusRingRadius = focusRingRadius;</span>
+<span class="nc" id="L165">        b.padding = padding;</span>
+<span class="nc" id="L166">        b.buttonPaddingHorizontal = buttonPaddingHorizontal;</span>
+<span class="nc" id="L167">        b.buttonPaddingVertical = buttonPaddingVertical;</span>
+<span class="nc" id="L168">        return b;</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Accessors
+    // ------------------------------------------------------------------
+
+    /** @return the theme mode (LIGHT/DARK) */
+    public Mode getMode() {
+<span class="nc" id="L177">        return mode;</span>
+    }
+
+    /** @return window/panel background color (ARGB) */
+    public int getBackgroundColor() {
+<span class="fc" id="L182">        return backgroundColor;</span>
+    }
+
+    /** @return primary foreground/text color (ARGB) */
+    public int getForegroundColor() {
+<span class="fc" id="L187">        return foregroundColor;</span>
+    }
+
+    /** @return accent color used for focus rings and highlights (ARGB) */
+    public int getAccentColor() {
+<span class="fc" id="L192">        return accentColor;</span>
+    }
+
+    /** @return normal control background color (ARGB) */
+    public int getControlNormalColor() {
+<span class="fc" id="L197">        return controlNormalColor;</span>
+    }
+
+    /** @return hovered control background color (ARGB) */
+    public int getControlHoverColor() {
+<span class="fc" id="L202">        return controlHoverColor;</span>
+    }
+
+    /** @return pressed control background color (ARGB) */
+    public int getControlPressedColor() {
+<span class="fc" id="L207">        return controlPressedColor;</span>
+    }
+
+    /** @return disabled control background color (ARGB) */
+    public int getControlDisabledColor() {
+<span class="nc" id="L212">        return controlDisabledColor;</span>
+    }
+
+    /** @return control text color (ARGB) */
+    public int getControlTextColor() {
+<span class="fc" id="L217">        return controlTextColor;</span>
+    }
+
+    /** @return disabled control text color (ARGB) */
+    public int getControlTextDisabledColor() {
+<span class="fc" id="L222">        return controlTextDisabledColor;</span>
+    }
+
+    /** @return border color for controls (ARGB) */
+    public int getBorderColor() {
+<span class="fc" id="L227">        return borderColor;</span>
+    }
+
+    /** @return corner radius for controls, logical units */
+    public float getControlCornerRadius() {
+<span class="fc" id="L232">        return controlCornerRadius;</span>
+    }
+
+    /** @return corner radius for the focus ring, logical units */
+    public float getFocusRingRadius() {
+<span class="nc" id="L237">        return focusRingRadius;</span>
+    }
+
+    /** @return general content padding, logical units */
+    public float getPadding() {
+<span class="fc" id="L242">        return padding;</span>
+    }
+
+    /** @return horizontal inner padding for buttons, logical units */
+    public float getButtonPaddingHorizontal() {
+<span class="fc" id="L247">        return buttonPaddingHorizontal;</span>
+    }
+
+    /** @return vertical inner padding for buttons, logical units */
+    public float getButtonPaddingVertical() {
+<span class="fc" id="L252">        return buttonPaddingVertical;</span>
+    }
+
+    /**
+     * Gets the font registered for a semantic role.
+     *
+     * @param role the font role
+     * @return the font (owned by {@link FontManager}; do not close)
+     */
+    public Font getFont(FontRole role) {
+<span class="fc" id="L262">        return FontManager.getFont(role);</span>
+    }
+
+    /**
+     * Gets the font registered for a semantic role at an explicit size.
+     *
+     * @param role the font role
+     * @param size the font size in logical units
+     * @return the font (owned by {@link FontManager}; do not close)
+     */
+    public Font getFont(FontRole role, float size) {
+<span class="fc" id="L273">        return FontManager.getFont(role, size);</span>
+    }
+
+    /**
+     * Gets the default body font size in logical units.
+     *
+     * @return the body font size
+     */
+    public float getFontSize(FontRole role) {
+<span class="fc" id="L282">        return FontManager.getDefaultFontSize(role);</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Builder
+    // ------------------------------------------------------------------
+
+    /**
+     * Mutable builder for {@link Theme}.
+     */
+    public static final class Builder {
+        private Mode mode;
+        private int backgroundColor;
+        private int foregroundColor;
+        private int accentColor;
+        private int controlNormalColor;
+        private int controlHoverColor;
+        private int controlPressedColor;
+        private int controlDisabledColor;
+        private int controlTextColor;
+        private int controlTextDisabledColor;
+        private int borderColor;
+        private float controlCornerRadius;
+        private float focusRingRadius;
+        private float padding;
+        private float buttonPaddingHorizontal;
+        private float buttonPaddingVertical;
+
+<span class="fc" id="L310">        private Builder(Mode mode) {</span>
+<span class="fc" id="L311">            mode(mode);</span>
+            // Shared metrics across palettes
+<span class="fc" id="L313">            this.controlCornerRadius = 8.0f;</span>
+<span class="fc" id="L314">            this.focusRingRadius = 6.0f;</span>
+<span class="fc" id="L315">            this.padding = 8.0f;</span>
+<span class="fc" id="L316">            this.buttonPaddingHorizontal = 12.0f;</span>
+<span class="fc" id="L317">            this.buttonPaddingVertical = 6.0f;</span>
+<span class="fc" id="L318">        }</span>
+
+        /**
+         * Selects the base palette (light or dark). Individual setters may
+         * still override specific values afterwards.
+         *
+         * @param mode the palette mode
+         * @return this builder
+         */
+        public Builder mode(Mode mode) {
+<span class="fc" id="L328">            this.mode = mode;</span>
+<span class="fc bfc" id="L329" title="All 2 branches covered.">            if (mode == Mode.LIGHT) {</span>
+<span class="fc" id="L330">                this.backgroundColor = Color.makeARGB(255, 245, 245, 245);</span>
+<span class="fc" id="L331">                this.foregroundColor = Color.makeARGB(255, 25, 25, 25);</span>
+<span class="fc" id="L332">                this.accentColor = Color.makeARGB(255, 0, 120, 215);</span>
+<span class="fc" id="L333">                this.controlNormalColor = Color.makeARGB(255, 225, 225, 225);</span>
+<span class="fc" id="L334">                this.controlHoverColor = Color.makeARGB(255, 205, 205, 205);</span>
+<span class="fc" id="L335">                this.controlPressedColor = Color.makeARGB(255, 185, 185, 185);</span>
+<span class="fc" id="L336">                this.controlDisabledColor = Color.makeARGB(255, 235, 235, 235);</span>
+<span class="fc" id="L337">                this.controlTextColor = Color.makeARGB(255, 25, 25, 25);</span>
+<span class="fc" id="L338">                this.controlTextDisabledColor = Color.makeARGB(255, 160, 160, 160);</span>
+<span class="fc" id="L339">                this.borderColor = Color.makeARGB(255, 150, 150, 150);</span>
+            } else {
+<span class="fc" id="L341">                this.backgroundColor = Color.makeARGB(255, 30, 30, 30);</span>
+<span class="fc" id="L342">                this.foregroundColor = Color.makeARGB(255, 240, 240, 240);</span>
+<span class="fc" id="L343">                this.accentColor = Color.makeARGB(255, 0, 122, 255);</span>
+<span class="fc" id="L344">                this.controlNormalColor = Color.makeARGB(255, 60, 60, 60);</span>
+<span class="fc" id="L345">                this.controlHoverColor = Color.makeARGB(255, 80, 80, 80);</span>
+<span class="fc" id="L346">                this.controlPressedColor = Color.makeARGB(255, 100, 100, 100);</span>
+<span class="fc" id="L347">                this.controlDisabledColor = Color.makeARGB(255, 50, 50, 50);</span>
+<span class="fc" id="L348">                this.controlTextColor = Color.makeARGB(255, 255, 255, 255);</span>
+<span class="fc" id="L349">                this.controlTextDisabledColor = Color.makeARGB(255, 150, 150, 150);</span>
+<span class="fc" id="L350">                this.borderColor = Color.makeARGB(255, 120, 120, 120);</span>
+            }
+<span class="fc" id="L352">            return this;</span>
+        }
+
+<span class="nc" id="L355">        public Builder backgroundColor(int argb) { this.backgroundColor = argb; return this; }</span>
+<span class="nc" id="L356">        public Builder foregroundColor(int argb) { this.foregroundColor = argb; return this; }</span>
+<span class="fc" id="L357">        public Builder accentColor(int argb) { this.accentColor = argb; return this; }</span>
+<span class="nc" id="L358">        public Builder controlNormalColor(int argb) { this.controlNormalColor = argb; return this; }</span>
+<span class="nc" id="L359">        public Builder controlHoverColor(int argb) { this.controlHoverColor = argb; return this; }</span>
+<span class="nc" id="L360">        public Builder controlPressedColor(int argb) { this.controlPressedColor = argb; return this; }</span>
+<span class="nc" id="L361">        public Builder controlDisabledColor(int argb) { this.controlDisabledColor = argb; return this; }</span>
+<span class="nc" id="L362">        public Builder controlTextColor(int argb) { this.controlTextColor = argb; return this; }</span>
+<span class="nc" id="L363">        public Builder controlTextDisabledColor(int argb) { this.controlTextDisabledColor = argb; return this; }</span>
+<span class="nc" id="L364">        public Builder borderColor(int argb) { this.borderColor = argb; return this; }</span>
+<span class="nc" id="L365">        public Builder controlCornerRadius(float r) { this.controlCornerRadius = r; return this; }</span>
+<span class="nc" id="L366">        public Builder focusRingRadius(float r) { this.focusRingRadius = r; return this; }</span>
+<span class="nc" id="L367">        public Builder padding(float p) { this.padding = p; return this; }</span>
+<span class="nc" id="L368">        public Builder buttonPaddingHorizontal(float p) { this.buttonPaddingHorizontal = p; return this; }</span>
+<span class="nc" id="L369">        public Builder buttonPaddingVertical(float p) { this.buttonPaddingVertical = p; return this; }</span>
+
+        /**
+         * Builds the immutable theme.
+         *
+         * @return a new theme
+         */
+        public Theme build() {
+<span class="fc" id="L377">            return new Theme(this);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

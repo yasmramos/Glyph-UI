@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ImageView.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.ui</a> &gt; <span class="el_source">ImageView.java</span></div><h1>ImageView.java</h1><pre class="source lang-java linenums">package com.glyphui.ui;
+
+import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Dimension;
+import com.glyphui.graphics.Image;
+import com.glyphui.events.KeyEvent;
+import com.glyphui.events.MouseEvent;
+
+/**
+ * Optional widget that displays an {@link Image}.
+ *
+ * &lt;p&gt;The image is referenced, not owned: keep it alive (typically via an
+ * {@code ImageCache}) for the lifetime of the view. {@link #measure(float, float)}
+ * derives its preferred size from the image's pixel dimensions, clamped to
+ * the supplied constraints.&lt;/p&gt;
+ */
+public class ImageView extends Component {
+
+    @Override
+    protected String defaultStyleTag() {
+<span class="nc" id="L21">        return &quot;img&quot;;</span>
+    }
+
+    private Image image;
+
+    /**
+     * Creates an image view bound to an image.
+     *
+     * @param image the image to display (may be null / closed later)
+     */
+    public ImageView(Image image) {
+<span class="fc" id="L32">        super();</span>
+<span class="fc" id="L33">        this.image = image;</span>
+        // Decorative by default: images do not take keyboard focus
+<span class="fc" id="L35">        setFocusable(false);</span>
+<span class="fc" id="L36">    }</span>
+
+    /**
+     * Creates an empty image view.
+     */
+    public ImageView() {
+<span class="fc" id="L42">        this(null);</span>
+<span class="fc" id="L43">    }</span>
+
+    /**
+     * Gets the displayed image.
+     *
+     * @return the image, or null
+     */
+    public Image getImage() {
+<span class="fc" id="L51">        return image;</span>
+    }
+
+    /**
+     * Sets the displayed image.
+     *
+     * @param image the new image (not owned by this view)
+     */
+    public void setImage(Image image) {
+<span class="fc" id="L60">        this.image = image;</span>
+<span class="fc" id="L61">        invalidate();</span>
+<span class="fc" id="L62">    }</span>
+
+    @Override
+    public AccessibleRole getAccessibleRole() {
+<span class="fc" id="L66">        return AccessibleRole.IMAGE;</span>
+    }
+
+    @Override
+    public Dimension measure(float maxWidth, float maxHeight) {
+<span class="fc bfc" id="L71" title="All 4 branches covered.">        float w = (image != null &amp;&amp; image.isLoaded()) ? image.getWidth() : 0.0f;</span>
+<span class="fc bfc" id="L72" title="All 4 branches covered.">        float h = (image != null &amp;&amp; image.isLoaded()) ? image.getHeight() : 0.0f;</span>
+<span class="fc bfc" id="L73" title="All 4 branches covered.">        if (Float.isNaN(maxWidth) || maxWidth == Float.POSITIVE_INFINITY) {</span>
+<span class="fc" id="L74">            maxWidth = Float.MAX_VALUE;</span>
+        }
+<span class="pc bpc" id="L76" title="1 of 4 branches missed.">        if (Float.isNaN(maxHeight) || maxHeight == Float.POSITIVE_INFINITY) {</span>
+<span class="fc" id="L77">            maxHeight = Float.MAX_VALUE;</span>
+        }
+<span class="fc" id="L79">        return new Dimension(Math.min(w, Math.max(0.0f, maxWidth)),</span>
+<span class="fc" id="L80">                Math.min(h, Math.max(0.0f, maxHeight)));</span>
+    }
+
+    @Override
+    protected void render(Canvas canvas) {
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">        if (image != null &amp;&amp; image.isLoaded()) {</span>
+<span class="fc" id="L86">            canvas.drawImage(image, x, y, width, height);</span>
+        }
+<span class="fc" id="L88">    }</span>
+
+    @Override
+    public boolean onMouseEvent(MouseEvent event) {
+        // Images are non-interactive in v0.1
+<span class="fc" id="L93">        return false;</span>
+    }
+
+    @Override
+    public void onKeyEvent(KeyEvent event) {
+        // Images are non-interactive in v0.1
+<span class="fc" id="L99">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

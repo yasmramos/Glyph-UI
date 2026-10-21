@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BindingNode.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.markup</a> &gt; <span class="el_source">BindingNode.java</span></div><h1>BindingNode.java</h1><pre class="source lang-java linenums">package com.glyphui.markup;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * A path interpolation such as {@code {user.name}} found in element content.
+ *
+ * &lt;p&gt;The tokenizer has already split the dotted path into its identifier
+ * segments ({@link #getSegments()}), so consumers never need to re-parse it.
+ * Grammar accepted inside a binding: {@code ident(.ident)*} — anything else
+ * (operators, calls, literals) is rejected by the lexer with a positioned
+ * {@link MarkupException}.&lt;/p&gt;
+ */
+public final class BindingNode extends AstNode {
+
+    /** Dot-separated identifier segments, e.g. [&quot;user&quot;, &quot;name&quot;]. */
+    private final List&lt;String&gt; segments;
+
+    /** The raw path text exactly as written between the braces. */
+    private final String rawPath;
+
+    /** 1-based line of the closing brace (0 when unknown). */
+    private int closeLine;
+
+    /** 1-based column of the closing brace (0 when unknown). */
+    private int closeColumn;
+
+    /**
+     * Creates a binding node.
+     *
+     * @param segments one or more identifier segments, must not be empty
+     * @param rawPath  the raw source text of the path (for diagnostics)
+     * @param line     1-based line of the opening brace
+     * @param column   1-based column of the opening brace
+     */
+    public BindingNode(List&lt;String&gt; segments, String rawPath, int line, int column) {
+<span class="fc" id="L39">        super(line, column);</span>
+<span class="pc bpc" id="L40" title="2 of 4 branches missed.">        if (segments == null || segments.isEmpty()) {</span>
+<span class="nc" id="L41">            throw new IllegalArgumentException(&quot;binding path must have at least one segment&quot;);</span>
+        }
+<span class="fc" id="L43">        this.segments = Collections.unmodifiableList(new ArrayList&lt;&gt;(segments));</span>
+<span class="fc" id="L44">        this.rawPath = rawPath;</span>
+<span class="fc" id="L45">    }</span>
+
+    /**
+     * @return the unmodifiable list of dot-separated identifier segments
+     */
+    public List&lt;String&gt; getSegments() {
+<span class="fc" id="L51">        return segments;</span>
+    }
+
+    /**
+     * @return the raw path text as written in the source, e.g. {@code user.name}
+     */
+    public String getRawPath() {
+<span class="fc" id="L58">        return rawPath;</span>
+    }
+
+    /**
+     * Records the position of the closing brace consumed by the parser.
+     *
+     * @param line   1-based line of the '}' character
+     * @param column 1-based column of the '}' character
+     */
+    void setClosePosition(int line, int column) {
+<span class="fc" id="L68">        this.closeLine = line;</span>
+<span class="fc" id="L69">        this.closeColumn = column;</span>
+<span class="fc" id="L70">    }</span>
+
+    /**
+     * @return 1-based line of the closing brace, or 0 when unknown
+     */
+    public int getCloseLine() {
+<span class="fc" id="L76">        return closeLine;</span>
+    }
+
+    /**
+     * @return 1-based column of the closing brace, or 0 when unknown
+     */
+    public int getCloseColumn() {
+<span class="fc" id="L83">        return closeColumn;</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L88">        return &quot;Binding({&quot; + rawPath + &quot;}) at &quot; + line + &quot;:&quot; + column;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

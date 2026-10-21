@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ParseError.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.markup</a> &gt; <span class="el_source">ParseError.java</span></div><h1>ParseError.java</h1><pre class="source lang-java linenums">package com.glyphui.markup;
+
+/**
+ * A recoverable syntax diagnostic produced by {@link Parser}.
+ *
+ * &lt;p&gt;The parser keeps going after these errors (synchronising on the next
+ * plausible token) so that one pass reports every structural problem in a
+ * document. Unrecoverable lexer conditions instead throw
+ * {@link MarkupException}; see that class for the full error strategy.&lt;/p&gt;
+ *
+ * @param message human-readable description of the problem
+ * @param line    1-based line where the problem was detected
+ * @param column  1-based column where the problem was detected
+ */
+public record ParseError(String message, int line, int column) {
+
+    /**
+     * Builds a positioned parse error.
+     *
+     * @param message description, must not be null
+     * @param line    1-based line
+     * @param column  1-based column
+     */
+<span class="fc" id="L24">    public ParseError {</span>
+<span class="pc bpc" id="L25" title="2 of 4 branches missed.">        if (message == null || message.isEmpty()) {</span>
+<span class="nc" id="L26">            throw new IllegalArgumentException(&quot;message must not be empty&quot;);</span>
+        }
+<span class="pc bpc" id="L28" title="2 of 4 branches missed.">        if (line &lt; 1 || column &lt; 1) {</span>
+<span class="nc" id="L29">            throw new IllegalArgumentException(</span>
+                    &quot;positions are 1-based, got line=&quot; + line + &quot; column=&quot; + column);
+        }
+<span class="fc" id="L32">    }</span>
+
+    /**
+     * Formats the diagnostic as {@code line:column: message}, matching the
+     * style used by most compiler tool-chains.
+     *
+     * @return the formatted diagnostic string
+     */
+    @Override
+    public String toString() {
+<span class="fc" id="L42">        return line + &quot;:&quot; + column + &quot;: &quot; + message;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

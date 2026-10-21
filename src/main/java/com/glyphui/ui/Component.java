@@ -362,8 +362,10 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Gets how many times this component has been invalidated. Useful for
-     * tests and diagnostics.
+     * Gets how many times this component has been invalidated. Internal
+     * instrumentation hook — not part of the application-facing API (see
+     * {@code docs/architecture/internal-boundary.md}). Tests and diagnostics
+     * should go through {@link com.glyphui.core.internal.TestHooks}.
      *
      * @return the invalidate count
      */
@@ -372,8 +374,9 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Resets the invalidate counter back to zero. Intended for tests and
-     * diagnostics.
+     * Resets the invalidate counter back to zero. Internal instrumentation
+     * hook — see {@link #getInvalidateCount()} for the boundary policy; use
+     * {@link com.glyphui.core.internal.TestHooks} from tests.
      */
     public void resetInvalidateCount() {
         invalidateCount = 0;

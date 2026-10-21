@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StyleProperty.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.style</a> &gt; <span class="el_source">StyleProperty.java</span></div><h1>StyleProperty.java</h1><pre class="source lang-java linenums">package com.glyphui.style;
+
+/**
+ * Typed set of CSS-like style properties supported by Glyph UI.
+ *
+ * &lt;p&gt;Each enum constant represents one declaration property. Properties are
+ * divided into two groups:&lt;/p&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;&lt;b&gt;Inherited&lt;/b&gt; (textual) properties — font family/size/weight, text
+ *       color and opacity — propagate from a parent component to its
+ *       children, mirroring CSS inheritance.&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Non-inherited&lt;/b&gt; properties — box model (width/height/padding/
+ *       margin/border), background and display — apply only to the element
+ *       they are declared on.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+<span class="fc" id="L17">public enum StyleProperty {</span>
+
+    // ------------------------------------------------------------------
+    // Inherited / textual properties
+    // ------------------------------------------------------------------
+
+    /** Text foreground color (ARGB int). Inherited. */
+<span class="fc" id="L24">    COLOR(true),</span>
+
+    /** Font family name (String). Inherited. */
+<span class="fc" id="L27">    FONT_FAMILY(true),</span>
+
+    /** Font size in logical pixels (Float). Inherited. */
+<span class="fc" id="L30">    FONT_SIZE(true),</span>
+
+    /** Font weight 100..900 (Integer). Inherited. */
+<span class="fc" id="L33">    FONT_WEIGHT(true),</span>
+
+    /** Element opacity 0..1 (Float). Inherited. */
+<span class="fc" id="L36">    OPACITY(true),</span>
+
+    // ------------------------------------------------------------------
+    // Non-inherited / box properties
+    // ------------------------------------------------------------------
+
+    /** Background color (ARGB int). */
+<span class="fc" id="L43">    BACKGROUND(false),</span>
+
+    /** Accent color used by focus rings and highlights (ARGB int). */
+<span class="fc" id="L46">    ACCENT_COLOR(false),</span>
+
+    /** Border color (ARGB int). */
+<span class="fc" id="L49">    BORDER_COLOR(false),</span>
+
+    /** Uniform border width in logical pixels (Float). */
+<span class="fc" id="L52">    BORDER_WIDTH(false),</span>
+
+    /** Corner radius of the border box in logical pixels (Float). */
+<span class="fc" id="L55">    BORDER_RADIUS(false),</span>
+
+    /**
+     * Raw (unresolved) declaration values attached to a parsed rule, stored
+     * under this synthetic key by {@link StyleSheet#parse}. Values are
+     * {@code Map&lt;StyleProperty, String&gt;} mapping each supported property to
+     * its original declaration text (which may still contain
+     * {@code var(--name)} references). {@link StyleEngine} re-parses these
+     * with its own variable map (stylesheet custom properties + theme-derived
+     * {@code --bg/--fg/--accent/--border}) because those variables are not
+     * known at parse time. Never set programmatically; exempt from the value
+     * type validation performed by {@link Builder#set}.
+     */
+<span class="fc" id="L68">    RAW_VALUES(false),</span>
+
+    /** Uniform margin outside the border box (Float). */
+<span class="fc" id="L71">    MARGIN(false),</span>
+
+    /** Uniform padding inside the border box (Float). */
+<span class="fc" id="L74">    PADDING(false),</span>
+
+    /** Explicit width in logical pixels (Float). */
+<span class="fc" id="L77">    WIDTH(false),</span>
+
+    /** Explicit height in logical pixels (Float). */
+<span class="fc" id="L80">    HEIGHT(false),</span>
+
+    /** Display mode: &quot;flex&quot;, &quot;flow&quot; or &quot;none&quot; (String). */
+<span class="fc" id="L83">    DISPLAY(false),</span>
+
+    /** Flex main axis: &quot;row&quot; or &quot;column&quot; (String). */
+<span class="fc" id="L86">    FLEX_DIRECTION(false),</span>
+
+    /** Main-axis distribution: flex-start|center|flex-end|space-between|space-around (String). */
+<span class="fc" id="L89">    JUSTIFY_CONTENT(false),</span>
+
+    /** Cross-axis alignment: flex-start|center|flex-end|stretch (String). */
+<span class="fc" id="L92">    ALIGN_ITEMS(false),</span>
+
+    /** Gap between flex items in logical pixels (Float). */
+<span class="fc" id="L95">    GAP(false),</span>
+
+    /** Flex grow factor (Float). */
+<span class="fc" id="L98">    FLEX_GROW(false);</span>
+
+    private final boolean inherited;
+
+<span class="fc" id="L102">    StyleProperty(boolean inherited) {</span>
+<span class="fc" id="L103">        this.inherited = inherited;</span>
+<span class="fc" id="L104">    }</span>
+
+    /**
+     * The Java type expected by this property's values, as documented on each
+     * enum constant: {@code Integer} (colors, font-weight), {@code Float}
+     * (lengths, opacity, flex-grow), {@code String} (keywords, font-family).
+     * {@link Style.Builder#set} uses this to reject mistyped values instead of
+     * letting them silently fall back to defaults at read time.
+     *
+     * @return the expected value type, or null for properties without a
+     *         fixed type ({@link #RAW_VALUES})
+     */
+    public Class&lt;?&gt; expectedType() {
+<span class="fc bfc" id="L117" title="All 4 branches covered.">        return switch (this) {</span>
+<span class="fc" id="L118">            case COLOR, BACKGROUND, ACCENT_COLOR, BORDER_COLOR, FONT_WEIGHT -&gt; Integer.class;</span>
+            case BORDER_WIDTH, BORDER_RADIUS, PADDING, MARGIN, WIDTH, HEIGHT,
+<span class="fc" id="L120">                 OPACITY, FONT_SIZE, GAP, FLEX_GROW -&gt; Float.class;</span>
+            case FONT_FAMILY, DISPLAY, FLEX_DIRECTION, JUSTIFY_CONTENT,
+<span class="fc" id="L122">                 ALIGN_ITEMS -&gt; String.class;</span>
+<span class="fc" id="L123">            case RAW_VALUES -&gt; null; // synthetic carrier, exempt from validation</span>
+        };
+    }
+
+    /**
+     * Whether this property is inherited by child components (CSS-style
+     * textual inheritance).
+     *
+     * @return true when children inherit the value
+     */
+    public boolean isInherited() {
+<span class="fc" id="L134">        return inherited;</span>
+    }
+
+    /**
+     * The canonical CSS declaration name accepted by the value pipeline
+     * ({@link CssValues#parse}). It is normally the enum constant lowercased
+     * with underscores replaced by hyphens — e.g. {@code BORDER_COLOR} →
+     * {@code &quot;border-color&quot;} — but a few constants override it because the
+     * engine's internal names diverge from standard CSS: {@code BACKGROUND}
+     * maps to the shorthand {@code &quot;background&quot;} and {@code COLOR} must NOT
+     * become {@code &quot;colour&quot;}, or the color branch of the value pipeline
+     * silently misclassifies the value as a keyword string.
+     *
+     * &lt;p&gt;Used to re-run raw values through the value pipeline
+     * (see {@link Style#resolveVars}); any caller routing a property through
+     * {@link CssValues#parse} must use this name, not an ad-hoc derivation.&lt;/p&gt;
+     *
+     * @return the canonical CSS property name, never null
+     */
+    public String cssName() {
+<span class="pc bpc" id="L154" title="1 of 3 branches missed.">        return switch (this) {</span>
+<span class="fc" id="L155">            case COLOR -&gt; &quot;color&quot;;</span>
+<span class="nc" id="L156">            case BACKGROUND -&gt; &quot;background&quot;;</span>
+<span class="fc" id="L157">            default -&gt; name().toLowerCase(java.util.Locale.ROOT).replace('_', '-');</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

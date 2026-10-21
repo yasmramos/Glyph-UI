@@ -1,0 +1,705 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>UiLoader.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.markup</a> &gt; <span class="el_source">UiLoader.java</span></div><h1>UiLoader.java</h1><pre class="source lang-java linenums">package com.glyphui.markup;
+
+import com.glyphui.graphics.Image;
+import com.glyphui.layout.FlexLayout;
+import com.glyphui.layout.FlowLayout;
+import com.glyphui.style.Style;
+import com.glyphui.style.StyleSheet;
+import com.glyphui.ui.Button;
+import com.glyphui.ui.Component;
+import com.glyphui.ui.ImageView;
+import com.glyphui.ui.Label;
+import com.glyphui.ui.Panel;
+import com.glyphui.ui.TextField;
+
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.logging.Logger;
+
+/**
+ * Builds a {@link Component} tree from a {@code .glyph} declarative markup
+ * document.
+ *
+ * &lt;p&gt;This is the declarative front-end of Glyph-UI. The document is scanned
+ * by {@link Tokenizer} and turned into a {@link Document} AST by {@link Parser}
+ * (no third-party HTML parser is involved), then this loader maps the AST onto
+ * widgets and styling comes from CSS (see {@link com.glyphui.style}).&lt;/p&gt;
+ *
+ * &lt;h2&gt;Syntax&lt;/h2&gt;
+ * &lt;p&gt;{@code .glyph} markup looks like XML: {@code &lt;Tag attr=&quot;value&quot;&gt;children
+ * &lt;/Tag&gt;} or the self-closing {@code &lt;Tag/&gt;} form. Comments use
+ * {@code &lt;!-- ... --&gt;}. Content may contain {@code {path}} interpolations and
+ * the literal brace escapes {@code &amp;#123;&amp;#123;} / {@code &amp;#125;&amp;#125;}; the
+ * parser keeps those as {@link BindingNode} children, but this loader does not
+ * yet wire them to reactive properties (it records a warning and ignores
+ * them).&lt;/p&gt;
+ *
+ * &lt;h2&gt;Tag mapping&lt;/h2&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code div}, {@code body}, {@code section}, {@code span}, unknown
+ *       tags → {@link Panel} (unknown tags log a warning and keep their tag
+ *       name as the style tag so type selectors still match)&lt;/li&gt;
+ *   &lt;li&gt;{@code button} → {@link Button}&lt;/li&gt;
+ *   &lt;li&gt;{@code label}, {@code p}, {@code h1}..{@code h6} → {@link Label}&lt;/li&gt;
+ *   &lt;li&gt;{@code input}, {@code textarea} → {@link TextField}&lt;/li&gt;
+ *   &lt;li&gt;{@code img} → {@link ImageView} (loaded through the optional
+ *       {@link ImageProvider})&lt;/li&gt;
+ *   &lt;li&gt;{@code head}/{@code title}/{@code meta}/{@code link}/{@code style}/
+ *       {@code script}/{@code base} are document metadata and never become
+ *       widgets&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;h2&gt;Document root&lt;/h2&gt;
+ * &lt;p&gt;If the document contains a {@code body} element, it becomes the root
+ * container (its children populate the returned root {@link Panel}). Otherwise
+ * a single top-level widget element is used as the root; with several
+ * top-level elements a synthetic {@code body} panel wraps them all.&lt;/p&gt;
+ *
+ * &lt;h2&gt;Recognized attributes&lt;/h2&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code id} → {@link Component#setId(String)}&lt;/li&gt;
+ *   &lt;li&gt;{@code class} → space-separated {@link Component#addStyleClass(String)}&lt;/li&gt;
+ *   &lt;li&gt;{@code style} → inline declarations via {@link Style#parseInline}&lt;/li&gt;
+ *   &lt;li&gt;{@code layout=&quot;flex|flow&quot;} → installs {@link FlexLayout} or
+ *       {@link FlowLayout} on container widgets&lt;/li&gt;
+ *   &lt;li&gt;{@code x}, {@code y}, {@code width}, {@code height} → numeric bounds&lt;/li&gt;
+ *   &lt;li&gt;{@code text} or the element's own text content → widget text&lt;/li&gt;
+ *   &lt;li&gt;{@code src} (img) → resolved through the {@link ImageProvider}&lt;/li&gt;
+ *   &lt;li&gt;{@code onclick} / {@code onchange} → method looked up by name on the
+ *       registered controller object (reflection)&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;&lt;b&gt;Stylesheets:&lt;/b&gt; link an external sheet with
+ * {@code &lt;link rel=&quot;stylesheet&quot; href=&quot;app.css&quot;/&gt;}; the resolved sheet is
+ * exposed through {@link #getLastStyleSheet()}. Inline {@code &lt;style&gt;} blocks
+ * are &lt;b&gt;not&lt;/b&gt; supported because {@code &amp;#123;} is the interpolation
+ * delimiter in {@code .glyph}.&lt;/p&gt;
+ *
+ * &lt;p&gt;&lt;b&gt;Not a browser:&lt;/b&gt; there is no JavaScript engine and no DOM — this
+ * is a structural loader for a fixed tag subset.&lt;/p&gt;
+ */
+public final class UiLoader {
+
+<span class="fc" id="L93">    private static final Logger LOG = Logger.getLogger(UiLoader.class.getName());</span>
+
+    /**
+     * Tags that describe the document rather than the widget tree. They are
+     * skipped both when locating the root container and when walking children.
+     */
+<span class="fc" id="L99">    private static final Set&lt;String&gt; METADATA_TAGS = Set.of(</span>
+            &quot;head&quot;, &quot;title&quot;, &quot;meta&quot;, &quot;link&quot;, &quot;style&quot;, &quot;script&quot;, &quot;base&quot;);
+
+    /** Loads image bytes for {@code &lt;img src=&quot;...&quot;&gt;} elements. */
+    @FunctionalInterface
+    public interface ImageProvider {
+        /**
+         * Resolves a {@code src} value to an image.
+         *
+         * @param src the raw attribute value
+         * @return the image (ownership transfers to the view), or null to skip
+         */
+        Image load(String src);
+    }
+
+    private Object controller;
+    private ImageProvider imageProvider;
+    private StyleSheet lastStyleSheet;
+    private Document lastDocument;
+<span class="fc" id="L118">    private final List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L119">    private final Map&lt;String, Component&gt; componentsById = new HashMap&lt;&gt;();</span>
+
+    /**
+     * Creates a loader without a controller.
+     */
+<span class="fc" id="L124">    public UiLoader() {</span>
+<span class="fc" id="L125">    }</span>
+
+    /**
+     * Creates a loader whose {@code onclick}/{@code onchange} handlers are
+     * resolved against the given controller object.
+     *
+     * @param controller object exposing public handler methods
+     */
+<span class="fc" id="L133">    public UiLoader(Object controller) {</span>
+<span class="fc" id="L134">        this.controller = controller;</span>
+<span class="fc" id="L135">    }</span>
+
+    /**
+     * Sets the controller used to resolve event-handler attributes.
+     *
+     * @param controller the controller object (may be null)
+     */
+    public void setController(Object controller) {
+<span class="nc" id="L143">        this.controller = controller;</span>
+<span class="nc" id="L144">    }</span>
+
+    /**
+     * Sets the provider used for {@code &lt;img src&gt;} resolution. Without one,
+     * image elements are created empty and a warning is recorded.
+     *
+     * @param imageProvider the provider (may be null)
+     */
+    public void setImageProvider(ImageProvider imageProvider) {
+<span class="nc" id="L153">        this.imageProvider = imageProvider;</span>
+<span class="nc" id="L154">    }</span>
+
+    /**
+     * The stylesheet discovered while parsing (a linked {@code .css} file next
+     * to the document, or resolvable from the classpath). Callers can feed it
+     * to {@link com.glyphui.style.StyleEngine}.
+     *
+     * @return the discovered sheet, or null when the document links none
+     */
+    public StyleSheet getLastStyleSheet() {
+<span class="fc" id="L164">        return lastStyleSheet;</span>
+    }
+
+    /**
+     * The raw AST produced by the last load, useful for tooling and tests.
+     *
+     * @return the parsed document, or null before the first load
+     */
+    public Document getLastDocument() {
+<span class="nc" id="L173">        return lastDocument;</span>
+    }
+
+    /**
+     * Non-fatal problems encountered during the last load (unknown tags,
+     * missing handlers, unparsable numbers, ignored bindings, ...).
+     *
+     * @return unmodifiable list of warning messages
+     */
+    public List&lt;String&gt; getWarnings() {
+<span class="fc" id="L183">        return Collections.unmodifiableList(warnings);</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Entry points
+    // ------------------------------------------------------------------
+
+    /**
+     * Parses a {@code .glyph} markup string and builds the component tree.
+     *
+     * @param glyph the markup source
+     * @return the root component (a {@link Panel} wrapping the container)
+     * @throws MarkupException on an unrecoverable lexical error
+     */
+    public Component loadFromString(String glyph) {
+<span class="fc" id="L198">        return loadSource(glyph, null);</span>
+    }
+
+    /**
+     * Loads a {@code .glyph} markup file from disk. When the document links a
+     * stylesheet through {@code &lt;link rel=&quot;stylesheet&quot; href=&quot;app.css&quot;&gt;}, the
+     * file is resolved relative to the document's directory.
+     *
+     * @param file the {@code .glyph} path
+     * @return the root component
+     * @throws IOException when the file cannot be read
+     */
+    public Component load(Path file) throws IOException {
+<span class="fc" id="L211">        String source = Files.readString(file, StandardCharsets.UTF_8);</span>
+<span class="fc" id="L212">        return loadSource(source, file.toAbsolutePath().getParent());</span>
+    }
+
+    /**
+     * Loads a {@code .glyph} document from the classpath, e.g.
+     * {@code load(&quot;/demo/ui.glyph&quot;, controller)} (the demo files ship with
+     * the separate {@code glyph-ui-examples} module).
+     *
+     * @param resource   the classpath resource name
+     * @param controller object for {@code onclick}/{@code onchange} resolution
+     * @return the root component
+     * @throws IOException when the resource is missing or unreadable
+     */
+    public Component load(String resource, Object controller) throws IOException {
+<span class="nc" id="L226">        this.controller = controller;</span>
+<span class="nc" id="L227">        var stream = UiLoader.class.getResourceAsStream(resource);</span>
+<span class="nc bnc" id="L228" title="All 2 branches missed.">        if (stream == null) {</span>
+<span class="nc" id="L229">            throw new IOException(&quot;Markup resource not found: &quot; + resource);</span>
+        }
+<span class="nc" id="L231">        String source = new String(stream.readAllBytes(), StandardCharsets.UTF_8);</span>
+<span class="nc" id="L232">        return loadSource(source, null);</span>
+    }
+
+    /**
+     * Shared front-end: tokenize/parse, surface recoverable diagnostics as
+     * warnings and build the tree.
+     *
+     * @param source  the markup text
+     * @param baseDir directory used to resolve linked stylesheets, or null
+     * @return the root component
+     */
+    private Component loadSource(String source, Path baseDir) {
+<span class="fc" id="L244">        warnings.clear();</span>
+<span class="fc" id="L245">        componentsById.clear();</span>
+<span class="fc" id="L246">        ParseResult result = new Parser().parse(source);</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        for (ParseError error : result.errors()) {</span>
+<span class="fc" id="L248">            warn(&quot;parse error &quot; + error);</span>
+<span class="fc" id="L249">        }</span>
+<span class="fc" id="L250">        return loadDocument(result.document(), baseDir);</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Tree construction
+    // ------------------------------------------------------------------
+
+    private Component loadDocument(Document doc, Path baseDir) {
+<span class="fc" id="L258">        lastDocument = doc;</span>
+<span class="fc" id="L259">        lastStyleSheet = extractStyleSheet(doc, baseDir);</span>
+
+<span class="fc" id="L261">        Panel rootPanel = new Panel(0, 0, Float.NaN, Float.NaN);</span>
+<span class="fc" id="L262">        Element container = findContainer(doc);</span>
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">        if (container != null) {</span>
+<span class="fc" id="L264">            rootPanel.setStyleTag(container.getTagName());</span>
+<span class="fc" id="L265">            applyCommonAttributes(container, rootPanel);</span>
+<span class="fc" id="L266">            applyLayout(container, rootPanel);</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">            for (Element child : widgetChildren(container)) {</span>
+<span class="fc" id="L268">                Component c = buildComponent(child);</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">                if (c != null) {</span>
+<span class="fc" id="L270">                    rootPanel.add(c);</span>
+                }
+<span class="fc" id="L272">            }</span>
+        } else {
+<span class="nc" id="L274">            rootPanel.setStyleTag(&quot;body&quot;);</span>
+<span class="nc bnc" id="L275" title="All 2 branches missed.">            for (AstNode node : doc.getChildren()) {</span>
+<span class="nc bnc" id="L276" title="All 4 branches missed.">                if (node instanceof Element element &amp;&amp; !isMetadata(element)) {</span>
+<span class="nc" id="L277">                    Component c = buildComponent(element);</span>
+<span class="nc bnc" id="L278" title="All 2 branches missed.">                    if (c != null) {</span>
+<span class="nc" id="L279">                        rootPanel.add(c);</span>
+                    }
+                }
+<span class="nc" id="L282">            }</span>
+        }
+<span class="fc" id="L284">        return rootPanel;</span>
+    }
+
+    /**
+     * Recursively builds a component from one element. Exposed for tests and
+     * embedding scenarios where a caller already owns the root.
+     *
+     * @param element the AST element
+     * @return the constructed component, or null when the element was skipped
+     */
+    public Component buildComponent(Element element) {
+<span class="fc" id="L295">        String tag = element.getTagName().toLowerCase(Locale.ROOT);</span>
+<span class="fc" id="L296">        Component component = createForTag(element, tag);</span>
+<span class="pc bpc" id="L297" title="1 of 2 branches missed.">        if (component == null) {</span>
+<span class="nc" id="L298">            return null;</span>
+        }
+
+<span class="fc" id="L301">        applyCommonAttributes(element, component);</span>
+<span class="fc" id="L302">        applyLayout(element, component);</span>
+<span class="fc" id="L303">        bindHandlers(element, component);</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">        if (component instanceof Button button) {</span>
+<span class="fc" id="L305">            bindClick(button, element);</span>
+        }
+
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (component instanceof Panel panel) {</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">            for (Element child : widgetChildren(element)) {</span>
+<span class="fc" id="L310">                Component c = buildComponent(child);</span>
+<span class="pc bpc" id="L311" title="1 of 2 branches missed.">                if (c != null) {</span>
+<span class="fc" id="L312">                    panel.add(c);</span>
+                }
+<span class="fc" id="L314">            }</span>
+        }
+<span class="fc" id="L316">        return component;</span>
+    }
+
+    private Component createForTag(Element element, String tag) {
+<span class="fc bfc" id="L320" title="All 6 branches covered.">        switch (tag) {</span>
+            case &quot;button&quot;: {
+<span class="fc" id="L322">                Button b = new Button(0, 0, 120, 32, textOf(element));</span>
+<span class="fc" id="L323">                return b;</span>
+            }
+            case &quot;label&quot;:
+            case &quot;p&quot;:
+            case &quot;h1&quot;:
+            case &quot;h2&quot;:
+            case &quot;h3&quot;:
+            case &quot;h4&quot;:
+            case &quot;h5&quot;:
+            case &quot;h6&quot;: {
+<span class="fc" id="L333">                String sizeAttr = attr(element, &quot;font-size&quot;);</span>
+<span class="fc" id="L334">                Label l = new Label(0, 0, 200, 24, textOf(element));</span>
+<span class="pc bpc" id="L335" title="1 of 2 branches missed.">                if (!sizeAttr.isEmpty()) {</span>
+                    try {
+<span class="nc" id="L337">                        l.setFontSize(Float.parseFloat(sizeAttr.replaceAll(&quot;[^0-9.]&quot;, &quot;&quot;)));</span>
+<span class="nc" id="L338">                    } catch (NumberFormatException e) {</span>
+<span class="nc" id="L339">                        warn(&quot;Bad font-size '&quot; + sizeAttr + &quot;' on &lt;&quot; + tag + &quot;&gt;&quot;);</span>
+<span class="nc" id="L340">                    }</span>
+                }
+<span class="fc" id="L342">                return l;</span>
+            }
+            case &quot;input&quot;:
+            case &quot;textarea&quot;: {
+<span class="fc" id="L346">                TextField tf = new TextField();</span>
+<span class="fc bfc" id="L347" title="All 2 branches covered.">                String value = !attr(element, &quot;value&quot;).isEmpty()</span>
+<span class="fc" id="L348">                        ? attr(element, &quot;value&quot;) : textOf(element);</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">                if (!value.isEmpty()) {</span>
+<span class="fc" id="L350">                    tf.setText(value);</span>
+                }
+<span class="fc" id="L352">                return tf;</span>
+            }
+            case &quot;img&quot;: {
+<span class="fc" id="L355">                ImageView iv = new ImageView();</span>
+<span class="fc" id="L356">                String src = attr(element, &quot;src&quot;);</span>
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">                if (!src.isEmpty()) {</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">                    if (imageProvider != null) {</span>
+<span class="nc" id="L359">                        Image image = imageProvider.load(src);</span>
+<span class="nc bnc" id="L360" title="All 2 branches missed.">                        if (image != null) {</span>
+<span class="nc" id="L361">                            iv.setImage(image);</span>
+                        } else {
+<span class="nc" id="L363">                            warn(&quot;ImageProvider returned null for src '&quot; + src + &quot;'&quot;);</span>
+                        }
+<span class="nc" id="L365">                    } else {</span>
+<span class="fc" id="L366">                        warn(&quot;&lt;img src=\&quot;&quot; + src + &quot;\&quot;&gt; ignored: no ImageProvider set&quot;);</span>
+                    }
+                }
+<span class="fc" id="L369">                return iv;</span>
+            }
+            case &quot;div&quot;:
+            case &quot;body&quot;:
+            case &quot;section&quot;:
+            case &quot;span&quot;:
+            case &quot;panel&quot;:
+            case &quot;root&quot;:
+            case &quot;ui&quot;:
+<span class="fc" id="L378">                return new Panel(0, 0, Float.NaN, Float.NaN);</span>
+            default: {
+                // Unknown tag: generic panel that still matches its own type selector.
+<span class="fc" id="L381">                warn(&quot;Unknown tag &lt;&quot; + tag + &quot;&gt;, mapped to generic Panel&quot;);</span>
+<span class="fc" id="L382">                Panel p = new Panel(0, 0, Float.NaN, Float.NaN);</span>
+<span class="fc" id="L383">                p.setStyleTag(tag);</span>
+<span class="fc" id="L384">                return p;</span>
+            }
+        }
+    }
+
+    private void applyCommonAttributes(Element element, Component component) {
+<span class="fc" id="L390">        String id = attr(element, &quot;id&quot;);</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">        if (!id.isEmpty()) {</span>
+<span class="fc" id="L392">            component.setId(id);</span>
+<span class="fc" id="L393">            componentsById.put(id, component);</span>
+        }
+<span class="fc" id="L395">        String classes = attr(element, &quot;class&quot;);</span>
+<span class="fc bfc" id="L396" title="All 2 branches covered.">        if (!classes.isEmpty()) {</span>
+<span class="fc bfc" id="L397" title="All 2 branches covered.">            for (String cls : classes.split(&quot;\\s+&quot;)) {</span>
+<span class="pc bpc" id="L398" title="1 of 2 branches missed.">                if (!cls.isEmpty()) {</span>
+<span class="fc" id="L399">                    component.addStyleClass(cls);</span>
+                }
+            }
+        }
+<span class="fc" id="L403">        String inline = attr(element, &quot;style&quot;);</span>
+<span class="fc bfc" id="L404" title="All 2 branches covered.">        if (!inline.isEmpty()) {</span>
+            try {
+<span class="fc" id="L406">                Style style = Style.parseInline(inline,</span>
+<span class="pc bpc" id="L407" title="1 of 2 branches missed.">                        lastStyleSheet != null ? lastStyleSheet.getRootVariables()</span>
+<span class="fc" id="L408">                                : Collections.emptyMap());</span>
+<span class="fc" id="L409">                component.setInlineStyle(style);</span>
+<span class="nc" id="L410">            } catch (RuntimeException e) {</span>
+<span class="nc" id="L411">                warn(&quot;Unparsable inline style '&quot; + inline + &quot;': &quot; + e.getMessage());</span>
+<span class="fc" id="L412">            }</span>
+        }
+<span class="fc" id="L414">        applyNumber(element, &quot;x&quot;, component::setX);</span>
+<span class="fc" id="L415">        applyNumber(element, &quot;y&quot;, component::setY);</span>
+<span class="fc" id="L416">        applyNumber(element, &quot;width&quot;, component::setWidth);</span>
+<span class="fc" id="L417">        applyNumber(element, &quot;height&quot;, component::setHeight);</span>
+<span class="fc" id="L418">    }</span>
+
+    private void applyNumber(Element element, String attr, java.util.function.Consumer&lt;Float&gt; consumer) {
+<span class="fc" id="L421">        String raw = attr(element, attr);</span>
+<span class="fc bfc" id="L422" title="All 2 branches covered.">        if (raw.isEmpty()) {</span>
+<span class="fc" id="L423">            return;</span>
+        }
+        try {
+<span class="fc" id="L426">            consumer.accept(Float.parseFloat(raw.trim()));</span>
+<span class="nc" id="L427">        } catch (NumberFormatException e) {</span>
+<span class="nc" id="L428">            warn(&quot;Bad numeric attribute &quot; + attr + &quot;='&quot; + raw + &quot;' on &lt;&quot;</span>
+<span class="nc" id="L429">                    + element.getTagName() + &quot;&gt;&quot;);</span>
+<span class="fc" id="L430">        }</span>
+<span class="fc" id="L431">    }</span>
+
+    private void applyLayout(Element element, Component component) {
+<span class="fc" id="L434">        String layout = attr(element, &quot;layout&quot;).trim().toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L435" title="1 of 4 branches missed.">        if (layout.isEmpty() || !(component instanceof Panel panel)) {</span>
+<span class="fc" id="L436">            return;</span>
+        }
+<span class="fc bfc" id="L438" title="All 3 branches covered.">        switch (layout) {</span>
+            case &quot;flex&quot;:
+<span class="fc" id="L440">                panel.setLayoutManager(new FlexLayout());</span>
+<span class="fc" id="L441">                break;</span>
+            case &quot;flow&quot;:
+<span class="fc" id="L443">                panel.setLayoutManager(new FlowLayout());</span>
+<span class="fc" id="L444">                break;</span>
+            default:
+<span class="fc" id="L446">                warn(&quot;Unknown layout '&quot; + layout + &quot;' on &lt;&quot; + element.getTagName() + &quot;&gt;&quot;);</span>
+        }
+<span class="fc" id="L448">    }</span>
+
+    private void bindHandlers(Element element, Component component) {
+<span class="fc" id="L451">        String change = attr(element, &quot;onchange&quot;);</span>
+<span class="pc bpc" id="L452" title="1 of 4 branches missed.">        if (!change.isEmpty() &amp;&amp; component instanceof TextField field) {</span>
+<span class="fc" id="L453">            Runnable r = resolveHandler(change, element, &quot;onchange&quot;);</span>
+<span class="pc bpc" id="L454" title="1 of 2 branches missed.">            if (r != null) {</span>
+<span class="fc" id="L455">                field.setOnTextChanged(r);</span>
+            }
+        }
+<span class="fc" id="L458">    }</span>
+
+    private void bindClick(Button button, Element element) {
+<span class="fc" id="L461">        String click = attr(element, &quot;onclick&quot;);</span>
+<span class="fc bfc" id="L462" title="All 2 branches covered.">        if (click.isEmpty()) {</span>
+<span class="fc" id="L463">            return;</span>
+        }
+<span class="fc" id="L465">        Runnable r = resolveHandler(click, element, &quot;onclick&quot;);</span>
+<span class="fc bfc" id="L466" title="All 2 branches covered.">        if (r != null) {</span>
+<span class="fc" id="L467">            button.setOnClick(r::run);</span>
+        }
+<span class="fc" id="L469">    }</span>
+
+    /**
+     * Resolves a handler name to a Runnable bound to the controller. The
+     * method must be public and take no arguments (a {@code Component}
+     * parameter overload is also accepted).
+     */
+    private Runnable resolveHandler(String name, Element element, String attr) {
+<span class="pc bpc" id="L477" title="1 of 2 branches missed.">        if (controller == null) {</span>
+<span class="nc" id="L478">            warn(attr + &quot;='&quot; + name + &quot;' ignored: no controller registered&quot;);</span>
+<span class="nc" id="L479">            return null;</span>
+        }
+<span class="fc bfc" id="L481" title="All 2 branches covered.">        String methodName = name.endsWith(&quot;()&quot;)</span>
+<span class="fc" id="L482">                ? name.substring(0, name.length() - 2).trim() : name.trim();</span>
+        try {
+<span class="fc" id="L484">            Method m = controller.getClass().getMethod(methodName);</span>
+<span class="fc" id="L485">            return () -&gt; {</span>
+                try {
+<span class="fc" id="L487">                    m.invoke(controller);</span>
+<span class="nc" id="L488">                } catch (Exception e) {</span>
+<span class="nc" id="L489">                    LOG.warning(&quot;Handler '&quot; + methodName + &quot;' failed: &quot; + e);</span>
+<span class="fc" id="L490">                }</span>
+<span class="fc" id="L491">            };</span>
+<span class="fc" id="L492">        } catch (NoSuchMethodException e) {</span>
+            // Fall back to a Component-parameter signature.
+            try {
+<span class="fc" id="L495">                Method m = controller.getClass().getMethod(methodName, Component.class);</span>
+<span class="fc" id="L496">                Component target = findComponentFor(element);</span>
+<span class="fc" id="L497">                return () -&gt; {</span>
+                    try {
+<span class="fc" id="L499">                        m.invoke(controller, target);</span>
+<span class="nc" id="L500">                    } catch (Exception ex) {</span>
+<span class="nc" id="L501">                        LOG.warning(&quot;Handler '&quot; + methodName + &quot;' failed: &quot; + ex);</span>
+<span class="fc" id="L502">                    }</span>
+<span class="fc" id="L503">                };</span>
+<span class="fc" id="L504">            } catch (NoSuchMethodException ex) {</span>
+<span class="fc" id="L505">                warn(&quot;Controller has no zero-arg (or Component-arg) method '&quot;</span>
+                        + methodName + &quot;' for &quot; + attr);
+<span class="fc" id="L507">                return null;</span>
+            }
+        }
+    }
+
+    /** Looks up the component built for an element, by its {@code id}. */
+    private Component findComponentFor(Element element) {
+<span class="fc" id="L514">        String id = attr(element, &quot;id&quot;);</span>
+<span class="pc bpc" id="L515" title="1 of 2 branches missed.">        if (id.isEmpty()) {</span>
+<span class="nc" id="L516">            return null;</span>
+        }
+<span class="fc" id="L518">        return componentsById.get(id);</span>
+    }
+
+    /**
+     * Finds a descendant (or self) by id in a component tree.
+     *
+     * @param root the subtree root
+     * @param id   the id to search for
+     * @return the matching component or null
+     */
+    public static Component findById(Component root, String id) {
+<span class="pc bpc" id="L529" title="2 of 4 branches missed.">        if (root == null || id == null) {</span>
+<span class="nc" id="L530">            return null;</span>
+        }
+<span class="fc bfc" id="L532" title="All 2 branches covered.">        if (id.equals(root.getId())) {</span>
+<span class="fc" id="L533">            return root;</span>
+        }
+<span class="fc bfc" id="L535" title="All 2 branches covered.">        if (root instanceof Panel panel) {</span>
+<span class="fc bfc" id="L536" title="All 2 branches covered.">            for (Component child : panel.getChildren()) {</span>
+<span class="fc" id="L537">                Component found = findById(child, id);</span>
+<span class="fc bfc" id="L538" title="All 2 branches covered.">                if (found != null) {</span>
+<span class="fc" id="L539">                    return found;</span>
+                }
+<span class="fc" id="L541">            }</span>
+        }
+<span class="fc" id="L543">        return null;</span>
+    }
+
+    // ------------------------------------------------------------------
+    // AST helpers
+    // ------------------------------------------------------------------
+
+    /**
+     * Reads an attribute value from the raw AST.
+     *
+     * @param element the element to query
+     * @param name    the raw attribute name
+     * @return the value, or the empty string when the attribute is absent or
+     *         valueless
+     */
+    private static String attr(Element element, String name) {
+<span class="fc" id="L559">        Attribute attribute = element.findAttribute(name);</span>
+<span class="pc bpc" id="L560" title="1 of 4 branches missed.">        return attribute == null || attribute.value() == null ? &quot;&quot; : attribute.value();</span>
+    }
+
+    /**
+     * Concatenates the direct text children of an element; an explicit
+     * {@code text} attribute takes precedence. Binding interpolations are not
+     * resolved here — a warning is emitted instead.
+     *
+     * @param element the element whose text is requested
+     * @return the element text (may be empty)
+     */
+    private String textOf(Element element) {
+<span class="fc" id="L572">        String explicit = attr(element, &quot;text&quot;);</span>
+<span class="pc bpc" id="L573" title="1 of 2 branches missed.">        if (!explicit.isEmpty()) {</span>
+<span class="nc" id="L574">            return explicit;</span>
+        }
+<span class="fc" id="L576">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc bfc" id="L577" title="All 2 branches covered.">        for (AstNode child : element.getChildren()) {</span>
+<span class="fc bfc" id="L578" title="All 2 branches covered.">            if (child instanceof TextNode textNode) {</span>
+<span class="fc" id="L579">                sb.append(textNode.getText());</span>
+<span class="pc bpc" id="L580" title="1 of 2 branches missed.">            } else if (child instanceof BindingNode binding) {</span>
+<span class="fc" id="L581">                warn(&quot;Binding {&quot; + binding.getRawPath() + &quot;} in &lt;&quot;</span>
+<span class="fc" id="L582">                        + element.getTagName()</span>
+                        + &quot;&gt; ignored: reactive bindings are not wired yet&quot;);
+            }
+<span class="fc" id="L585">        }</span>
+<span class="fc" id="L586">        return sb.toString();</span>
+    }
+
+    /** @return child elements that map to widgets (metadata tags excluded). */
+    private static List&lt;Element&gt; widgetChildren(Element parent) {
+<span class="fc" id="L591">        List&lt;Element&gt; out = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L592" title="All 2 branches covered.">        for (AstNode node : parent.getChildren()) {</span>
+<span class="fc bfc" id="L593" title="All 4 branches covered.">            if (node instanceof Element element &amp;&amp; !isMetadata(element)) {</span>
+<span class="fc" id="L594">                out.add(element);</span>
+            }
+<span class="fc" id="L596">        }</span>
+<span class="fc" id="L597">        return out;</span>
+    }
+
+    private static boolean isMetadata(Element element) {
+<span class="fc" id="L601">        return METADATA_TAGS.contains(element.getTagName().toLowerCase(Locale.ROOT));</span>
+    }
+
+    /**
+     * Locates the document's root container: a {@code body} element when
+     * present, otherwise the single top-level widget element, otherwise null
+     * (callers wrap all top-level widgets in a synthetic panel).
+     */
+    private static Element findContainer(Document doc) {
+<span class="fc" id="L610">        Element body = findFirst(doc.getChildren(), &quot;body&quot;);</span>
+<span class="fc bfc" id="L611" title="All 2 branches covered.">        if (body != null) {</span>
+<span class="fc" id="L612">            return body;</span>
+        }
+<span class="fc" id="L614">        List&lt;Element&gt; topLevel = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L615" title="All 2 branches covered.">        for (AstNode node : doc.getChildren()) {</span>
+<span class="pc bpc" id="L616" title="2 of 4 branches missed.">            if (node instanceof Element element &amp;&amp; !isMetadata(element)) {</span>
+<span class="fc" id="L617">                topLevel.add(element);</span>
+            }
+<span class="fc" id="L619">        }</span>
+<span class="pc bpc" id="L620" title="1 of 2 branches missed.">        return topLevel.size() == 1 ? topLevel.get(0) : null;</span>
+    }
+
+    private static Element findFirst(List&lt;AstNode&gt; nodes, String tag) {
+<span class="fc bfc" id="L624" title="All 2 branches covered.">        for (AstNode node : nodes) {</span>
+<span class="fc bfc" id="L625" title="All 2 branches covered.">            if (node instanceof Element element) {</span>
+<span class="fc bfc" id="L626" title="All 2 branches covered.">                if (element.getTagName().equalsIgnoreCase(tag)) {</span>
+<span class="fc" id="L627">                    return element;</span>
+                }
+<span class="fc" id="L629">                Element found = findFirst(element.getChildren(), tag);</span>
+<span class="pc bpc" id="L630" title="1 of 2 branches missed.">                if (found != null) {</span>
+<span class="nc" id="L631">                    return found;</span>
+                }
+            }
+<span class="fc" id="L634">        }</span>
+<span class="fc" id="L635">        return null;</span>
+    }
+
+    private static void findAll(List&lt;AstNode&gt; nodes, String tag, List&lt;Element&gt; out) {
+<span class="fc bfc" id="L639" title="All 2 branches covered.">        for (AstNode node : nodes) {</span>
+<span class="fc bfc" id="L640" title="All 2 branches covered.">            if (node instanceof Element element) {</span>
+<span class="fc bfc" id="L641" title="All 2 branches covered.">                if (element.getTagName().equalsIgnoreCase(tag)) {</span>
+<span class="fc" id="L642">                    out.add(element);</span>
+                }
+<span class="fc" id="L644">                findAll(element.getChildren(), tag, out);</span>
+            }
+<span class="fc" id="L646">        }</span>
+<span class="fc" id="L647">    }</span>
+
+    private StyleSheet extractStyleSheet(Document doc, Path baseDir) {
+<span class="fc" id="L650">        List&lt;Element&gt; inlineStyles = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L651">        findAll(doc.getChildren(), &quot;style&quot;, inlineStyles);</span>
+<span class="fc bfc" id="L652" title="All 2 branches covered.">        if (!inlineStyles.isEmpty()) {</span>
+<span class="fc" id="L653">            warn(&quot;inline &lt;style&gt; is not supported in .glyph (its '{' delimiter &quot;</span>
+                    + &quot;conflicts with bindings); use &lt;link rel=\&quot;stylesheet\&quot;&gt; &quot;
+                    + &quot;or load the sheet directly&quot;);
+        }
+
+<span class="fc" id="L658">        StringBuilder css = new StringBuilder();</span>
+<span class="fc" id="L659">        List&lt;Element&gt; links = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L660">        findAll(doc.getChildren(), &quot;link&quot;, links);</span>
+<span class="fc bfc" id="L661" title="All 2 branches covered.">        for (Element link : links) {</span>
+<span class="pc bpc" id="L662" title="1 of 2 branches missed.">            if (!&quot;stylesheet&quot;.equalsIgnoreCase(attr(link, &quot;rel&quot;))) {</span>
+<span class="nc" id="L663">                continue;</span>
+            }
+<span class="fc" id="L665">            String href = attr(link, &quot;href&quot;);</span>
+<span class="pc bpc" id="L666" title="1 of 2 branches missed.">            if (href.isEmpty()) {</span>
+<span class="nc" id="L667">                continue;</span>
+            }
+            try {
+<span class="pc bpc" id="L670" title="1 of 2 branches missed.">                if (baseDir != null) {</span>
+<span class="fc" id="L671">                    Path p = baseDir.resolve(href);</span>
+<span class="pc bpc" id="L672" title="1 of 2 branches missed.">                    if (Files.isRegularFile(p)) {</span>
+<span class="fc" id="L673">                        css.append(Files.readString(p, StandardCharsets.UTF_8));</span>
+<span class="fc" id="L674">                        continue;</span>
+                    }
+                }
+<span class="nc" id="L677">                var stream = UiLoader.class.getResourceAsStream(</span>
+<span class="nc bnc" id="L678" title="All 2 branches missed.">                        href.startsWith(&quot;/&quot;) ? href : &quot;/&quot; + href);</span>
+<span class="nc bnc" id="L679" title="All 2 branches missed.">                if (stream != null) {</span>
+<span class="nc" id="L680">                    css.append(new String(stream.readAllBytes(),</span>
+                            StandardCharsets.UTF_8));
+                } else {
+<span class="nc" id="L683">                    warn(&quot;Stylesheet not found: &quot; + href);</span>
+                }
+<span class="nc" id="L685">            } catch (IOException e) {</span>
+<span class="nc" id="L686">                warn(&quot;Failed to read stylesheet '&quot; + href + &quot;': &quot; + e.getMessage());</span>
+<span class="nc" id="L687">            }</span>
+<span class="nc" id="L688">        }</span>
+<span class="fc bfc" id="L689" title="All 2 branches covered.">        if (css.length() == 0) {</span>
+<span class="fc" id="L690">            return null;</span>
+        }
+        try {
+<span class="fc" id="L693">            return StyleSheet.parse(css.toString());</span>
+<span class="nc" id="L694">        } catch (StyleSheet.StyleParseException e) {</span>
+<span class="nc" id="L695">            warn(&quot;Stylesheet parse error: &quot; + e.getMessage());</span>
+<span class="nc" id="L696">            return null;</span>
+        }
+    }
+
+    private void warn(String message) {
+<span class="fc" id="L701">        warnings.add(message);</span>
+<span class="fc" id="L702">        LOG.warning(&quot;[UiLoader] &quot; + message);</span>
+<span class="fc" id="L703">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

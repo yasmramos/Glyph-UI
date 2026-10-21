@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Computed.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.reactive</a> &gt; <span class="el_source">Computed.java</span></div><h1>Computed.java</h1><pre class="source lang-java linenums">package com.glyphui.reactive;
+
+import java.util.Objects;
+import java.util.function.Supplier;
+
+/**
+ * A lazily evaluated value derived from other {@link Trackable}s.
+ *
+ * &lt;ul&gt;
+ *   &lt;li&gt;&lt;b&gt;Lazy:&lt;/b&gt; the function runs on {@link #get()} only, and only when a
+ *       dependency changed since the last run.&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Dynamic dependencies:&lt;/b&gt; the sources read during an evaluation are
+ *       the dependencies of that evaluation; when a branch is no longer taken,
+ *       its sources are unsubscribed.&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Propagation:&lt;/b&gt; a change marks this value dirty and invalidates its
+ *       own observers, so chains of computed values and bindings stay correct.&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Explicit disposal:&lt;/b&gt; a computed value stays subscribed to its
+ *       sources until {@link #dispose()} is called.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;The function must be free of side effects; writing to a signal from it
+ * throws. A cyclic dependency throws {@link IllegalStateException}. If the
+ * function throws, the exception propagates and the value stays dirty.&lt;/p&gt;
+ *
+ * @param &lt;T&gt; the value type
+ */
+public final class Computed&lt;T&gt; extends AbstractObserver implements Trackable&lt;T&gt; {
+
+<span class="fc" id="L29">    private final Registry&lt;Observer&gt; observers = new Registry&lt;&gt;();</span>
+<span class="fc" id="L30">    private final Thread creator = Thread.currentThread();</span>
+    private Supplier&lt;? extends T&gt; function;
+    private T value;
+<span class="fc" id="L33">    private boolean dirty = true;</span>
+    private boolean evaluating;
+
+    /**
+     * Creates a computed value.
+     *
+     * @param function computes the value from other trackables
+     */
+<span class="fc" id="L41">    public Computed(Supplier&lt;? extends T&gt; function) {</span>
+<span class="fc" id="L42">        this.function = Objects.requireNonNull(function, &quot;function&quot;);</span>
+<span class="fc" id="L43">    }</span>
+
+    @Override
+    public T get() {
+<span class="fc" id="L47">        Reactor.checkUiThread(creator, &quot;Computed.get&quot;);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (isDisposed()) {</span>
+<span class="fc" id="L49">            throw new IllegalStateException(&quot;Computed has been disposed&quot;);</span>
+        }
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (evaluating) {</span>
+<span class="fc" id="L52">            throw new IllegalStateException(&quot;Cyclic dependency detected while evaluating a Computed&quot;);</span>
+        }
+<span class="fc" id="L54">        Reactor.reportRead(this);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (dirty) {</span>
+<span class="fc" id="L56">            recompute();</span>
+        }
+<span class="fc" id="L58">        return value;</span>
+    }
+
+    private void recompute() {
+<span class="fc" id="L62">        evaluating = true;</span>
+        try {
+<span class="fc" id="L64">            value = tracked(function);</span>
+<span class="fc" id="L65">            dirty = false;</span>
+        } finally {
+<span class="fc" id="L67">            evaluating = false;</span>
+        }
+<span class="fc" id="L69">    }</span>
+
+    /**
+     * Marks the value dirty and invalidates the observers. Propagation is
+     * unconditional on purpose: a value whose last evaluation failed is still
+     * dirty, yet its observers must hear about later changes.
+     */
+    @Override
+    protected void onInvalidate() {
+<span class="fc" id="L78">        dirty = true;</span>
+<span class="fc" id="L79">        observers.forEach(Observer::invalidate);</span>
+<span class="fc" id="L80">    }</span>
+
+    @Override
+    public Subscription subscribe(Observer observer) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (isDisposed()) {</span>
+<span class="fc" id="L85">            throw new IllegalStateException(&quot;Computed has been disposed&quot;);</span>
+        }
+<span class="fc" id="L87">        return observers.add(observer);</span>
+    }
+
+    @Override
+    protected void onDispose() {
+<span class="fc" id="L92">        observers.clear();</span>
+<span class="fc" id="L93">        function = null;</span>
+<span class="fc" id="L94">        value = null;</span>
+<span class="fc" id="L95">    }</span>
+
+    /** Number of registered observers; lets tests verify that nothing leaks. */
+    int observerCount() {
+<span class="fc" id="L99">        return observers.size();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

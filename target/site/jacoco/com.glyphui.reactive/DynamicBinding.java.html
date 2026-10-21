@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DynamicBinding.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.reactive</a> &gt; <span class="el_source">DynamicBinding.java</span></div><h1>DynamicBinding.java</h1><pre class="source lang-java linenums">package com.glyphui.reactive;
+
+import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+/**
+ * A one-level path {@code root -&gt; member}: binds an effect to a member of an
+ * observable root object, and follows the root when it changes.
+ *
+ * &lt;p&gt;When the root changes, the subscription to the old member is dropped and
+ * the new member is subscribed, so the effect always reflects the member of the
+ * &lt;em&gt;current&lt;/em&gt; root. The member is selected by a user-supplied function;
+ * there is no navigation by name (no reflection). If the function returns
+ * null, the effect receives null.&lt;/p&gt;
+ *
+ * &lt;p&gt;The internal {@code Computed} values and the {@code Binding} are owned by
+ * this object and released by {@link #dispose()}.&lt;/p&gt;
+ *
+ * @param &lt;R&gt; the root type
+ * @param &lt;T&gt; the member value type
+ */
+public final class DynamicBinding&lt;R, T&gt; implements Disposable {
+
+    private final Computed&lt;Trackable&lt;T&gt;&gt; member;
+    private final Computed&lt;T&gt; value;
+    private final Binding&lt;T&gt; binding;
+    private boolean disposed;
+
+    /**
+     * Creates the binding and applies the current value.
+     *
+     * @param root     the observable root
+     * @param memberOf selects the observable member of a root value
+     * @param effect   applied with the initial value and after every change
+     */
+    public DynamicBinding(Trackable&lt;R&gt; root,
+                          Function&lt;? super R, ? extends Trackable&lt;T&gt;&gt; memberOf,
+                          Consumer&lt;? super T&gt; effect) {
+<span class="fc" id="L40">        this(root, memberOf, effect, Binding.Impact.PAINT);</span>
+<span class="fc" id="L41">    }</span>
+
+    /**
+     * Creates the binding and applies the current value.
+     *
+     * @param root     the observable root
+     * @param memberOf selects the observable member of a root value
+     * @param effect   applied with the initial value and after every change
+     * @param impact   what a re-application invalidates
+     */
+    public DynamicBinding(Trackable&lt;R&gt; root,
+                          Function&lt;? super R, ? extends Trackable&lt;T&gt;&gt; memberOf,
+                          Consumer&lt;? super T&gt; effect,
+<span class="fc" id="L54">                          Binding.Impact impact) {</span>
+<span class="fc" id="L55">        Objects.requireNonNull(root, &quot;root&quot;);</span>
+<span class="fc" id="L56">        Objects.requireNonNull(memberOf, &quot;memberOf&quot;);</span>
+<span class="fc" id="L57">        Computed&lt;Trackable&lt;T&gt;&gt; memberComputed = new Computed&lt;&gt;(() -&gt; memberOf.apply(root.get()));</span>
+<span class="fc" id="L58">        Computed&lt;T&gt; valueComputed = new Computed&lt;&gt;(() -&gt; {</span>
+<span class="fc" id="L59">            Trackable&lt;T&gt; current = memberComputed.get();</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            return current == null ? null : current.get();</span>
+        });
+        Binding&lt;T&gt; created;
+        try {
+<span class="fc" id="L64">            created = new Binding&lt;&gt;(valueComputed, effect, impact);</span>
+<span class="fc" id="L65">        } catch (RuntimeException e) {</span>
+<span class="fc" id="L66">            valueComputed.dispose();</span>
+<span class="fc" id="L67">            memberComputed.dispose();</span>
+<span class="fc" id="L68">            throw e;</span>
+<span class="fc" id="L69">        }</span>
+<span class="fc" id="L70">        this.member = memberComputed;</span>
+<span class="fc" id="L71">        this.value = valueComputed;</span>
+<span class="fc" id="L72">        this.binding = created;</span>
+<span class="fc" id="L73">    }</span>
+
+    @Override
+    public void dispose() {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        if (disposed) {</span>
+<span class="fc" id="L78">            return;</span>
+        }
+<span class="fc" id="L80">        disposed = true;</span>
+<span class="fc" id="L81">        binding.dispose();</span>
+<span class="fc" id="L82">        value.dispose();</span>
+<span class="fc" id="L83">        member.dispose();</span>
+<span class="fc" id="L84">    }</span>
+
+    @Override
+    public boolean isDisposed() {
+<span class="fc" id="L88">        return disposed;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

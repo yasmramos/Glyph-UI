@@ -1,0 +1,506 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Parser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.markup</a> &gt; <span class="el_source">Parser.java</span></div><h1>Parser.java</h1><pre class="source lang-java linenums">package com.glyphui.markup;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Recursive-descent parser that turns a {@code .glyph} source string into a
+ * {@link Document} AST via the token stream of {@link Tokenizer}.
+ *
+ * &lt;p&gt;&lt;b&gt;Error strategy (see also {@link MarkupException}):&lt;/b&gt;&lt;/p&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;Recoverable structural problems — unclosed tag, closing tag without
+ *       matching open tag, mismatched end-tag name, attribute without value,
+ *       duplicate attribute, stray {@code &amp;#125;} in text, illegal binding
+ *       expression — are accumulated as {@link ParseError} entries and parsing
+ *       continues, so one run reports every issue.&lt;/li&gt;
+ *   &lt;li&gt;Unrecoverable lexer conditions (unterminated comment/string, EOF
+ *       inside a tag or binding) propagate as {@link MarkupException}.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;The parser is intentionally &quot;dumb&quot;: it never interprets attribute
+ * prefixes ({@code bind:}, {@code on:}) or control attributes ({@code if},
+ * {@code for-each}); it only builds the raw tree. Text content keeps every
+ * TEXT/BINDING/element child in source order, including whitespace-only text
+ * runs, so later phases can decide what to trim.&lt;/p&gt;
+ */
+<span class="fc" id="L27">public final class Parser {</span>
+
+    /** Token stream being consumed. */
+    private List&lt;Token&gt; tokens;
+
+    /** Cursor into {@link #tokens}. */
+    private int index;
+
+    /** Accumulated recoverable diagnostics. */
+<span class="fc" id="L36">    private final List&lt;ParseError&gt; errors = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * Tag names of the elements currently being parsed, innermost last. Used
+     * only to distinguish a stray close tag (name owned by an enclosing
+     * level) from a genuine mismatch during error recovery.
+     */
+<span class="fc" id="L43">    private final List&lt;String&gt; openStack = new ArrayList&lt;&gt;();</span>
+
+    /**
+     * Parses a complete document.
+     *
+     * @param source the {@code .glyph} markup text (null → empty document)
+     * @return the parse result with the AST and all recoverable errors
+     * @throws MarkupException on unrecoverable lexical problems
+     */
+    public ParseResult parse(String source) {
+<span class="fc" id="L53">        tokens = new Tokenizer(source).tokenize();</span>
+<span class="fc" id="L54">        index = 0;</span>
+<span class="fc" id="L55">        errors.clear();</span>
+<span class="fc" id="L56">        openStack.clear();</span>
+<span class="fc" id="L57">        lastCloseLine = -1;</span>
+<span class="fc" id="L58">        lastCloseColumn = -1;</span>
+<span class="fc" id="L59">        Document doc = new Document(peek().line(), peek().column());</span>
+        // The sentinel &quot;&quot; is owned by no real tag, so every end tag at
+        // document level is either matched or reported explicitly.
+<span class="fc" id="L62">        openStack.add(&quot;&quot;);</span>
+        try {
+<span class="fc" id="L64">            parseContentInto(doc::addChild, null);</span>
+        } finally {
+<span class="fc" id="L66">            openStack.remove(openStack.size() - 1);</span>
+        }
+<span class="fc" id="L68">        return new ParseResult(doc, errors);</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Content
+    // ------------------------------------------------------------------
+
+    /**
+     * Parses nodes until the matching close tag of {@code openName} (or EOF
+     * at document level) and feeds them to {@code sink}.
+     *
+     * @param sink      consumer for produced nodes
+     * @param openName  element whose close tag terminates the loop, or null
+     *                  at document level
+     */
+    private void parseContentInto(java.util.function.Consumer&lt;AstNode&gt; sink,
+                                  String openName) {
+        while (true) {
+<span class="fc" id="L86">            Token t = peek();</span>
+<span class="pc bpc" id="L87" title="1 of 7 branches missed.">            switch (t.kind()) {</span>
+                case EOF -&gt; {
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                    if (openName != null) {</span>
+<span class="nc" id="L90">                        error(&quot;unclosed tag &lt;&quot; + openName + &quot;&gt;&quot;, t);</span>
+                    }
+<span class="fc" id="L92">                    return;</span>
+                }
+                case OPEN_CLOSE_TAG -&gt; {
+<span class="fc" id="L95">                    Token nameTok = peek(1);</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">                    if (openName == null) {</span>
+<span class="nc" id="L97">                        error(&quot;closing tag '&quot; + closeTagName()</span>
+                                + &quot;' has no open element&quot;, t);
+<span class="nc" id="L99">                        skipEndTag();</span>
+<span class="nc" id="L100">                        continue;</span>
+                    }
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                    if (!isMatchingCloseTag(openName)) {</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">                        boolean ownedOuter = nameTok.kind() == TokenKind.TAG_NAME</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                                &amp;&amp; !openStack.contains(nameTok.value());</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">                        if (ownedOuter) {</span>
+                            // The name belongs to an enclosing level (or the
+                            // document): treat it as a stray close here,
+                            // report it and keep parsing this element instead
+                            // of cascading mismatches up the stack.
+<span class="fc" id="L110">                            error(&quot;closing tag '&lt;/&quot; + nameTok.value()</span>
+                                    + &quot;' has no open element inside &lt;&quot;
+                                    + openName + &quot;&gt;&quot;, t);
+<span class="fc" id="L113">                            skipEndTag();</span>
+<span class="fc" id="L114">                            continue;</span>
+                        }
+                        // Unknown at every outer level: mismatch against the
+                        // expected end tag; let the caller handle it.
+<span class="fc" id="L118">                        error(&quot;mismatched closing tag, expected &lt;/&quot; + openName</span>
+<span class="fc" id="L119">                                + &quot;&gt;, found &lt;/&quot; + closeTagName() + &quot;&gt;&quot;, t);</span>
+<span class="fc" id="L120">                        return;</span>
+                    }
+<span class="fc" id="L122">                    consumeCloseTagFor(openName);</span>
+<span class="fc" id="L123">                    return;</span>
+                }
+<span class="fc" id="L125">                case OPEN_TAG -&gt; sink.accept(parseElement());</span>
+                case TEXT -&gt; {
+                    // Whitespace-only runs between tags are formatting, not
+                    // content: drop them so the tree keeps meaningful children
+                    // in source order.
+<span class="fc bfc" id="L130" title="All 2 branches covered.">                    if (!t.value().isBlank()) {</span>
+<span class="fc" id="L131">                        sink.accept(new TextNode(t.value(), t.line(), t.column()));</span>
+                    }
+<span class="fc" id="L133">                    advance();</span>
+<span class="fc" id="L134">                }</span>
+                case BINDING_OPEN -&gt; {
+<span class="fc" id="L136">                    BindingNode binding = parseBinding();</span>
+<span class="fc" id="L137">                    sink.accept(binding);</span>
+<span class="fc" id="L138">                    splitTextAfterBinding(sink, binding);</span>
+<span class="fc" id="L139">                }</span>
+                case ERROR -&gt; {
+<span class="fc" id="L141">                    error(t.value(), t);</span>
+<span class="fc" id="L142">                    advance();</span>
+<span class="fc" id="L143">                }</span>
+                default -&gt; {
+<span class="nc" id="L145">                    error(&quot;unexpected token &quot; + t.kind(), t);</span>
+<span class="nc" id="L146">                    advance();</span>
+                }
+            }
+<span class="fc" id="L149">        }</span>
+    }
+
+    /**
+     * Consumes a complete end tag ({@code &lt;/name&gt;}) from the cursor, reporting
+     * (but recovering from) missing names or the final {@code &gt;}.
+     */
+    private void skipEndTag() {
+<span class="fc" id="L157">        advance();                       // '&lt;/'</span>
+<span class="pc bpc" id="L158" title="1 of 2 branches missed.">        if (peek().kind() == TokenKind.TAG_NAME) {</span>
+<span class="fc" id="L159">            advance();</span>
+        }
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">        if (peek().kind() == TokenKind.CLOSE_TAG) {</span>
+<span class="fc" id="L162">            advance();</span>
+        }
+<span class="fc" id="L164">    }</span>
+
+    /**
+     * Looks ahead without consuming to decide whether the closing tag at the
+     * cursor carries the expected name.
+     *
+     * @param openName the element whose end tag we are waiting for
+     * @return true when the stream position is {@code &lt;/openName&gt;}
+     */
+    private boolean isMatchingCloseTag(String openName) {
+<span class="fc" id="L174">        Token name = peek(1);</span>
+<span class="pc bpc" id="L175" title="1 of 4 branches missed.">        return name.kind() == TokenKind.TAG_NAME &amp;&amp; name.value().equals(openName);</span>
+    }
+
+    /**
+     * Consumes {@code &lt;/name&gt;} and records its position for the enclosing
+     * element (read back by {@link #parseElement()} through
+     * {@link #lastCloseLine}). The recorded position anchors on the end-tag
+     * &lt;em&gt;name&lt;/em&gt;, which is what diagnostics should point at.
+     *
+     * @param openName the expected tag name (already validated by the caller)
+     */
+    private void consumeCloseTagFor(String openName) {
+<span class="fc" id="L187">        advance();                       // '&lt;/'</span>
+<span class="fc" id="L188">        Token name = peek();</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">        if (name.kind() == TokenKind.TAG_NAME) {</span>
+<span class="fc" id="L190">            advance();</span>
+        } else {
+<span class="nc" id="L192">            error(&quot;missing tag name in closing tag&quot;, name);</span>
+        }
+<span class="pc bpc" id="L194" title="1 of 2 branches missed.">        if (peek().kind() == TokenKind.CLOSE_TAG) {</span>
+<span class="fc" id="L195">            advance();</span>
+<span class="nc bnc" id="L196" title="All 2 branches missed.">        } else if (peek().kind() != TokenKind.EOF) {</span>
+<span class="nc" id="L197">            error(&quot;expected '&gt;' to close end tag&quot;, peek());</span>
+<span class="nc" id="L198">            advance();</span>
+        }
+        // Anchor the recorded position at the tag name, not the &quot;&lt;/&quot;.
+<span class="fc" id="L201">        lastCloseLine = name.line();</span>
+<span class="fc" id="L202">        lastCloseColumn = name.column();</span>
+<span class="fc" id="L203">    }</span>
+
+    /** Position of the most recently consumed close tag (set by parseElement). */
+<span class="fc" id="L206">    private int lastCloseLine = -1;</span>
+<span class="fc" id="L207">    private int lastCloseColumn = -1;</span>
+
+    /** Position of the '}' consumed by the most recent parseBinding() call. */
+<span class="fc" id="L210">    private int bindingCloseLine = -1;</span>
+<span class="fc" id="L211">    private int bindingCloseColumn = -1;</span>
+
+    /**
+     * Parses one element: start tag, attributes, children and matching end
+     * tag (or the self-closing {@code /&gt;} form).
+     *
+     * @return the constructed element
+     */
+    private Element parseElement() {
+<span class="fc" id="L220">        Token lt = peek();</span>
+<span class="fc" id="L221">        int elLine = lt.line();</span>
+<span class="fc" id="L222">        int elCol = lt.column();</span>
+<span class="fc" id="L223">        advance();                       // '&lt;'</span>
+<span class="fc" id="L224">        Token nameTok = expect(TokenKind.TAG_NAME, &quot;expected tag name after '&lt;'&quot;);</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">        if (nameTok == null) {</span>
+            // Could not recover a name: skip junk until the next boundary.
+<span class="nc" id="L227">            skipToTagBoundary();</span>
+<span class="nc" id="L228">            return new Element(&quot;unknown&quot;, true, elLine, elCol);</span>
+        }
+<span class="fc" id="L230">        Element element = new Element(nameTok.value(), false, elLine, elCol);</span>
+<span class="fc" id="L231">        int selfCloseLine = -1;</span>
+<span class="fc" id="L232">        int selfCloseColumn = -1;</span>
+
+        // Attributes until '&gt;' or '/&gt;'.
+<span class="fc" id="L235">        List&lt;String&gt; seenNames = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L236">        boolean selfClosing = false;</span>
+        while (true) {
+<span class="fc" id="L238">            Token t = peek();</span>
+<span class="pc bpc" id="L239" title="3 of 6 branches missed.">            switch (t.kind()) {</span>
+<span class="fc" id="L240">                case CLOSE_TAG -&gt; advance();</span>
+                case CLOSE_SELF_TAG -&gt; {
+<span class="fc" id="L242">                    selfCloseLine = t.line();</span>
+<span class="fc" id="L243">                    selfCloseColumn = t.column();</span>
+<span class="fc" id="L244">                    advance();</span>
+<span class="fc" id="L245">                    selfClosing = true;</span>
+<span class="fc" id="L246">                }</span>
+                case EOF -&gt; {
+<span class="nc" id="L248">                    error(&quot;unclosed tag &lt;&quot; + element.getTagName() + &quot;&gt;&quot;, t);</span>
+<span class="nc" id="L249">                    return element;</span>
+                }
+                case ATTR_NAME -&gt; {
+<span class="fc" id="L252">                    readAttribute(element, seenNames);</span>
+<span class="fc" id="L253">                    continue;</span>
+                }
+                case ERROR -&gt; {
+<span class="nc" id="L256">                    error(t.value(), t);</span>
+<span class="nc" id="L257">                    advance();</span>
+<span class="nc" id="L258">                    continue;</span>
+                }
+                default -&gt; {
+<span class="nc" id="L261">                    error(&quot;unexpected token &quot; + t.kind() + &quot; inside tag &lt;&quot;</span>
+<span class="nc" id="L262">                            + element.getTagName() + &quot;&gt;&quot;, t);</span>
+<span class="nc" id="L263">                    advance();</span>
+<span class="nc" id="L264">                    continue;</span>
+                }
+            }
+            break; // CLOSE_TAG or CLOSE_SELF_TAG consumed
+        }
+
+<span class="fc bfc" id="L270" title="All 2 branches covered.">        if (selfClosing) {</span>
+<span class="fc" id="L271">            element.setSelfClosing(true);</span>
+            // Anchor the close position at the &quot;/&gt;&quot; that ended the start tag.
+<span class="fc" id="L273">            element.setClosePosition(selfCloseLine, selfCloseColumn);</span>
+<span class="fc" id="L274">            return element;</span>
+        }
+
+<span class="fc" id="L277">        lastCloseLine = -1;</span>
+<span class="fc" id="L278">        lastCloseColumn = -1;</span>
+<span class="fc" id="L279">        openStack.add(element.getTagName());</span>
+        try {
+<span class="fc" id="L281">            parseContentInto(node -&gt; element.addChild(node), element.getTagName());</span>
+        } finally {
+<span class="fc" id="L283">            openStack.remove(openStack.size() - 1);</span>
+        }
+<span class="fc bfc" id="L285" title="All 2 branches covered.">        if (lastCloseLine &gt; 0) {</span>
+<span class="fc" id="L286">            element.setClosePosition(lastCloseLine, lastCloseColumn);</span>
+        }
+<span class="fc" id="L288">        return element;</span>
+    }
+
+    /**
+     * Reads one attribute (name, optional {@code =} value) and appends it to
+     * the element, reporting missing values and duplicates.
+     */
+    private void readAttribute(Element element, List&lt;String&gt; seenNames) {
+<span class="fc" id="L296">        Token nameTok = peek();</span>
+<span class="fc" id="L297">        String name = nameTok.value();</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        if (seenNames.contains(name)) {</span>
+<span class="fc" id="L299">            error(&quot;duplicate attribute '&quot; + name + &quot;' on element &lt;&quot;</span>
+<span class="fc" id="L300">                    + element.getTagName() + &quot;&gt;&quot;, nameTok);</span>
+        } else {
+<span class="fc" id="L302">            seenNames.add(name);</span>
+        }
+<span class="fc" id="L304">        advance();</span>
+<span class="fc" id="L305">        String value = null;</span>
+<span class="fc" id="L306">        boolean quoted = false;</span>
+        // An attribute without '=' is a valid presence-only flag (e.g. the
+        // bare &quot;else&quot; directive); only &quot;name=&quot; with nothing after it is an
+        // actual missing-value error.
+<span class="fc bfc" id="L310" title="All 2 branches covered.">        if (peek().kind() == TokenKind.EQUALS) {</span>
+<span class="fc" id="L311">            Token eq = peek();</span>
+<span class="fc" id="L312">            advance();</span>
+<span class="fc" id="L313">            Token v = peek();</span>
+<span class="fc bfc" id="L314" title="All 2 branches covered.">            if (v.kind() == TokenKind.STRING) {</span>
+<span class="fc" id="L315">                value = v.value();</span>
+<span class="fc" id="L316">                quoted = true;</span>
+<span class="fc" id="L317">                advance();</span>
+<span class="pc bpc" id="L318" title="1 of 2 branches missed.">            } else if (v.kind() == TokenKind.BARE_VALUE) {</span>
+<span class="fc" id="L319">                value = v.value();</span>
+<span class="fc" id="L320">                advance();</span>
+            } else {
+                // Anchor at the offending token (where the value should be),
+                // not at the '=' sign itself.
+<span class="nc" id="L324">                error(&quot;attribute '&quot; + name + &quot;' is missing a value&quot;, v);</span>
+            }
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        } else if (peek().kind() == TokenKind.ERROR</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">                &amp;&amp; peek().value().startsWith(&quot;attribute value missing&quot;)) {</span>
+            // The tokenizer detected &quot;name=&quot; immediately followed by '&gt;' or
+            // '/&gt;' and flagged the exact '=' position; forward it here so the
+            // message names the attribute.
+<span class="fc" id="L331">            Token eq = peek();</span>
+<span class="fc" id="L332">            error(&quot;attribute '&quot; + name + &quot;' is missing a value&quot;, eq);</span>
+<span class="fc" id="L333">            advance();</span>
+        }
+<span class="fc" id="L335">        element.addAttribute(new Attribute(name, value, quoted,</span>
+<span class="fc" id="L336">                nameTok.line(), nameTok.column()));</span>
+<span class="fc" id="L337">    }</span>
+
+    /**
+     * Parses a {@code &amp;#123;path&amp;#125;} interpolation already split by the lexer.
+     * Validates the shape: IDENT (DOT IDENT)* followed by BINDING_CLOSE.
+     *
+     * @return the binding node
+     */
+    private BindingNode parseBinding() {
+<span class="fc" id="L346">        Token open = peek();</span>
+<span class="fc" id="L347">        advance();                       // '{'</span>
+<span class="fc" id="L348">        List&lt;String&gt; segments = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L349">        StringBuilder raw = new StringBuilder();</span>
+<span class="fc" id="L350">        boolean expectIdent = true;      // path grammar: IDENT (DOT IDENT)*</span>
+        while (true) {
+<span class="fc" id="L352">            Token t = peek();</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">            if (t.kind() == TokenKind.IDENT) {</span>
+<span class="pc bpc" id="L354" title="1 of 2 branches missed.">                if (!expectIdent) {</span>
+<span class="nc" id="L355">                    error(&quot;expected '.' between path segments&quot;, t);</span>
+                }
+<span class="fc" id="L357">                segments.add(t.value());</span>
+<span class="fc" id="L358">                raw.append(t.value());</span>
+<span class="fc" id="L359">                expectIdent = false;     // next must be DOT or CLOSE</span>
+<span class="fc" id="L360">                advance();</span>
+<span class="fc bfc" id="L361" title="All 2 branches covered.">            } else if (t.kind() == TokenKind.DOT) {</span>
+<span class="pc bpc" id="L362" title="1 of 2 branches missed.">                if (expectIdent) {</span>
+<span class="nc" id="L363">                    error(&quot;'.' must separate two identifiers in binding path&quot;, t);</span>
+                }
+<span class="fc" id="L365">                raw.append('.');</span>
+<span class="fc" id="L366">                expectIdent = true;      // a dot must be followed by an IDENT</span>
+<span class="fc" id="L367">                advance();</span>
+<span class="fc bfc" id="L368" title="All 2 branches covered.">            } else if (t.kind() == TokenKind.BINDING_CLOSE) {</span>
+<span class="fc" id="L369">                advance();</span>
+<span class="fc" id="L370">                bindingCloseLine = t.line();</span>
+<span class="fc" id="L371">                bindingCloseColumn = t.column();</span>
+<span class="fc" id="L372">                break;</span>
+<span class="pc bpc" id="L373" title="1 of 2 branches missed.">            } else if (t.kind() == TokenKind.ERROR) {</span>
+<span class="fc" id="L374">                error(t.value(), t);</span>
+<span class="fc" id="L375">                advance();</span>
+<span class="nc bnc" id="L376" title="All 2 branches missed.">            } else if (t.kind() == TokenKind.EOF) {</span>
+<span class="nc" id="L377">                error(&quot;unterminated binding&quot;, t);</span>
+<span class="nc" id="L378">                break;</span>
+            } else {
+<span class="nc" id="L380">                error(&quot;unexpected token &quot; + t.kind() + &quot; in binding path&quot;, t);</span>
+<span class="nc" id="L381">                advance();</span>
+            }
+<span class="fc" id="L383">        }</span>
+<span class="pc bpc" id="L384" title="1 of 2 branches missed.">        if (segments.isEmpty()) {</span>
+<span class="nc" id="L385">            error(&quot;empty binding path; expected {identifier.property}&quot;, open);</span>
+<span class="nc" id="L386">            segments.add(&quot;&quot;);</span>
+        }
+<span class="fc" id="L388">        BindingNode node = new BindingNode(segments, raw.toString(), open.line(), open.column());</span>
+<span class="fc" id="L389">        node.setClosePosition(bindingCloseLine, bindingCloseColumn);</span>
+<span class="fc" id="L390">        return node;</span>
+    }
+
+    /**
+     * Splits a TEXT token that starts before the just-parsed {@code &amp;#123;...&amp;#125;}
+     * and continues after its closing brace. The tokenizer folds the whole
+     * literal run (with escapes resolved) into one token anchored at the run
+     * start; this method turns the portion after '}' into its own TextNode so
+     * callers see precise positions:
+     * {@code &lt;Label&gt;Hola {user.name}!&lt;/Label&gt;} yields Text(&quot;Hola &quot;, col 8),
+     * Binding(col 13), Text(&quot;!&quot;, col 27).
+     *
+     * @param sink    consumer for produced nodes
+     * @param binding the binding just emitted (its position + raw path define
+     *                where the remainder of the text run starts)
+     */
+    private void splitTextAfterBinding(
+            java.util.function.Consumer&lt;AstNode&gt; sink, BindingNode binding) {
+<span class="fc" id="L408">        Token t = peek();</span>
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (t.kind() != TokenKind.TEXT) {</span>
+<span class="fc" id="L410">            return;</span>
+        }
+        // The closing-brace position recorded by parseBinding() gives the
+        // exact column right after '}'; when it is unavailable (error
+        // recovery paths), leave the text run untouched.
+<span class="fc" id="L415">        int afterBrace = -1;</span>
+<span class="pc bpc" id="L416" title="2 of 4 branches missed.">        if (binding.getCloseColumn() &gt; 0 &amp;&amp; binding.getCloseLine() == t.line()) {</span>
+<span class="fc" id="L417">            afterBrace = binding.getCloseColumn() + 1;</span>
+<span class="nc bnc" id="L418" title="All 4 branches missed.">        } else if (binding.getCloseColumn() &gt; 0 &amp;&amp; binding.getCloseLine() &lt; t.line()) {</span>
+            // Multi-line run: the remainder starts at column 1 of its line.
+<span class="nc" id="L420">            afterBrace = 1;</span>
+        }
+<span class="pc bpc" id="L422" title="1 of 2 branches missed.">        if (afterBrace &lt;= 0) {</span>
+<span class="nc" id="L423">            return;</span>
+        }
+<span class="pc bpc" id="L425" title="1 of 2 branches missed.">        int offset = t.column() &gt;= afterBrace ? t.column() - afterBrace : 0;</span>
+<span class="pc bpc" id="L426" title="3 of 4 branches missed.">        if (offset &gt; 0 &amp;&amp; offset &lt; t.value().length()) {</span>
+<span class="nc" id="L427">            advance();</span>
+<span class="nc" id="L428">            String tail = t.value().substring(offset);</span>
+<span class="nc" id="L429">            sink.accept(new TextNode(tail, t.line(), afterBrace));</span>
+            // Keep any remaining prefix-less content flowing normally: the
+            // consumed token is fully handled here.
+        }
+<span class="fc" id="L433">    }</span>
+
+    // ------------------------------------------------------------------
+    // Token cursor helpers
+    // ------------------------------------------------------------------
+
+    private Token peek() {
+<span class="fc" id="L440">        return tokens.get(index);</span>
+    }
+
+    private Token peek(int ahead) {
+<span class="fc" id="L444">        int i = Math.min(index + ahead, tokens.size() - 1);</span>
+<span class="fc" id="L445">        return tokens.get(i);</span>
+    }
+
+    private Token advance() {
+<span class="fc" id="L449">        Token t = tokens.get(index);</span>
+<span class="pc bpc" id="L450" title="1 of 2 branches missed.">        if (index &lt; tokens.size() - 1) {</span>
+<span class="fc" id="L451">            index++;</span>
+        }
+<span class="fc" id="L453">        return t;</span>
+    }
+
+    private boolean isAtEnd() {
+<span class="nc bnc" id="L457" title="All 2 branches missed.">        return peek().kind() == TokenKind.EOF;</span>
+    }
+
+    /**
+     * Consumes the next token if it has the expected kind.
+     *
+     * @param kind    expected kind
+     * @param message diagnostic when the token differs
+     * @return the matched token, or null (error recorded) when it does not match
+     */
+    private Token expect(TokenKind kind, String message) {
+<span class="fc" id="L468">        Token t = peek();</span>
+<span class="pc bpc" id="L469" title="1 of 2 branches missed.">        if (t.kind() == kind) {</span>
+<span class="fc" id="L470">            advance();</span>
+<span class="fc" id="L471">            return t;</span>
+        }
+<span class="nc" id="L473">        error(message + &quot;, found &quot; + t.kind(), t);</span>
+<span class="nc" id="L474">        return null;</span>
+    }
+
+    /** Skips tokens until the start of the next tag or EOF (panic mode). */
+    private void skipToTagBoundary() {
+<span class="nc bnc" id="L479" title="All 4 branches missed.">        while (!isAtEnd() &amp;&amp; peek().kind() != TokenKind.OPEN_TAG</span>
+<span class="nc bnc" id="L480" title="All 2 branches missed.">                &amp;&amp; peek().kind() != TokenKind.OPEN_CLOSE_TAG) {</span>
+<span class="nc" id="L481">            advance();</span>
+        }
+<span class="nc" id="L483">    }</span>
+
+    /**
+     * Reads (without consuming) the tag name that follows the {@code &lt;/} at
+     * the cursor, for diagnostic messages.
+     *
+     * @return the end-tag name, or &quot;?&quot; when no TAG_NAME token follows
+     */
+    private String closeTagName() {
+<span class="fc" id="L492">        Token name = peek(1);</span>
+<span class="pc bpc" id="L493" title="1 of 2 branches missed.">        return name.kind() == TokenKind.TAG_NAME ? name.value() : &quot;?&quot;;</span>
+    }
+
+    /**
+     * Records a recoverable diagnostic.
+     *
+     * @param message description
+     * @param at      token whose position anchors the diagnostic
+     */
+    private void error(String message, Token at) {
+<span class="fc" id="L503">        errors.add(new ParseError(message, at.line(), at.column()));</span>
+<span class="fc" id="L504">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

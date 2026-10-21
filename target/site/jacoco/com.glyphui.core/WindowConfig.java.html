@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>WindowConfig.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.core</a> &gt; <span class="el_source">WindowConfig.java</span></div><h1>WindowConfig.java</h1><pre class="source lang-java linenums">package com.glyphui.core;
+
+/**
+ * Mutable, fluent configuration applied as window hints &lt;em&gt;before&lt;/em&gt;
+ * {@link Window#create()} creates the native window.
+ *
+ * &lt;p&gt;The field vocabulary is backend-neutral: no native windowing types
+ * appear in any public signature. The JWM backend
+ * ({@link com.glyphui.core.backend.JwmWindowBackend}) honours whatever
+ * subset of these options its platform API supports and ignores the
+ * rest.&lt;/p&gt;
+ *
+ * &lt;p&gt;Defaults reproduce the historical behaviour of {@link Window}: a
+ * visible, resizable, decorated window with an OpenGL 3.2 core /
+ * forward-compatible context, no MSAA (the Skija render target is created
+ * with samples=0, so a multisampled default framebuffer would never be
+ * resolved), centered on the primary monitor and shown immediately.&lt;/p&gt;
+ *
+ * &lt;p&gt;Example:&lt;/p&gt;
+ * &lt;pre&gt;{@code
+ * Window w = new Window(&quot;My App&quot;, 1280, 720,
+ *         WindowConfig.create()
+ *                 .transparentFramebuffer(true)
+ *                 .samples(4)               // only if you also enable MSAA in Skija
+ *                 .visible(false));         // show it yourself later
+ * }&lt;/pre&gt;
+ *
+ * &lt;p&gt;Note: not every hint is honoured on every platform (e.g. Wayland
+ * ignores positioning and transparency on some compositors). These are
+ * limitations of the backend, not of this class.&lt;/p&gt;
+ */
+<span class="fc" id="L32">public final class WindowConfig {</span>
+
+    // --- GL profile constants (toolkit-owned numeric vocabulary) ---------
+    // The JWM backend renders through a raster presentation layer today,
+    // so these hints are currently informational; the constants remain as
+    // part of the public configuration vocabulary.
+    /** Any OpenGL profile — driver chooses. */
+    public static final int GL_PROFILE_ANY = 0;
+    /** No OpenGL context at all (alias of {@link #GL_PROFILE_ANY}). */
+    public static final int GL_PROFILE_NONE = GL_PROFILE_ANY;
+    /** OpenGL core profile. */
+    public static final int GL_PROFILE_CORE = 1;
+    /** OpenGL compatibility profile. */
+    public static final int GL_PROFILE_COMPAT = 2;
+
+    /** Logical window width/height requested at creation. */
+<span class="fc" id="L48">    public int width = 800;</span>
+    /** Logical window height requested at creation. */
+<span class="fc" id="L50">    public int height = 600;</span>
+    /** Initial window title. */
+<span class="fc" id="L52">    public String title = &quot;Glyph-UI&quot;;</span>
+
+    // --- Window hints ------------------------------------------------------
+    /** Visibility at creation. */
+<span class="fc" id="L56">    public boolean visible = true;</span>
+    /** User resizing allowed. */
+<span class="fc" id="L58">    public boolean resizable = true;</span>
+    /** Title bar / borders. */
+<span class="fc" id="L60">    public boolean decorated = true;</span>
+    /** Start maximized. */
+<span class="fc" id="L62">    public boolean maximized = false;</span>
+    /** Stays above other windows. */
+<span class="fc" id="L64">    public boolean floating = false;</span>
+    /** Grab keyboard focus at creation. */
+<span class="fc" id="L66">    public boolean focused = true;</span>
+    /** Per-pixel alpha framebuffer. */
+<span class="fc" id="L68">    public boolean transparentFramebuffer = false;</span>
+    /** MSAA samples for the default framebuffer. */
+<span class="fc" id="L70">    public int samples = 0;</span>
+    /** Requested GL context major version. */
+<span class="fc" id="L72">    public int glMajor = 3;</span>
+    /** Requested GL context minor version. */
+<span class="fc" id="L74">    public int glMinor = 2;</span>
+    /** GL profile: one of {@link #GL_PROFILE_CORE}, {@link #GL_PROFILE_COMPAT}, {@link #GL_PROFILE_ANY}. */
+<span class="fc" id="L76">    public int glProfile = GL_PROFILE_CORE;</span>
+    /** Forward-compatible context. */
+<span class="fc" id="L78">    public boolean glForwardCompat = true;</span>
+
+    // --- Window-level behaviour -------------------------------------------
+    /** Swap interval (vsync): 1 = vsync on, 0 = off, N = every Nth refresh (honoured by GL-capable backends). */
+<span class="fc" id="L82">    public int swapInterval = 1;</span>
+    /** Center the window on the primary monitor after creation. */
+<span class="fc" id="L84">    public boolean center = true;</span>
+    /** Create the window directly in fullscreen on the primary monitor. */
+<span class="fc" id="L86">    public boolean fullscreen = false;</span>
+
+    /** Fluent factory with defaults. */
+    public static WindowConfig create() {
+<span class="fc" id="L90">        return new WindowConfig();</span>
+    }
+
+    // --- Fluent setters ------------------------------------------------------
+    public WindowConfig size(int width, int height) {
+<span class="fc" id="L95">        this.width = width;</span>
+<span class="fc" id="L96">        this.height = height;</span>
+<span class="fc" id="L97">        return this;</span>
+    }
+
+    public WindowConfig title(String title) {
+<span class="fc" id="L101">        this.title = title;</span>
+<span class="fc" id="L102">        return this;</span>
+    }
+
+    public WindowConfig visible(boolean visible) {
+<span class="fc" id="L106">        this.visible = visible;</span>
+<span class="fc" id="L107">        return this;</span>
+    }
+
+    public WindowConfig resizable(boolean resizable) {
+<span class="nc" id="L111">        this.resizable = resizable;</span>
+<span class="nc" id="L112">        return this;</span>
+    }
+
+    public WindowConfig decorated(boolean decorated) {
+<span class="fc" id="L116">        this.decorated = decorated;</span>
+<span class="fc" id="L117">        return this;</span>
+    }
+
+    public WindowConfig maximized(boolean maximized) {
+<span class="nc" id="L121">        this.maximized = maximized;</span>
+<span class="nc" id="L122">        return this;</span>
+    }
+
+    public WindowConfig floating(boolean floating) {
+<span class="fc" id="L126">        this.floating = floating;</span>
+<span class="fc" id="L127">        return this;</span>
+    }
+
+    public WindowConfig focused(boolean focused) {
+<span class="nc" id="L131">        this.focused = focused;</span>
+<span class="nc" id="L132">        return this;</span>
+    }
+
+    public WindowConfig transparentFramebuffer(boolean transparent) {
+<span class="fc" id="L136">        this.transparentFramebuffer = transparent;</span>
+<span class="fc" id="L137">        return this;</span>
+    }
+
+    /**
+     * Requests {@code samples} MSAA buffers on the default framebuffer.
+     * Beware: under a core profile many drivers silently ignore this, and
+     * Glyph-UI's Skija render target currently uses samples=0 — real MSAA
+     * requires matching {@code BackendRenderTarget} configuration (or a
+     * custom multisampled FBO + blit).
+     */
+    public WindowConfig samples(int samples) {
+<span class="fc" id="L148">        this.samples = samples;</span>
+<span class="fc" id="L149">        return this;</span>
+    }
+
+    public WindowConfig glVersion(int major, int minor) {
+<span class="fc" id="L153">        this.glMajor = major;</span>
+<span class="fc" id="L154">        this.glMinor = minor;</span>
+<span class="fc" id="L155">        return this;</span>
+    }
+
+    /** One of {@link #GL_PROFILE_CORE}, {@link #GL_PROFILE_COMPAT} or {@link #GL_PROFILE_ANY}. */
+    public WindowConfig glProfile(int profile) {
+<span class="fc" id="L160">        this.glProfile = profile;</span>
+<span class="fc" id="L161">        return this;</span>
+    }
+
+    public WindowConfig glForwardCompat(boolean forwardCompat) {
+<span class="fc" id="L165">        this.glForwardCompat = forwardCompat;</span>
+<span class="fc" id="L166">        return this;</span>
+    }
+
+    public WindowConfig swapInterval(int swapInterval) {
+<span class="fc" id="L170">        this.swapInterval = swapInterval;</span>
+<span class="fc" id="L171">        return this;</span>
+    }
+
+    public WindowConfig center(boolean center) {
+<span class="fc" id="L175">        this.center = center;</span>
+<span class="fc" id="L176">        return this;</span>
+    }
+
+    public WindowConfig fullscreen(boolean fullscreen) {
+<span class="fc" id="L180">        this.fullscreen = fullscreen;</span>
+<span class="fc" id="L181">        return this;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

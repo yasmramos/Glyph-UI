@@ -1,0 +1,1192 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JwmWindowBackend.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">Glyph UI</a> &gt; <a href="index.source.html" class="el_package">com.glyphui.core.backend</a> &gt; <span class="el_source">JwmWindowBackend.java</span></div><h1>JwmWindowBackend.java</h1><pre class="source lang-java linenums">package com.glyphui.core.backend;
+
+import com.glyphui.core.WindowConfig;
+import com.glyphui.events.GlyphKeys;
+import com.glyphui.events.GlyphMods;
+
+import io.github.humbleui.jwm.App;
+import io.github.humbleui.jwm.Clipboard;
+import io.github.humbleui.jwm.ClipboardEntry;
+import io.github.humbleui.jwm.ClipboardFormat;
+import io.github.humbleui.jwm.EventFrame;
+import io.github.humbleui.jwm.EventKey;
+import io.github.humbleui.jwm.EventMouseButton;
+import io.github.humbleui.jwm.EventMouseMove;
+import io.github.humbleui.jwm.EventMouseScroll;
+import io.github.humbleui.jwm.EventTextInput;
+import io.github.humbleui.jwm.EventTextInputMarked;
+import io.github.humbleui.jwm.EventWindowClose;
+import io.github.humbleui.jwm.EventWindowCloseRequest;
+import io.github.humbleui.jwm.EventWindowMove;
+import io.github.humbleui.jwm.EventWindowResize;
+import io.github.humbleui.jwm.EventWindowScreenChange;
+import io.github.humbleui.jwm.Key;
+import io.github.humbleui.jwm.KeyModifier;
+import io.github.humbleui.jwm.MouseCursor;
+import io.github.humbleui.jwm.Screen;
+import io.github.humbleui.jwm.TextInputClient;
+import io.github.humbleui.jwm.Window;
+import io.github.humbleui.types.IRange;
+import io.github.humbleui.types.IRect;
+import java.lang.reflect.InvocationTargetException;
+
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * JWM {@link WindowBackend}: native windows driven by
+ * &lt;em&gt;io.github.humbleui:jwm&lt;/em&gt;, the toolkit's only supported windowing
+ * backend. It provides a real native IME bridge
+ * ({@code TextInputClient} / {@code EventTextInput}), cross-platform
+ * clipboard and per-monitor DPI scale through {@code Screen._scale}.
+ *
+ * &lt;p&gt;&lt;strong&gt;Event-loop model:&lt;/strong&gt; JWM owns the process UI thread —
+ * {@code App.start(...)} must run on the main thread, dispatches every
+ * window event from it and &lt;b&gt;blocks inside the native message loop until
+ * {@code App.terminate()}&lt;/b&gt; (true on Windows/X11 as well as macOS). It
+ * therefore cannot run inside {@link #create()}, which must return so the
+ * application can build its widget tree; the whole native bootstrap
+ * (library load, window creation, message loop) is &lt;b&gt;deferred to
+ * {@link #enterEventLoop(Runnable)}&lt;/b&gt;, called by {@code Application.run()}.
+ * Until then the backend is fully headless but already answers geometry
+ * queries from the cached configuration (see the headless contract).&lt;/p&gt;
+ *
+ * &lt;p&gt;&lt;strong&gt;Frame pacing:&lt;/strong&gt; frames are driven by JWM itself through
+ * {@link EventFrame}: each toolkit frame ends with {@code Window.requestFrame
+ * ()}, which schedules the next native frame whose {@code EventFrame} runs
+ * the frame body directly on the UI thread — no polling thread, no sleeps.
+ * A tiny watchdog daemon exists only to break the request→frame→request
+ * cycle when the application asks to close: it posts {@code App.terminate()}
+ * so the native loop unwinds and {@code enterEventLoop()} returns.&lt;/p&gt;
+ *
+ * &lt;p&gt;&lt;strong&gt;Rendering:&lt;/strong&gt; raster-first. The application paints into
+ * a CPU Skija surface; on every frame the backend blits it onto JWM's
+ * native raster layer (created reflectively against
+ * {@code io.github.humbleui.jwm.skija.LayerRasterSkija}, so this class
+ * compiles without skija bindings on the compile classpath). The
+ * experimental GL layer ({@code -Dglyphui.jwm.gl=true}) is not wired end to
+ * end yet and is refused with a warning, falling back to raster.&lt;/p&gt;
+ *
+ * &lt;p&gt;&lt;strong&gt;Headless contract:&lt;/strong&gt; nothing native is touched until
+ * {@link #create()} runs, so cached-state setters and listener wiring work
+ * display-free (unit tests).&lt;/p&gt;
+ */
+public class JwmWindowBackend extends AbstractWindowBackend {
+
+    /** System property to force the (experimental) GL layer over raster. */
+    private static final String USE_GL_PROPERTY = &quot;glyphui.jwm.gl&quot;;
+
+    // --- Native state (only valid after create()) -------------------------
+    private volatile Window jwmWindow;
+    /** True while the app-owned native loop is running (see enterEventLoop). */
+<span class="fc" id="L85">    private final AtomicBoolean loopRunning = new AtomicBoolean(false);</span>
+    /** Set when create() ran; the native bootstrap itself happens later. */
+<span class="fc" id="L87">    private final AtomicBoolean initAttempted = new AtomicBoolean(false);</span>
+    /**
+     * True when {@link #create()} succeeded and the native bootstrap
+     * (library load + window creation + message loop) is still owed to
+     * {@link #enterEventLoop(Runnable)}.
+     */
+    private volatile boolean pendingBootstrap;
+    /** True when the deferred native bootstrap failed; the loop must not start. */
+    private volatile boolean bootstrapFailed;
+
+    /** Close-watchdog thread (see startCloseWatchdog). */
+    private volatile Thread frameDriver;
+    /** One full iteration of the toolkit's frame loop, run on EventFrame. */
+<span class="fc" id="L100">    private final AtomicReference&lt;Runnable&gt; frameBody = new AtomicReference&lt;&gt;();</span>
+
+    /** True while JWM's native message loop is pumping (enterEventLoop). */
+    private volatile boolean nativeLoopActive;
+
+    /** Desired IME state, applied at window creation (may arrive before it). */
+    private volatile boolean textInputEnabled;
+
+    /** JWM Skija raster layer hosting the pixels presented to the window. */
+    private volatile io.github.humbleui.jwm.skija.LayerRasterSkija rasterLayer;
+    /** Skija surface wrapping the layer pixels; null until JWM's first frame. */
+    private volatile io.github.humbleui.skija.Surface layerSurface;
+    /** True while a presentation layer is attached to the JWM window. */
+    private volatile boolean layerAttached;
+    private boolean useGl;
+
+    /** Cursor position in logical coords, tracked from mouse events. */
+    private double cursorX, cursorY;
+
+    public JwmWindowBackend(String title, int width, int height, WindowConfig config) {
+<span class="fc" id="L120">        super(title, width, height, config);</span>
+<span class="fc" id="L121">    }</span>
+
+    // ------------------------------------------------------------------
+    // Lifecycle
+    // ------------------------------------------------------------------
+
+    /**
+     * Deferred by design: {@code App.start(...)} blocks inside JWM's native
+     * message loop until {@code App.terminate()} (see the class doc), so
+     * creating the window here would deadlock {@code Application.init()} and
+     * the application would never show. This method only records the
+     * request; the native bootstrap runs later, from
+     * {@link #enterEventLoop(Runnable)}, on the JWM UI thread. Until then
+     * the backend answers every query from the cached configuration
+     * (headless contract), so building the widget tree works unchanged.
+     *
+     * @return true when the bootstrap has been scheduled (or already ran)
+     */
+    @Override
+    public boolean create() {
+<span class="nc bnc" id="L141" title="All 2 branches missed.">        if (!initAttempted.compareAndSet(false, true)) {</span>
+<span class="nc bnc" id="L142" title="All 4 branches missed.">            return pendingBootstrap || jwmWindow != null;</span>
+        }
+<span class="nc" id="L144">        useGl = Boolean.getBoolean(USE_GL_PROPERTY);</span>
+<span class="nc bnc" id="L145" title="All 2 branches missed.">        if (useGl) {</span>
+            // The GL layer needs a live GL context, but the Skija surface is
+            // built during Application.init(), before this deferred window
+            // exists (see isGlCapable()). Until both ends can be wired
+            // together, honour the flag as &quot;not yet supported&quot; instead of
+            // presenting nothing: the raster layer below is always used.
+<span class="nc" id="L151">            System.err.println(&quot;Glyph UI: -Dglyphui.jwm.gl=true is not supported yet; &quot;</span>
+                + &quot;using the JWM raster layer.&quot;);
+<span class="nc" id="L153">            useGl = false;</span>
+        }
+<span class="nc" id="L155">        pendingBootstrap = true;</span>
+<span class="nc" id="L156">        return true;</span>
+    }
+
+    /**
+     * Creates the native window and its presentation layer. Runs on the JWM
+     * UI thread inside the {@code App.start(...)} launcher callback — the
+     * only context where the JWM API is legal — and finishes by making the
+     * window visible, since JWM creates windows hidden.
+     *
+     * @return true when the window exists and is ready to draw
+     */
+    private boolean createNativeWindow() {
+        try {
+<span class="nc" id="L169">            Window w = App.makeWindow();</span>
+<span class="nc" id="L170">            w.setEventListener(this::onJwmEvent);</span>
+<span class="nc" id="L171">            w.setTitle(title);</span>
+<span class="nc" id="L172">            w.setContentSize(windowWidth, windowHeight);</span>
+            // Publish before attaching the layer: setLayer() fires screen and
+            // resize events synchronously and their handlers query the live
+            // window for scale and geometry.
+<span class="nc" id="L176">            this.jwmWindow = w;</span>
+<span class="nc" id="L177">            attachLayer(w);</span>
+<span class="nc" id="L178">            installTextInputClient(w);</span>
+            // Seed geometry/scale from the screen events JWM dispatches during
+            // the next loop iteration; meanwhile use the primary screen scale.
+<span class="nc" id="L181">            applyScreenScale(App.getPrimaryScreen());</span>
+<span class="nc" id="L182">            applyPendingWindowState(w);</span>
+<span class="nc" id="L183">            return true;</span>
+<span class="nc" id="L184">        } catch (Throwable t) {</span>
+<span class="nc" id="L185">            System.err.println(&quot;Glyph UI: JWM initialization failed (&quot; + t.getMessage()</span>
+                + &quot;). Running headless; window operations are no-ops.&quot;);
+<span class="nc" id="L187">            t.printStackTrace();</span>
+<span class="nc" id="L188">            this.jwmWindow = null;</span>
+<span class="nc" id="L189">            return false;</span>
+        }
+    }
+
+    /**
+     * Applies the {@link WindowConfig} state that could not be set before
+     * the native window existed (maximize / float / fullscreen / centering /
+     * IME), then shows the window when {@code config.visible} is set —
+     * the step missing from the original bootstrap, and the direct reason
+     * nothing ever appeared on screen.
+     */
+    private void applyPendingWindowState(Window w) {
+        // JWM creates the HWND with a style read from a handle that does not
+        // exist yet (WindowWin32::_createInternal calls _getWindowStyle()
+        // before CreateWindowExW), so the window only ends up with WS_CAPTION
+        // and is missing WS_SYSMENU / WS_MINIMIZEBOX / WS_MAXIMIZEBOX /
+        // WS_THICKFRAME — i.e. no close/minimize/maximize buttons and no
+        // resize border. setTitlebarVisible() ORs that exact style set in
+        // (and reapplies the frame), which is precisely config.decorated;
+        // false strips the whole titlebar, as the option promises.
+<span class="nc" id="L209">        w.setTitlebarVisible(config.decorated);</span>
+
+<span class="nc bnc" id="L211" title="All 2 branches missed.">        if (config.maximized) {</span>
+<span class="nc" id="L212">            w.maximize();</span>
+        }
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        if (config.floating) {</span>
+<span class="nc" id="L215">            w.setZOrder(io.github.humbleui.jwm.ZOrder.FLOATING);</span>
+        }
+<span class="nc bnc" id="L217" title="All 2 branches missed.">        if (config.fullscreen) {</span>
+<span class="nc" id="L218">            w.setFullScreen(true);</span>
+        }
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        if (config.center) {</span>
+<span class="nc" id="L221">            centerOnPrimaryScreen(w);</span>
+        }
+<span class="nc bnc" id="L223" title="All 2 branches missed.">        if (textInputEnabled) {</span>
+<span class="nc" id="L224">            w.setTextInputEnabled(true);</span>
+        }
+<span class="nc bnc" id="L226" title="All 2 branches missed.">        if (config.visible) {</span>
+<span class="nc" id="L227">            w.setVisible(true);</span>
+        }
+<span class="nc" id="L229">    }</span>
+
+    /**
+     * Centers the window on the primary monitor's work area. JWM places new
+     * windows at the OS default position (CW_USEDEFAULT), so without this
+     * {@code WindowConfig.center} would be ignored on the JWM backend.
+     *
+     * @param w the freshly created window (UI thread)
+     */
+    private static void centerOnPrimaryScreen(Window w) {
+<span class="nc" id="L239">        Screen screen = App.getPrimaryScreen();</span>
+<span class="nc bnc" id="L240" title="All 4 branches missed.">        if (screen == null || screen._bounds == null) {</span>
+<span class="nc" id="L241">            return;</span>
+        }
+<span class="nc" id="L243">        IRect content = w.getContentRect();</span>
+<span class="nc" id="L244">        int x = screen._bounds._left</span>
+<span class="nc" id="L245">            + Math.max(0, (screen._bounds.getWidth() - content.getWidth()) / 2);</span>
+<span class="nc" id="L246">        int y = screen._bounds._top</span>
+<span class="nc" id="L247">            + Math.max(0, (screen._bounds.getHeight() - content.getHeight()) / 2);</span>
+<span class="nc" id="L248">        w.setWindowPosition(x, y);</span>
+<span class="nc" id="L249">    }</span>
+
+    /**
+     * Creates and attaches the presentation layer: JWM's Skija raster layer,
+     * whose native pixel buffer is where {@link #present(SurfaceResult)}
+     * blits the application frame.
+     *
+     * &lt;p&gt;Typed against skija/JWM directly: the historical reflective probing
+     * targeted APIs that do not exist in the pinned versions
+     * ({@code skija.AlphaType} is {@code ColorAlphaType}, and
+     * {@code ColorInfo} has no {@code makeARGB(...)} factory), so it always
+     * fell through to a raw layer with no drawing path — a visible but blank
+     * window. The layer keeps JWM's default {@code ColorInfo} (N32/premul),
+     * which matches the N32 premul surface the raster factory produces.&lt;/p&gt;
+     *
+     * &lt;p&gt;{@code setLayer(...)} reattaches the SAME live layer object after a
+     * minimize/restore cycle; JWM then keeps its resized surface instead of
+     * allocating a fresh one, so the cached {@link #layerSurface} survives and
+     * must be preserved across the call (see below).&lt;/p&gt;
+     *
+     * @param w the freshly created window (UI thread)
+     */
+    private void attachLayer(Window w) {
+<span class="nc bnc" id="L272" title="All 2 branches missed.">        if (useGl) {</span>
+            // Refused in create() today (no GL context exists before the
+            // deferred window); kept so the flag has a defined meaning once
+            // the GL path is wired end to end.
+<span class="nc" id="L276">            layerAttached = true;</span>
+<span class="nc" id="L277">            w.setLayer(new io.github.humbleui.jwm.skija.LayerGLSkija());</span>
+<span class="nc" id="L278">            return;</span>
+        }
+        try {
+<span class="nc" id="L281">            io.github.humbleui.jwm.skija.LayerRasterSkija existing = rasterLayer;</span>
+<span class="nc bnc" id="L282" title="All 2 branches missed.">            if (existing != null) {</span>
+                // Re-attach after minimize/restore: keep the live layer and
+                // whatever surface JWM already allocated on it. Forcing the
+                // cache to null here made every restore wait for another
+                // present() round-trip before pixels could flow.
+<span class="nc" id="L287">                this.layerAttached = true;</span>
+<span class="nc" id="L288">                w.setLayer(existing);</span>
+<span class="nc" id="L289">                return;</span>
+            }
+<span class="nc" id="L291">            io.github.humbleui.jwm.skija.LayerRasterSkija layer =</span>
+                new io.github.humbleui.jwm.skija.LayerRasterSkija();
+            // Publish BEFORE setLayer(): attaching fires EventWindowScreenChange
+            // (which JWM turns into a resize), and that resize runs our own
+            // listener — it must see the layer as already attached, otherwise
+            // ensureLayerAttached() would attach it again, recursively.
+<span class="nc" id="L297">            this.rasterLayer = layer;</span>
+<span class="nc" id="L298">            this.layerSurface = null;</span>
+<span class="nc" id="L299">            this.layerAttached = true;</span>
+<span class="nc" id="L300">            w.setLayer(layer);</span>
+            // Leave layerSurface null on purpose: getSurface() is null until
+            // JWM runs the layer's first frame anyway, and resolveLayerSurface
+            // () does the lazy resolution on the first present(). A previous
+            // version eagerly overwrote the cache here right after setLayer.
+<span class="nc" id="L305">        } catch (RuntimeException e) {</span>
+<span class="nc" id="L306">            throw new IllegalStateException(&quot;Cannot create JWM presentation layer&quot;, e);</span>
+<span class="nc" id="L307">        }</span>
+<span class="nc" id="L308">    }</span>
+
+    /**
+     * Detaches the presentation layer while the window has no drawable area
+     * (minimized: JWM reports 0x0 and its layer ends up empty).
+     *
+     * &lt;p&gt;This is what actually stops the resize crash. On a 0x0 resize JWM
+     * runs our listener and &lt;b&gt;then&lt;/b&gt; feeds an {@code EventFrame} to
+     * itself ({@code Window.accept}), whose {@code LayerRasterSkija.frame()}
+     * calls {@code Surface.wrapPixels(...)} on the empty buffer and throws
+     * from inside the native dispatch — aborting the {@code WM_PAINT}
+     * handler, which Windows immediately re-sends, in a tight loop. With no
+     * layer attached JWM skips all layer work ({@code if (_layer != null)}),
+     * and {@code requestFrame()} becomes a no-op too (it is gated on JWM's
+     * &quot;has attached layer&quot; flag).&lt;/p&gt;
+     */
+    private void detachLayer() {
+<span class="nc" id="L325">        Window w = jwmWindow;</span>
+<span class="nc bnc" id="L326" title="All 4 branches missed.">        if (w == null || !layerAttached) {</span>
+<span class="nc" id="L327">            return;</span>
+        }
+<span class="nc" id="L329">        layerAttached = false;</span>
+<span class="nc" id="L330">        rasterLayer = null;</span>
+<span class="nc" id="L331">        layerSurface = null;</span>
+        try {
+<span class="nc" id="L333">            w.setLayer(null); // closes and frees the old layer</span>
+<span class="nc" id="L334">        } catch (Throwable t) {</span>
+<span class="nc" id="L335">            System.err.println(&quot;Glyph UI: could not detach the JWM layer (&quot;</span>
+<span class="nc" id="L336">                + t.getMessage() + &quot;).&quot;);</span>
+<span class="nc" id="L337">        }</span>
+<span class="nc" id="L338">    }</span>
+
+    /**
+     * Re-attaches the layer after the window becomes drawable again (restore
+     * from minimize). The layer is sized by the resize event that JWM
+     * generates right after {@code setLayer}, so nothing else is needed.
+     *
+     * @param w the live window (UI thread)
+     */
+    private void ensureLayerAttached(Window w) {
+<span class="nc bnc" id="L348" title="All 2 branches missed.">        if (layerAttached) {</span>
+<span class="nc" id="L349">            return;</span>
+        }
+<span class="nc" id="L351">        attachLayer(w);</span>
+<span class="nc" id="L352">    }</span>
+
+    /** Wires the IME bridge: caret rect + selection come from ImeClient. */
+    private void installTextInputClient(Window w) {
+<span class="nc" id="L356">        w.setTextInputClient(new TextInputClient() {</span>
+            @Override
+            public IRect getRectForMarkedRange(int insertionStart, int insertionEnd) {
+<span class="nc bnc" id="L359" title="All 2 branches missed.">                if (imeClient == null) {</span>
+<span class="nc" id="L360">                    return IRect.makeXYWH(posX, posY, 1, 1);</span>
+                }
+<span class="nc" id="L362">                int[] r = imeClient.getCursorRect(insertionStart, insertionEnd);</span>
+<span class="nc bnc" id="L363" title="All 4 branches missed.">                if (r == null || r.length &lt; 4) {</span>
+<span class="nc" id="L364">                    return IRect.makeXYWH(posX, posY, 1, 1);</span>
+                }
+<span class="nc" id="L366">                return IRect.makeLTRB(r[0], r[1], r[2], r[3]);</span>
+            }
+
+            @Override
+            public IRange getSelectedRange() {
+<span class="nc bnc" id="L371" title="All 2 branches missed.">                if (imeClient == null) {</span>
+<span class="nc" id="L372">                    return new IRange(0, 0);</span>
+                }
+<span class="nc" id="L374">                int[] sel = imeClient.getSelectionRange();</span>
+<span class="nc bnc" id="L375" title="All 4 branches missed.">                if (sel == null || sel.length &lt; 2) {</span>
+<span class="nc" id="L376">                    return new IRange(0, 0);</span>
+                }
+<span class="nc" id="L378">                return new IRange(sel[0], sel[1]);</span>
+            }
+
+            @Override
+            public IRange getMarkedRange() {
+<span class="nc" id="L383">                return new IRange(0, 0);</span>
+            }
+
+            @Override
+            public String getSubstring(int start, int end) {
+<span class="nc bnc" id="L388" title="All 2 branches missed.">                if (imeClient == null) {</span>
+<span class="nc" id="L389">                    return &quot;&quot;;</span>
+                }
+<span class="nc" id="L391">                String text = imeClient.getText();</span>
+<span class="nc bnc" id="L392" title="All 4 branches missed.">                if (text == null || text.isEmpty()) {</span>
+<span class="nc" id="L393">                    return &quot;&quot;;</span>
+                }
+<span class="nc" id="L395">                int lo = Math.max(0, Math.min(start, text.length()));</span>
+<span class="nc" id="L396">                int hi = Math.max(lo, Math.min(end, text.length()));</span>
+<span class="nc" id="L397">                return text.substring(lo, hi);</span>
+            }
+        });
+<span class="nc" id="L400">    }</span>
+
+    @Override
+    public void destroy() {
+<span class="nc" id="L404">        stopFrameDriver();</span>
+<span class="nc" id="L405">        frameBody.set(null);</span>
+<span class="nc" id="L406">        pendingBootstrap = false;</span>
+        // Full native-state reset: a half-reset backend could resurrect a
+        // closed window on the next enterEventLoop()/present() cycle.
+<span class="nc" id="L409">        boolean loopAlive = nativeLoopActive;</span>
+<span class="nc" id="L410">        initAttempted.set(false);</span>
+<span class="nc" id="L411">        bootstrapFailed = false;</span>
+<span class="nc" id="L412">        nativeLoopActive = false;</span>
+<span class="nc" id="L413">        useGl = false;</span>
+<span class="nc" id="L414">        textInputEnabled = false;</span>
+<span class="nc" id="L415">        Window w = jwmWindow;</span>
+<span class="nc" id="L416">        jwmWindow = null;</span>
+<span class="nc" id="L417">        rasterLayer = null;</span>
+<span class="nc" id="L418">        layerSurface = null;</span>
+<span class="nc" id="L419">        layerAttached = false;</span>
+<span class="nc bnc" id="L420" title="All 2 branches missed.">        if (w != null) {</span>
+            // JWM's window operations are UI-thread-only; destroy() may be
+            // called from any thread (shutdown hooks), so marshal the close
+            // onto the loop instead of touching the HWND off-thread. If the
+            // loop is gone, the window died with it already.
+            // loopAlive: App.runOnUIThread(...) requires a pumping native loop
+            // (JWM exposes no isRunning() query), and without one the window
+            // already died together with the loop.
+<span class="nc bnc" id="L428" title="All 2 branches missed.">            if (loopAlive) {</span>
+                try {
+<span class="nc" id="L430">                    final Window toClose = w;</span>
+<span class="nc" id="L431">                    App.runOnUIThread(() -&gt; {</span>
+                        try {
+<span class="nc" id="L433">                            toClose.close();</span>
+<span class="nc" id="L434">                        } catch (Throwable ignored) {</span>
+                            // already closed
+<span class="nc" id="L436">                        }</span>
+<span class="nc" id="L437">                    });</span>
+<span class="nc" id="L438">                } catch (Throwable ignored) {</span>
+                    // UI thread no longer pumping: nothing left to close.
+<span class="nc" id="L440">                }</span>
+            } else {
+                try {
+<span class="nc" id="L443">                    w.close();</span>
+<span class="nc" id="L444">                } catch (Throwable ignored) {</span>
+                    // already closed / wrong thread
+<span class="nc" id="L446">                }</span>
+            }
+        }
+<span class="nc" id="L449">        shouldClose = true;</span>
+<span class="nc" id="L450">    }</span>
+
+    // ------------------------------------------------------------------
+    // Event loop (app-owned)
+    // ------------------------------------------------------------------
+
+    @Override
+    public boolean isAppOwnedLoop() {
+        // Backend property, not a window property: the native loop must be
+        // entered even though the window does not exist yet (create() defers
+        // the bootstrap — see the class doc). Headless paths without a
+        // pending bootstrap are handled inside enterEventLoop(Runnable).
+<span class="nc" id="L462">        return true;</span>
+    }
+
+    /**
+     * Bootstraps JWM and runs its native message loop. {@code App.start(...)}
+     * executes the launcher (window creation + frame driver) and then
+     * &lt;b&gt;blocks pumping messages on the calling thread&lt;/b&gt; — which must be
+     * the UI thread — until {@code App.terminate()} posts WM_CLOSE. Control
+     * returns to {@code Application.run()} only once the app has shut down.
+     *
+     * @param onFrame one full iteration of the toolkit's frame loop
+     */
+    @Override
+    public void enterEventLoop(Runnable onFrame) {
+<span class="nc bnc" id="L476" title="All 2 branches missed.">        if (!pendingBootstrap) {</span>
+            // Headless/test path: no native window owed, drive frames inline.
+<span class="nc bnc" id="L478" title="All 2 branches missed.">            while (!shouldClose()) {</span>
+<span class="nc" id="L479">                onFrame.run();</span>
+            }
+<span class="nc" id="L481">            return;</span>
+        }
+<span class="nc" id="L483">        pendingBootstrap = false;</span>
+        try {
+<span class="nc" id="L485">            App.start(() -&gt; {</span>
+<span class="nc bnc" id="L486" title="All 2 branches missed.">                if (createNativeWindow()) {</span>
+<span class="nc" id="L487">                    nativeLoopActive = true;</span>
+<span class="nc" id="L488">                    startFrameDriver(onFrame);</span>
+                } else {
+<span class="nc" id="L490">                    bootstrapFailed = true;</span>
+<span class="nc" id="L491">                    shouldClose = true;</span>
+                    // We are on the UI thread: post WM_CLOSE so the message
+                    // loop (started right after this launcher returns) exits
+                    // instead of blocking forever.
+<span class="nc" id="L495">                    App.terminate();</span>
+                }
+<span class="nc" id="L497">            });</span>
+<span class="nc" id="L498">        } catch (Throwable t) {</span>
+<span class="nc" id="L499">            bootstrapFailed = true;</span>
+<span class="nc" id="L500">            shouldClose = true;</span>
+<span class="nc" id="L501">            System.err.println(&quot;Glyph UI: JWM event loop failed (&quot; + t.getMessage() + &quot;).&quot;);</span>
+<span class="nc" id="L502">            t.printStackTrace();</span>
+        } finally {
+<span class="nc" id="L504">            nativeLoopActive = false;</span>
+<span class="nc" id="L505">            stopFrameDriver();</span>
+        }
+<span class="nc" id="L507">    }</span>
+
+    /**
+     * Starts the close-watchdog. Frames themselves are driven by JWM through
+     * {@link EventFrame} (see {@link #handleJwmEvent}): every toolkit frame
+     * ends with {@code requestFrame()}, which schedules the next native frame
+     * and runs the frame body back on the UI thread — no polling, no sleeps.
+     * This daemon exists only to break that self-sustaining cycle when the
+     * application asks to close: it posts {@code App.terminate()} so the
+     * native loop unwinds and {@code enterEventLoop()} returns. It also seeds
+     * the very first {@code EventFrame} while the layer is not attached yet
+     * (a minimized start), since {@code Window.requestFrame()} is gated on
+     * JWM's &quot;has attached layer&quot; flag from Java and may be ignored otherwise.
+     *
+     * @param onFrame one full iteration of the toolkit's frame loop
+     */
+    private void startFrameDriver(Runnable onFrame) {
+<span class="nc" id="L524">        loopRunning.set(true);</span>
+<span class="nc" id="L525">        frameBody.set(onFrame);</span>
+<span class="nc" id="L526">        Thread driver = new Thread(() -&gt; {</span>
+<span class="nc bnc" id="L527" title="All 4 branches missed.">            while (loopRunning.get() &amp;&amp; !shouldClose()) {</span>
+                try {
+<span class="nc" id="L529">                    Thread.sleep(16);</span>
+<span class="nc" id="L530">                } catch (InterruptedException e) {</span>
+<span class="nc" id="L531">                    Thread.currentThread().interrupt();</span>
+<span class="nc" id="L532">                    break;</span>
+<span class="nc" id="L533">                }</span>
+<span class="nc bnc" id="L534" title="All 4 branches missed.">                if (!loopRunning.get() || shouldClose()) {</span>
+<span class="nc" id="L535">                    break;</span>
+                }
+<span class="nc bnc" id="L537" title="All 2 branches missed.">                if (frameBody.get() == null) {</span>
+                    // destroy() ran concurrently: stop touching native state.
+<span class="nc" id="L539">                    break;</span>
+                }
+<span class="nc bnc" id="L541" title="All 2 branches missed.">                if (!layerAttached) {</span>
+<span class="nc" id="L542">                    Window w = jwmWindow;</span>
+<span class="nc bnc" id="L543" title="All 2 branches missed.">                    if (w != null) {</span>
+                        try {
+                            // Seed the EventFrame chain until present() takes
+                            // over the request-per-frame pacing.
+<span class="nc" id="L547">                            w.requestFrame();</span>
+<span class="nc" id="L548">                        } catch (Throwable ignored) {</span>
+                            // window closing
+<span class="nc" id="L550">                        }</span>
+                    }
+<span class="nc" id="L552">                }</span>
+            }
+<span class="nc bnc" id="L554" title="All 2 branches missed.">            if (nativeLoopActive) {</span>
+                try {
+<span class="nc" id="L556">                    App.runOnUIThread(App::terminate);</span>
+<span class="nc" id="L557">                } catch (Throwable ignored) {</span>
+                    // Native loop already gone.
+<span class="nc" id="L559">                }</span>
+            }
+<span class="nc" id="L561">        }, &quot;glyphui-jwm-close-watchdog&quot;);</span>
+<span class="nc" id="L562">        driver.setDaemon(true);</span>
+<span class="nc" id="L563">        this.frameDriver = driver;</span>
+<span class="nc" id="L564">        driver.start();</span>
+<span class="nc" id="L565">    }</span>
+
+    /** Stops the close-watchdog (idempotent). */
+    private void stopFrameDriver() {
+<span class="nc" id="L569">        loopRunning.set(false);</span>
+<span class="nc" id="L570">        frameBody.set(null);</span>
+<span class="nc" id="L571">        Thread driver = this.frameDriver;</span>
+<span class="nc" id="L572">        this.frameDriver = null;</span>
+<span class="nc bnc" id="L573" title="All 2 branches missed.">        if (driver != null) {</span>
+<span class="nc" id="L574">            driver.interrupt();</span>
+            try {
+                // The watchdog sleeps at most 16 ms per tick; a long join
+                // would stall shutdown behind a wedged UI thread.
+<span class="nc" id="L578">                driver.join(100);</span>
+<span class="nc" id="L579">            } catch (InterruptedException e) {</span>
+<span class="nc" id="L580">                Thread.currentThread().interrupt();</span>
+<span class="nc" id="L581">            }</span>
+        }
+<span class="nc" id="L583">    }</span>
+
+    @Override
+    public void requestNewFrame() {
+<span class="nc" id="L587">        Window w = jwmWindow;</span>
+<span class="nc bnc" id="L588" title="All 2 branches missed.">        if (w != null) {</span>
+            try {
+<span class="nc" id="L590">                w.requestFrame();</span>
+<span class="nc" id="L591">            } catch (Throwable ignored) {</span>
+                // window closing
+<span class="nc" id="L593">            }</span>
+        }
+<span class="nc" id="L595">    }</span>
+
+    @Override
+    public boolean pollEvents() {
+        // JWM dispatches events from its own loop; nothing to poll here.
+<span class="nc" id="L600">        return true;</span>
+    }
+
+    @Override
+    public void waitEvents() {
+        // Not used on the JWM path: Application.run() blocks inside
+        // enterEventLoop(...), where JWM owns the waiting/pumping entirely.
+        // Kept as a minimal park so any other caller still yields a frame
+        // slot instead of spinning (see WindowBackend javadoc).
+<span class="nc" id="L609">        Window w = jwmWindow;</span>
+<span class="nc bnc" id="L610" title="All 2 branches missed.">        if (w == null) {</span>
+<span class="nc" id="L611">            sleepQuietly(16);</span>
+<span class="nc" id="L612">            return;</span>
+        }
+<span class="nc" id="L614">        long deadline = System.nanoTime() + 16_000_000L;</span>
+<span class="nc bnc" id="L615" title="All 4 branches missed.">        while (System.nanoTime() &lt; deadline &amp;&amp; !shouldClose()) {</span>
+<span class="nc" id="L616">            sleepQuietly(2);</span>
+        }
+<span class="nc" id="L618">        w.requestFrame();</span>
+<span class="nc" id="L619">    }</span>
+
+    @Override
+    public void waitEventsTimeout(double seconds) {
+<span class="nc" id="L623">        long ms = Math.max(1, (long) (seconds * 1000));</span>
+<span class="nc" id="L624">        sleepQuietly(ms);</span>
+<span class="nc" id="L625">        Window w = jwmWindow;</span>
+<span class="nc bnc" id="L626" title="All 2 branches missed.">        if (w != null) {</span>
+            try {
+<span class="nc" id="L628">                w.requestFrame();</span>
+<span class="nc" id="L629">            } catch (Throwable ignored) {</span>
+<span class="nc" id="L630">            }</span>
+        }
+<span class="nc" id="L632">    }</span>
+
+    @Override
+    public void swapBuffers() {
+        // Raster presentation happens in present(); GL builds would swap the
+        // window's own buffers here — JWM owns the swap, so just ask for a frame.
+<span class="nc" id="L638">        requestNewFrame();</span>
+<span class="nc" id="L639">    }</span>
+
+    @Override
+    public void postEmptyEvent() {
+<span class="nc" id="L643">        Window w = jwmWindow;</span>
+<span class="nc bnc" id="L644" title="All 2 branches missed.">        if (w != null) {</span>
+            try {
+<span class="nc" id="L646">                w.requestFrame();</span>
+<span class="nc" id="L647">            } catch (Throwable ignored) {</span>
+<span class="nc" id="L648">            }</span>
+        }
+<span class="nc" id="L650">    }</span>
+
+    private static void sleepQuietly(long ms) {
+        try {
+<span class="nc" id="L654">            Thread.sleep(ms);</span>
+<span class="nc" id="L655">        } catch (InterruptedException e) {</span>
+<span class="nc" id="L656">            Thread.currentThread().interrupt();</span>
+<span class="nc" id="L657">        }</span>
+<span class="nc" id="L658">    }</span>
+
+    // ------------------------------------------------------------------
+    // Presentation
+    // ------------------------------------------------------------------
+
+    @Override
+    public boolean isGlCapable() {
+        // Raster by construction: the Skija surface is created during
+        // Application.init(), i.e. BEFORE the deferred native window (and
+        // therefore before any GL context exists), so a GPU surface cannot
+        // be built on this backend. Application then routes every frame
+        // through present(). See create() for the flag handling.
+<span class="nc bnc" id="L671" title="All 4 branches missed.">        return useGl &amp;&amp; hasLiveWindow();</span>
+    }
+
+    /**
+     * Blits the application's CPU surface onto JWM's raster layer and asks
+     * the native loop for a frame (that frame is what pushes the layer
+     * pixels to the window through {@code LayerRasterSkija.swapBuffers()}).
+     *
+     * &lt;p&gt;The layer surface is resolved lazily because JWM allocates it on
+     * the &lt;b&gt;first native frame&lt;/b&gt;; before that this method reports the
+     * frame as not presented so {@code Application} repaints once the layer
+     * is ready.&lt;/p&gt;
+     *
+     * @param result the surface result currently bound to the app canvas
+     * @return true when the frame reached the native layer
+     */
+    @Override
+    public boolean present(SurfaceResult result) {
+<span class="nc" id="L689">        Window w = jwmWindow;</span>
+<span class="nc bnc" id="L690" title="All 2 branches missed.">        if (w == null) {</span>
+<span class="nc" id="L691">            return true; // headless: there is no window to present to</span>
+        }
+<span class="nc bnc" id="L693" title="All 4 branches missed.">        if (framebufferWidth &lt;= 0 || framebufferHeight &lt;= 0) {</span>
+            // Minimized: JWM resized its layer to 0x0, and requestFrame()
+            // would make LayerRasterSkija.frame() wrap empty pixels — an
+            // IllegalArgumentException thrown from inside the native
+            // dispatch. Nothing to show anyway, so just skip the frame.
+<span class="nc" id="L698">            return false;</span>
+        }
+<span class="nc bnc" id="L700" title="All 4 branches missed.">        if (result == null || rasterLayer == null) {</span>
+<span class="nc" id="L701">            w.requestFrame();</span>
+<span class="nc" id="L702">            return true;</span>
+        }
+<span class="nc" id="L704">        io.github.humbleui.skija.Surface dst = resolveLayerSurface();</span>
+<span class="nc bnc" id="L705" title="All 2 branches missed.">        if (dst == null) {</span>
+            // Layer pixels not allocated yet: request a native frame (that is
+            // what allocates them) and ask the caller for another paint.
+<span class="nc" id="L708">            w.requestFrame();</span>
+<span class="nc" id="L709">            return false;</span>
+        }
+        try {
+<span class="nc" id="L712">            io.github.humbleui.skija.Surface src = result.surface();</span>
+<span class="nc" id="L713">            int dw = dst.getWidth();</span>
+<span class="nc" id="L714">            int dh = dst.getHeight();</span>
+<span class="nc" id="L715">            try (io.github.humbleui.skija.Image img = src.makeImageSnapshot(</span>
+<span class="nc" id="L716">                    io.github.humbleui.types.IRect.makeXYWH(0, 0,</span>
+<span class="nc" id="L717">                            Math.min(dw, src.getWidth()), Math.min(dh, src.getHeight())))) {</span>
+<span class="nc" id="L718">                dst.getCanvas().clear(0x00000000);</span>
+                // Plain drawImage blits 1:1 without resampling (nearest by construction).
+<span class="nc" id="L720">                dst.getCanvas().drawImage(img, 0, 0);</span>
+            }
+<span class="nc" id="L722">            dst.flush();</span>
+<span class="nc" id="L723">            return true;</span>
+<span class="nc" id="L724">        } catch (Throwable t) {</span>
+            // Surface recreated concurrently with resize: skip this frame.
+<span class="nc" id="L726">            return false;</span>
+        } finally {
+<span class="nc" id="L728">            w.requestFrame();</span>
+        }
+    }
+
+    /**
+     * Returns the layer's Skija surface, refreshing the cache when JWM has
+     * (re)allocated it. {@code LayerRasterSkija.getSurface()} returns null
+     * until its first {@code frame()}, and a resize nulls the cache, so a
+     * null result is retried on the next paint.
+     *
+     * @return the layer surface, or null while it is not allocated yet
+     */
+    private io.github.humbleui.skija.Surface resolveLayerSurface() {
+<span class="nc" id="L741">        io.github.humbleui.skija.Surface surface = layerSurface;</span>
+<span class="nc bnc" id="L742" title="All 4 branches missed.">        if (surface == null &amp;&amp; rasterLayer != null) {</span>
+<span class="nc" id="L743">            surface = rasterLayer.getSurface();</span>
+<span class="nc" id="L744">            layerSurface = surface;</span>
+        }
+<span class="nc" id="L746">        return surface;</span>
+    }
+
+    // ------------------------------------------------------------------
+    // Native attribute operations
+    // ------------------------------------------------------------------
+
+    @Override
+    protected boolean hasLiveWindow() {
+<span class="pc bpc" id="L755" title="1 of 2 branches missed.">        return jwmWindow != null;</span>
+    }
+
+    @Override
+    protected void applyNativeTitle(String t) {
+<span class="fc" id="L760">        Window w = jwmWindow;</span>
+<span class="pc bpc" id="L761" title="1 of 2 branches missed.">        if (w != null) {</span>
+<span class="nc" id="L762">            w.setTitle(t);</span>
+        }
+<span class="fc" id="L764">    }</span>
+
+    @Override
+    public void show() {
+<span class="fc" id="L768">        Window w = jwmWindow;</span>
+<span class="pc bpc" id="L769" title="1 of 2 branches missed.">        if (w != null) {</span>
+<span class="nc" id="L770">            w.setVisible(true);</span>
+        }
+<span class="fc" id="L772">    }</span>
+
+    @Override
+    public void hide() {
+<span class="fc" id="L776">        Window w = jwmWindow;</span>
+<span class="pc bpc" id="L777" title="1 of 2 branches missed.">        if (w != null) {</span>
+<span class="nc" id="L778">            w.setVisible(false);</span>
+        }
+<span class="fc" id="L780">    }</span>
+
+    @Override
+    public void setDecorated(boolean decorated) {
+        // Always remember the intent in config (headless contract: setters
+        // sync the config even without a live window).
+<span class="fc" id="L786">        config.decorated = decorated;</span>
+<span class="fc" id="L787">        Window w = jwmWindow;</span>
+<span class="pc bpc" id="L788" title="1 of 2 branches missed.">        if (w != null) {</span>
+<span class="nc" id="L789">            w.setTitlebarVisible(decorated);</span>
+        }
+<span class="fc" id="L791">    }</span>
+
+    @Override
+    public void setResizable(boolean resizable) {
+        // JWM does not expose a runtime resizability toggle; remembered in
+        // the config for recreation-based backends.
+<span class="fc" id="L797">        config.resizable = resizable;</span>
+<span class="fc" id="L798">    }</span>
+
+    @Override
+    public void setFloating(boolean floating) {
+        // Remember the intent in config even when headless (see setDecorated).
+<span class="fc" id="L803">        config.floating = floating;</span>
+<span class="fc" id="L804">        Window w = jwmWindow;</span>
+<span class="pc bpc" id="L805" title="1 of 2 branches missed.">        if (w != null) {</span>
+<span class="nc bnc" id="L806" title="All 2 branches missed.">            w.setZOrder(floating</span>
+<span class="nc" id="L807">                ? io.github.humbleui.jwm.ZOrder.FLOATING</span>
+<span class="nc" id="L808">                : io.github.humbleui.jwm.ZOrder.NORMAL);</span>
+        }
+<span class="fc" id="L810">    }</span>
+
+    @Override
+    public void setOpacity(float opacity) {
+<span class="fc" id="L814">        Window w = jwmWindow;</span>
+<span class="pc bpc" id="L815" title="1 of 2 branches missed.">        if (w != null) {</span>
+<span class="nc" id="L816">            w.setOpacity(Math.max(0f, Math.min(1f, opacity)));</span>
+        }
+<span class="fc" id="L818">    }</span>
+
+    @Override
+    public void setPosition(int x, int y) {
+<span class="fc" id="L822">        posX = x;</span>
+<span class="fc" id="L823">        posY = y;</span>
+<span class="fc" id="L824">        Window w = jwmWindow;</span>
+<span class="pc bpc" id="L825" title="1 of 2 branches missed.">        if (w != null) {</span>
+<span class="nc" id="L826">            w.setWindowPosition(x, y);</span>
+        }
+<span class="fc" id="L828">    }</span>
+
+    @Override
+    public void setSize(int width, int height) {
+<span class="fc" id="L832">        Window w = jwmWindow;</span>
+<span class="pc bpc" id="L833" title="1 of 2 branches missed.">        if (w != null) {</span>
+            // Only ask the native window: the authoritative notifyWindowSize
+            // + notifyFramebufferSize come from EventWindowResize, which JWM
+            // dispatches synchronously enough for same-frame reads. Notifying
+            // here too fired the listeners twice per resize (double surface
+            // recreation down the chain).
+<span class="nc" id="L839">            w.setContentSize(width, height);</span>
+        } else {
+<span class="fc" id="L841">            updateDimensions(width, height);</span>
+        }
+<span class="fc" id="L843">    }</span>
+
+    @Override
+    public void setMaximized(boolean maximized) {
+<span class="fc" id="L847">        Window w = jwmWindow;</span>
+<span class="pc bpc" id="L848" title="1 of 2 branches missed.">        if (w != null) {</span>
+<span class="nc bnc" id="L849" title="All 2 branches missed.">            if (maximized) {</span>
+<span class="nc" id="L850">                w.maximize();</span>
+            } else {
+<span class="nc" id="L852">                w.restore();</span>
+            }
+        }
+<span class="fc" id="L855">    }</span>
+
+    @Override
+    public void setFullscreen(boolean fullscreen) {
+<span class="fc" id="L859">        Window w = jwmWindow;</span>
+        // Headless contract: without a live window this is a guarded no-op
+        // and must not flip the config flag (nothing was actually applied).
+<span class="pc bpc" id="L862" title="1 of 2 branches missed.">        if (w == null) {</span>
+<span class="fc" id="L863">            return;</span>
+        }
+<span class="nc" id="L865">        w.setFullScreen(fullscreen);</span>
+<span class="nc" id="L866">        config.fullscreen = fullscreen;</span>
+<span class="nc" id="L867">    }</span>
+
+    // ------------------------------------------------------------------
+    // Clipboard
+    // ------------------------------------------------------------------
+
+    @Override
+    public void setClipboardString(String text) {
+<span class="nc bnc" id="L875" title="All 2 branches missed.">        if (!hasLiveWindow()) {</span>
+<span class="nc" id="L876">            return;</span>
+        }
+<span class="nc bnc" id="L878" title="All 2 branches missed.">        Clipboard.set(ClipboardEntry.makePlainText(text == null ? &quot;&quot; : text));</span>
+<span class="nc" id="L879">    }</span>
+
+    @Override
+    public String getClipboardString() {
+<span class="nc bnc" id="L883" title="All 2 branches missed.">        if (!hasLiveWindow()) {</span>
+<span class="nc" id="L884">            return &quot;&quot;;</span>
+        }
+<span class="nc" id="L886">        ClipboardEntry entry = Clipboard.get(ClipboardFormat.TEXT);</span>
+<span class="nc bnc" id="L887" title="All 4 branches missed.">        if (entry == null || entry._data == null) {</span>
+<span class="nc" id="L888">            return &quot;&quot;;</span>
+        }
+<span class="nc" id="L890">        return new String(entry._data, StandardCharsets.UTF_8);</span>
+    }
+
+    // ------------------------------------------------------------------
+    // IME enable/disable
+    // ------------------------------------------------------------------
+
+    @Override
+    public void setTextInputEnabled(boolean enabled) {
+        // Remember the request: Application.init() enables the IME before the
+        // deferred native window exists (see create()/enterEventLoop()).
+<span class="nc" id="L901">        this.textInputEnabled = enabled;</span>
+<span class="nc" id="L902">        Window w = jwmWindow;</span>
+<span class="nc bnc" id="L903" title="All 2 branches missed.">        if (w != null) {</span>
+<span class="nc" id="L904">            w.setTextInputEnabled(enabled);</span>
+<span class="nc bnc" id="L905" title="All 2 branches missed.">            if (!enabled) {</span>
+<span class="nc" id="L906">                w.unmarkText();</span>
+            }
+        }
+<span class="nc" id="L909">    }</span>
+
+    // ------------------------------------------------------------------
+    // Event dispatch (called by JWM from the UI thread)
+    // ------------------------------------------------------------------
+
+    /**
+     * Listener entry point registered with {@code Window.setEventListener}.
+     * JWM invokes it from inside its native event dispatch (a JNI upcall), so
+     * &lt;b&gt;no exception may escape&lt;/b&gt;: a pending Java exception there surfaces
+     * in the middle of the message loop, spraying errors and aborting the
+     * whole run. Failures are reported and the loop keeps going.
+     *
+     * @param event the JWM event to process
+     */
+    private void onJwmEvent(io.github.humbleui.jwm.Event event) {
+        try {
+<span class="nc" id="L926">            handleJwmEvent(event);</span>
+<span class="nc" id="L927">        } catch (Throwable t) {</span>
+<span class="nc" id="L928">            System.err.println(&quot;Glyph UI: JWM event handler failed (&quot;</span>
+<span class="nc" id="L929">                + t.getMessage() + &quot;).&quot;);</span>
+<span class="nc" id="L930">            t.printStackTrace();</span>
+<span class="nc" id="L931">        }</span>
+<span class="nc" id="L932">    }</span>
+
+    /** Body of {@link #onJwmEvent}; runs on the JWM UI thread. */
+    private void handleJwmEvent(io.github.humbleui.jwm.Event event) {
+<span class="nc" id="L936">        Window w = jwmWindow;</span>
+<span class="nc bnc" id="L937" title="All 2 branches missed.">        if (event instanceof EventWindowResize e) {</span>
+            // Logical size = content area (window rect includes decorations).
+            // The framebuffer is derived from the LOGICAL content size, exactly
+            // as notifyWindowSize caches it — never from JWM's window rect, so
+            // titlebar/decoration heights cannot leak into pixel geometry.
+<span class="nc" id="L942">            int cw = e.getContentWidth();</span>
+<span class="nc" id="L943">            int ch = e.getContentHeight();</span>
+<span class="nc" id="L944">            notifyWindowSize(cw, ch);</span>
+<span class="nc bnc" id="L945" title="All 2 branches missed.">            Screen s = w != null ? w.getScreen() : null;</span>
+<span class="nc bnc" id="L946" title="All 4 branches missed.">            float scale = s != null &amp;&amp; s._scale &gt; 0f ? s._scale : 1f;</span>
+<span class="nc" id="L947">            notifyFramebufferSize(Math.round(cw * scale), Math.round(ch * scale));</span>
+<span class="nc bnc" id="L948" title="All 2 branches missed.">            if (w != null) {</span>
+<span class="nc bnc" id="L949" title="All 4 branches missed.">                if (e.getContentWidth() &lt;= 0 || e.getContentHeight() &lt;= 0) {</span>
+                    // Minimized: drop the layer *before* JWM re-feeds the
+                    // EventFrame it dispatches after this listener, so that
+                    // frame finds no layer and cannot throw (see detachLayer).
+<span class="nc" id="L953">                    detachLayer();</span>
+                } else {
+                    // First real size, or back from minimize.
+<span class="nc" id="L956">                    ensureLayerAttached(w);</span>
+                }
+<span class="nc" id="L958">                invalidateLayerSurface();</span>
+            }
+<span class="nc bnc" id="L960" title="All 2 branches missed.">        } else if (event instanceof EventWindowScreenChange) {</span>
+<span class="nc bnc" id="L961" title="All 2 branches missed.">            applyScreenScale(w != null ? w.getScreen() : null);</span>
+<span class="nc bnc" id="L962" title="All 2 branches missed.">        } else if (event instanceof EventWindowMove e) {</span>
+<span class="nc" id="L963">            posX = e.getWindowLeft();</span>
+<span class="nc" id="L964">            posY = e.getWindowTop();</span>
+<span class="nc bnc" id="L965" title="All 2 branches missed.">        } else if (event instanceof EventWindowCloseRequest) {</span>
+<span class="nc" id="L966">            setShouldClose(true);</span>
+<span class="nc bnc" id="L967" title="All 2 branches missed.">        } else if (event instanceof EventWindowClose) {</span>
+<span class="nc" id="L968">            shouldClose = true;</span>
+<span class="nc" id="L969">            loopRunning.set(false);</span>
+<span class="nc bnc" id="L970" title="All 2 branches missed.">        } else if (event instanceof EventFrame) {</span>
+            // JWM's native frame tick: run one toolkit frame directly on the
+            // UI thread. present()/requestNewFrame() call requestFrame() at
+            // the end of every frame, which schedules the next EventFrame —
+            // that closed loop is the whole pacing system (see class doc).
+<span class="nc" id="L975">            Runnable body = frameBody.get();</span>
+<span class="nc bnc" id="L976" title="All 4 branches missed.">            if (body != null &amp;&amp; !shouldClose()) {</span>
+                try {
+<span class="nc" id="L978">                    body.run();</span>
+<span class="nc" id="L979">                } catch (Throwable t) {</span>
+                    // Throwing into the native dispatcher would abort the
+                    // message loop: report and shut down cleanly instead.
+<span class="nc" id="L982">                    System.err.println(&quot;Glyph UI: frame step failed (&quot;</span>
+<span class="nc" id="L983">                        + t.getMessage() + &quot;).&quot;);</span>
+<span class="nc" id="L984">                    t.printStackTrace();</span>
+<span class="nc" id="L985">                    setShouldClose(true);</span>
+<span class="nc" id="L986">                }</span>
+            }
+<span class="nc bnc" id="L988" title="All 2 branches missed.">        } else if (event instanceof EventKey e) {</span>
+<span class="nc" id="L989">            Integer code = KEY_MAP.get(e._key);</span>
+<span class="nc bnc" id="L990" title="All 2 branches missed.">            if (code != null) {</span>
+<span class="nc" id="L991">                notifyKey(code, e._isPressed, mapNativeModifiers(e._modifiers));</span>
+            }
+<span class="nc bnc" id="L993" title="All 2 branches missed.">        } else if (event instanceof EventTextInput e) {</span>
+<span class="nc" id="L994">            notifyTextInput(e._text, e._replacementStart, e._replacementEnd);</span>
+<span class="nc bnc" id="L995" title="All 2 branches missed.">        } else if (event instanceof EventTextInputMarked) {</span>
+            // KNOWN LIMITATION (documented per review item 29): the pre-edit /
+            // composing text carried by this event is NOT surfaced through the
+            // neutral toolkit API — WindowBackend has no marked-text callback,
+            // so widgets cannot draw an underline under the in-progress IME
+            // composition. Committed text still arrives correctly via
+            // EventTextInput above; only the live composition preview is lost.
+            // Wiring this needs a new TextInputListener method (backend SPI),
+            // deliberately out of scope here. Ignoring is safe: JWM keeps the
+            // marked range and folds it into the committed event.
+<span class="nc bnc" id="L1005" title="All 2 branches missed.">        } else if (event instanceof EventMouseButton e) {</span>
+<span class="nc" id="L1006">            cursorX = e._x;</span>
+<span class="nc" id="L1007">            cursorY = e._y;</span>
+<span class="nc" id="L1008">            notifyMouseButton(buttonToToolkit(e._button), e._isPressed,</span>
+<span class="nc" id="L1009">                e._x, e._y, mapNativeModifiers(e._modifiers));</span>
+<span class="nc bnc" id="L1010" title="All 2 branches missed.">        } else if (event instanceof EventMouseMove e) {</span>
+<span class="nc" id="L1011">            cursorX = e._x;</span>
+<span class="nc" id="L1012">            cursorY = e._y;</span>
+<span class="nc" id="L1013">            notifyCursorPos(e._x, e._y);</span>
+<span class="nc bnc" id="L1014" title="All 2 branches missed.">        } else if (event instanceof EventMouseScroll e) {</span>
+            // Wheel gestures are surfaced as press/release pairs on the
+            // neutral virtual wheel buttons (BTN_WHEEL_UP/DOWN/LEFT/RIGHT —
+            // see WindowBackend.MouseListener). One pair per line of integer
+            // magnitude, so a fast flick scrolls proportionally instead of
+            // being flattened to a single notch.
+<span class="nc" id="L1020">            int mods = mapNativeModifiers(e._modifiers);</span>
+<span class="nc bnc" id="L1021" title="All 2 branches missed.">            float dy = Float.isFinite(e._deltaY) ? e._deltaY : 0f;</span>
+<span class="nc bnc" id="L1022" title="All 2 branches missed.">            float dx = Float.isFinite(e._deltaX) ? e._deltaX : 0f;</span>
+<span class="nc" id="L1023">            int stepsY = Math.min(16, (int) Math.abs(dy));</span>
+<span class="nc bnc" id="L1024" title="All 4 branches missed.">            if (stepsY == 0 &amp;&amp; dy != 0f) {</span>
+<span class="nc" id="L1025">                stepsY = 1; // sub-notch deltas still scroll one line</span>
+            }
+<span class="nc bnc" id="L1027" title="All 2 branches missed.">            for (int i = 0; i &lt; stepsY; i++) {</span>
+<span class="nc bnc" id="L1028" title="All 2 branches missed.">                int btn = dy &gt; 0 ? BTN_WHEEL_UP : BTN_WHEEL_DOWN;</span>
+<span class="nc" id="L1029">                notifyMouseButton(btn, true, e._x, e._y, mods);</span>
+<span class="nc" id="L1030">                notifyMouseButton(btn, false, e._x, e._y, mods);</span>
+            }
+<span class="nc" id="L1032">            int stepsX = Math.min(16, (int) Math.abs(dx));</span>
+<span class="nc bnc" id="L1033" title="All 4 branches missed.">            if (stepsX == 0 &amp;&amp; dx != 0f) {</span>
+<span class="nc" id="L1034">                stepsX = 1;</span>
+            }
+<span class="nc bnc" id="L1036" title="All 2 branches missed.">            for (int i = 0; i &lt; stepsX; i++) {</span>
+<span class="nc bnc" id="L1037" title="All 2 branches missed.">                int btn = dx &gt; 0 ? BTN_WHEEL_RIGHT : BTN_WHEEL_LEFT;</span>
+<span class="nc" id="L1038">                notifyMouseButton(btn, true, e._x, e._y, mods);</span>
+<span class="nc" id="L1039">                notifyMouseButton(btn, false, e._x, e._y, mods);</span>
+            }
+        }
+<span class="nc" id="L1042">    }</span>
+
+    /**
+     * Drops the cached layer-surface reference after a window resize.
+     *
+     * &lt;p&gt;JWM resizes its own layer ({@code Window.accept(EventWindowResize)}
+     * runs {@code Layer.resize(...)} &lt;b&gt;before&lt;/b&gt; this backend's listener),
+     * and {@code LayerRasterSkija} closes and nulls its Skija surface on
+     * that resize. Only the cache has to be invalidated here: re-wrapping
+     * with the wrong size (the old code resized the layer again with the
+     * toolkit's framebuffer value) would fight JWM's own bookkeeping, and
+     * the surface is rebuilt lazily on the next frame anyway.&lt;/p&gt;
+     */
+    private void invalidateLayerSurface() {
+<span class="nc" id="L1056">        layerSurface = null;</span>
+<span class="nc" id="L1057">    }</span>
+
+    /** Applies the monitor scale as content scale (uniform on all platforms). */
+    private void applyScreenScale(Screen screen) {
+<span class="nc bnc" id="L1061" title="All 4 branches missed.">        float scale = screen != null &amp;&amp; screen._scale &gt; 0f ? screen._scale : 1f;</span>
+<span class="nc" id="L1062">        setContentScale(scale, scale);</span>
+        // Use the window's REAL current geometry when it exists: the cached
+        // windowWidth/windowHeight lag behind maximize/fullscreen transitions,
+        // and deriving the framebuffer from stale caches desyncs the surface
+        // from the layer. While headless/pre-bootstrap there is no native
+        // query to make and no live listener contract to keep (the toolkit
+        // derives the framebuffer from scale × logical size on demand), so do
+        // not fire a spurious notifyFramebufferSize — the earlier code used to
+        // announce a phantom resize at bootstrap time.
+<span class="nc" id="L1071">        Window w = jwmWindow;</span>
+<span class="nc bnc" id="L1072" title="All 2 branches missed.">        if (w == null) {</span>
+<span class="nc" id="L1073">            return;</span>
+        }
+<span class="nc" id="L1075">        int width = windowWidth;</span>
+<span class="nc" id="L1076">        int height = windowHeight;</span>
+        try {
+<span class="nc" id="L1078">            IRect content = w.getContentRect();</span>
+<span class="nc bnc" id="L1079" title="All 6 branches missed.">            if (content != null &amp;&amp; content.getWidth() &gt; 0 &amp;&amp; content.getHeight() &gt; 0) {</span>
+<span class="nc" id="L1080">                width = content.getWidth();</span>
+<span class="nc" id="L1081">                height = content.getHeight();</span>
+            }
+<span class="nc" id="L1083">        } catch (Throwable ignored) {</span>
+            // Native query unavailable mid-close: cached values stand.
+<span class="nc" id="L1085">        }</span>
+<span class="nc" id="L1086">        notifyFramebufferSize(Math.round(width * scale), Math.round(height * scale));</span>
+<span class="nc" id="L1087">    }</span>
+
+    // ------------------------------------------------------------------
+    // Key/modifier/button mapping tables
+    // ------------------------------------------------------------------
+
+<span class="fc" id="L1093">    private static final Map&lt;Key, Integer&gt; KEY_MAP = new HashMap&lt;&gt;();</span>
+
+    static {
+        // Letters/digits: GlyphKeys mirrors the ASCII wire codes for these.
+<span class="fc" id="L1097">        KEY_MAP.put(Key.A, GlyphKeys.A); KEY_MAP.put(Key.B, GlyphKeys.B);</span>
+<span class="fc" id="L1098">        KEY_MAP.put(Key.C, GlyphKeys.C); KEY_MAP.put(Key.D, GlyphKeys.D);</span>
+<span class="fc" id="L1099">        KEY_MAP.put(Key.E, GlyphKeys.E); KEY_MAP.put(Key.F, GlyphKeys.F);</span>
+<span class="fc" id="L1100">        KEY_MAP.put(Key.G, GlyphKeys.G); KEY_MAP.put(Key.H, GlyphKeys.H);</span>
+<span class="fc" id="L1101">        KEY_MAP.put(Key.I, GlyphKeys.I); KEY_MAP.put(Key.J, GlyphKeys.J);</span>
+<span class="fc" id="L1102">        KEY_MAP.put(Key.K, GlyphKeys.K); KEY_MAP.put(Key.L, GlyphKeys.L);</span>
+<span class="fc" id="L1103">        KEY_MAP.put(Key.M, GlyphKeys.M); KEY_MAP.put(Key.N, GlyphKeys.N);</span>
+<span class="fc" id="L1104">        KEY_MAP.put(Key.O, GlyphKeys.O); KEY_MAP.put(Key.P, GlyphKeys.P);</span>
+<span class="fc" id="L1105">        KEY_MAP.put(Key.Q, GlyphKeys.Q); KEY_MAP.put(Key.R, GlyphKeys.R);</span>
+<span class="fc" id="L1106">        KEY_MAP.put(Key.S, GlyphKeys.S); KEY_MAP.put(Key.T, GlyphKeys.T);</span>
+<span class="fc" id="L1107">        KEY_MAP.put(Key.U, GlyphKeys.U); KEY_MAP.put(Key.V, GlyphKeys.V);</span>
+<span class="fc" id="L1108">        KEY_MAP.put(Key.W, GlyphKeys.W); KEY_MAP.put(Key.X, GlyphKeys.X);</span>
+<span class="fc" id="L1109">        KEY_MAP.put(Key.Y, GlyphKeys.Y); KEY_MAP.put(Key.Z, GlyphKeys.Z);</span>
+<span class="fc" id="L1110">        KEY_MAP.put(Key.DIGIT0, GlyphKeys.D0); KEY_MAP.put(Key.DIGIT1, GlyphKeys.D1);</span>
+<span class="fc" id="L1111">        KEY_MAP.put(Key.DIGIT2, GlyphKeys.D2); KEY_MAP.put(Key.DIGIT3, GlyphKeys.D3);</span>
+<span class="fc" id="L1112">        KEY_MAP.put(Key.DIGIT4, GlyphKeys.D4); KEY_MAP.put(Key.DIGIT5, GlyphKeys.D5);</span>
+<span class="fc" id="L1113">        KEY_MAP.put(Key.DIGIT6, GlyphKeys.D6); KEY_MAP.put(Key.DIGIT7, GlyphKeys.D7);</span>
+<span class="fc" id="L1114">        KEY_MAP.put(Key.DIGIT8, GlyphKeys.D8); KEY_MAP.put(Key.DIGIT9, GlyphKeys.D9);</span>
+<span class="fc" id="L1115">        KEY_MAP.put(Key.ENTER, GlyphKeys.ENTER);</span>
+<span class="fc" id="L1116">        KEY_MAP.put(Key.BACKSPACE, GlyphKeys.BACKSPACE);</span>
+<span class="fc" id="L1117">        KEY_MAP.put(Key.TAB, GlyphKeys.TAB);</span>
+<span class="fc" id="L1118">        KEY_MAP.put(Key.ESCAPE, GlyphKeys.ESCAPE);</span>
+<span class="fc" id="L1119">        KEY_MAP.put(Key.SPACE, GlyphKeys.SPACE);</span>
+<span class="fc" id="L1120">        KEY_MAP.put(Key.LEFT, GlyphKeys.LEFT);</span>
+<span class="fc" id="L1121">        KEY_MAP.put(Key.RIGHT, GlyphKeys.RIGHT);</span>
+<span class="fc" id="L1122">        KEY_MAP.put(Key.UP, GlyphKeys.UP);</span>
+<span class="fc" id="L1123">        KEY_MAP.put(Key.DOWN, GlyphKeys.DOWN);</span>
+<span class="fc" id="L1124">        KEY_MAP.put(Key.HOME, GlyphKeys.HOME);</span>
+<span class="fc" id="L1125">        KEY_MAP.put(Key.END, GlyphKeys.END);</span>
+<span class="fc" id="L1126">        KEY_MAP.put(Key.PAGE_UP, GlyphKeys.PAGE_UP);</span>
+<span class="fc" id="L1127">        KEY_MAP.put(Key.PAGE_DOWN, GlyphKeys.PAGE_DOWN);</span>
+<span class="fc" id="L1128">        KEY_MAP.put(Key.DELETE, GlyphKeys.DELETE);</span>
+<span class="fc" id="L1129">        KEY_MAP.put(Key.INSERT, GlyphKeys.INSERT);</span>
+<span class="fc" id="L1130">        KEY_MAP.put(Key.MINUS, GlyphKeys.MINUS);</span>
+<span class="fc" id="L1131">        KEY_MAP.put(Key.EQUALS, GlyphKeys.EQUAL);</span>
+<span class="fc" id="L1132">        KEY_MAP.put(Key.SLASH, GlyphKeys.SLASH);</span>
+<span class="fc" id="L1133">        KEY_MAP.put(Key.BACK_SLASH, GlyphKeys.BACKSLASH);</span>
+<span class="fc" id="L1134">        KEY_MAP.put(Key.SEMICOLON, GlyphKeys.SEMICOLON);</span>
+<span class="fc" id="L1135">        KEY_MAP.put(Key.QUOTE, GlyphKeys.APOSTROPHE);</span>
+<span class="fc" id="L1136">        KEY_MAP.put(Key.COMMA, GlyphKeys.COMMA);</span>
+<span class="fc" id="L1137">        KEY_MAP.put(Key.PERIOD, GlyphKeys.PERIOD);</span>
+<span class="fc" id="L1138">        KEY_MAP.put(Key.BACK_QUOTE, GlyphKeys.GRAVE);</span>
+<span class="fc" id="L1139">        KEY_MAP.put(Key.OPEN_BRACKET, GlyphKeys.LEFT_BRACKET);</span>
+<span class="fc" id="L1140">        KEY_MAP.put(Key.CLOSE_BRACKET, GlyphKeys.RIGHT_BRACKET);</span>
+<span class="fc" id="L1141">        KEY_MAP.put(Key.SHIFT, GlyphKeys.LEFT_SHIFT);</span>
+<span class="fc" id="L1142">        KEY_MAP.put(Key.CONTROL, GlyphKeys.LEFT_CONTROL);</span>
+<span class="fc" id="L1143">        KEY_MAP.put(Key.ALT, GlyphKeys.LEFT_ALT);</span>
+<span class="fc" id="L1144">        KEY_MAP.put(Key.WIN_LOGO, GlyphKeys.LEFT_SUPER);</span>
+<span class="fc" id="L1145">        KEY_MAP.put(Key.CAPS_LOCK, GlyphKeys.CAPS_LOCK);</span>
+<span class="fc" id="L1146">        KEY_MAP.put(Key.F1, GlyphKeys.F1); KEY_MAP.put(Key.F2, GlyphKeys.F2);</span>
+<span class="fc" id="L1147">        KEY_MAP.put(Key.F3, GlyphKeys.F3); KEY_MAP.put(Key.F4, GlyphKeys.F4);</span>
+<span class="fc" id="L1148">        KEY_MAP.put(Key.F5, GlyphKeys.F5); KEY_MAP.put(Key.F6, GlyphKeys.F6);</span>
+<span class="fc" id="L1149">        KEY_MAP.put(Key.F7, GlyphKeys.F7); KEY_MAP.put(Key.F8, GlyphKeys.F8);</span>
+<span class="fc" id="L1150">        KEY_MAP.put(Key.F9, GlyphKeys.F9); KEY_MAP.put(Key.F10, GlyphKeys.F10);</span>
+<span class="fc" id="L1151">        KEY_MAP.put(Key.F11, GlyphKeys.F11); KEY_MAP.put(Key.F12, GlyphKeys.F12);</span>
+<span class="fc" id="L1152">    }</span>
+
+    /** Maps JWM modifier bits (KeyModifier._mask) onto GlyphMods bits.
+     * @param nativeMods
+     * @return  */
+    @Override
+    protected int mapNativeModifiers(int nativeMods) {
+<span class="nc" id="L1159">        int out = 0;</span>
+<span class="nc bnc" id="L1160" title="All 2 branches missed.">        if ((nativeMods &amp; KeyModifier.SHIFT._mask) != 0)   out |= GlyphMods.SHIFT;</span>
+<span class="nc bnc" id="L1161" title="All 2 branches missed.">        if ((nativeMods &amp; KeyModifier.CONTROL._mask) != 0) out |= GlyphMods.CTRL;</span>
+<span class="nc bnc" id="L1162" title="All 2 branches missed.">        if ((nativeMods &amp; KeyModifier.ALT._mask) != 0)     out |= GlyphMods.ALT;</span>
+<span class="nc bnc" id="L1163" title="All 2 branches missed.">        if ((nativeMods &amp; (KeyModifier.WIN_LOGO._mask</span>
+                | KeyModifier.MAC_COMMAND._mask
+<span class="nc" id="L1165">                | KeyModifier.LINUX_SUPER._mask)) != 0)    out |= GlyphMods.SUPER;</span>
+<span class="nc bnc" id="L1166" title="All 2 branches missed.">        if ((nativeMods &amp; KeyModifier.CAPS_LOCK._mask) != 0) out |= GlyphMods.CAPS_LOCK;</span>
+<span class="nc" id="L1167">        return out;</span>
+    }
+
+    /** Toolkit mouse-button ids used on the neutral listener wire (see MouseListener javadoc). */
+    static final int BTN_LEFT = 0;
+    static final int BTN_RIGHT = 1;
+    static final int BTN_MIDDLE = 2;
+    /** Wheel gestures are emitted as press/release pairs on these virtual buttons. */
+    static final int BTN_WHEEL_UP = 3;
+    static final int BTN_WHEEL_DOWN = 4;
+    static final int BTN_WHEEL_LEFT = 5;
+    static final int BTN_WHEEL_RIGHT = 6;
+
+    /** JWM MouseButton → toolkit ids (0=left, 1=right, 2=middle). */
+    private static int buttonToToolkit(io.github.humbleui.jwm.MouseButton b) {
+<span class="nc bnc" id="L1182" title="All 6 branches missed.">        return switch (b) {</span>
+<span class="nc" id="L1183">            case PRIMARY -&gt; BTN_LEFT;</span>
+<span class="nc" id="L1184">            case SECONDARY -&gt; BTN_RIGHT;</span>
+<span class="nc" id="L1185">            case MIDDLE -&gt; BTN_MIDDLE;</span>
+<span class="nc" id="L1186">            case BACK -&gt; BTN_WHEEL_UP;    // legacy collision kept for compatibility</span>
+<span class="nc" id="L1187">            case FORWARD -&gt; BTN_WHEEL_DOWN;</span>
+<span class="nc" id="L1188">            default -&gt; BTN_LEFT;</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
