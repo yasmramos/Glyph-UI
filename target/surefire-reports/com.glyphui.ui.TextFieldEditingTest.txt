@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.glyphui.ui.TextFieldEditingTest
--------------------------------------------------------------------------------
-Tests run: 22, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.031 s -- in com.glyphui.ui.TextFieldEditingTest

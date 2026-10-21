@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.glyphui.markup.UiLoaderTest
--------------------------------------------------------------------------------
-Tests run: 14, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.221 s -- in com.glyphui.markup.UiLoaderTest

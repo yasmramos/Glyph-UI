@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.glyphui.graphics.GraphicsValueTypesTest$FontsTests
--------------------------------------------------------------------------------
-Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.306 s -- in com.glyphui.graphics.GraphicsValueTypesTest$FontsTests
