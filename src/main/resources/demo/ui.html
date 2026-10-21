@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!--
+  Glyph-UI declarative markup demo.
+
+  This is NOT a web page: there is no JavaScript engine and no DOM.
+  UiLoader parses this fixed tag subset (div, button, label, p, input, img)
+  into the native widget tree; everything else is CSS-styled through
+  app.css (a documented subset of CSS 2.1 selectors + custom properties).
+-->
+<html>
+<head>
+    <title>Glyph-UI Demo</title>
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+    <div id="root" class="column gap-md" layout="flex" style="flex-direction: column;">
+        <label class="title">Glyph-UI</label>
+        <p class="subtitle">Declarative markup + CSS styling on a retained widget tree</p>
+
+        <div class="card row gap-sm" layout="flex">
+            <input id="name-field" class="field" placeholder="Your name"/>
+            <button id="greet-btn" class="btn-primary" onclick="sayHello">Greet</button>
+            <button id="dark-btn" class="btn-secondary" onclick="toggleTheme">Dark mode</button>
+        </div>
+
+        <div class="footer">
+            <label id="status" class="muted">Ready.</label>
+        </div>
+    </div>
+</body>
+</html>
