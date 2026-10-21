@@ -392,24 +392,24 @@ public class TextFieldEditingTest {
             field.setEnabled(true);
             FocusManager.getGlobalFocusManager().clearFocus(field);
             field.setPlaceholder("ph");
-            field.render(canvas);
+            field.renderInternal(canvas);
 
             // Focused with selection → highlight + caret branches.
             field.requestFocus();
             field.setText("hello");
             field.selectAll();
-            field.render(canvas);
+            field.renderInternal(canvas);
 
             // Disabled → dimmed text color branch, no caret.
             field.setEnabled(false);
-            field.render(canvas);
+            field.renderInternal(canvas);
             field.setEnabled(true);
 
             // Caret at both extremes.
             field.onKeyEvent(press(KEY_HOME, '\0'));
-            field.render(canvas);
+            field.renderInternal(canvas);
             field.onKeyEvent(press(KEY_END, '\0'));
-            field.render(canvas);
+            field.renderInternal(canvas);
         } finally {
             if (holder[0] != null) {
                 holder[0].close();

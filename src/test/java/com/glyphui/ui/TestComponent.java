@@ -50,7 +50,7 @@ public class TestComponent extends Component {
     }
     
     @Override
-    public void render(Canvas canvas) {
+    protected void render(Canvas canvas) {
         renderCalled = true;
     }
     

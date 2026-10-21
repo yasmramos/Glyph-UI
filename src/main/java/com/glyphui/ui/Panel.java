@@ -270,7 +270,7 @@ public class Panel extends Component {
     }
 
     @Override
-    public void render(com.glyphui.graphics.Canvas canvas) {
+    protected void render(com.glyphui.graphics.Canvas canvas) {
         if (!visible) {
             return;
         }
@@ -300,7 +300,7 @@ public class Panel extends Component {
             // Render all children in local coordinates
             for (Component child : children) {
                 if (child.isVisible()) {
-                    child.render(canvas);
+                    child.renderInternal(canvas);
                 }
             }
         } finally {

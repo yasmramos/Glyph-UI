@@ -104,13 +104,13 @@ public class ImageViewTest {
         com.glyphui.graphics.Canvas canvas = RasterCanvasTestFactory.create(holder);
         try {
             ImageView view = new ImageView();
-            view.render(canvas); // null image branch must not throw
+            view.renderInternal(canvas); // null image branch must not throw
 
             try (Image img = tinyImage(16, 12)) {
                 view.setImage(img);
                 view.setWidth(16);
                 view.setHeight(12);
-                view.render(canvas); // drawImageRect branch
+                view.renderInternal(canvas); // drawImageRect branch
             }
         } finally {
             if (holder[0] != null) {

@@ -1260,7 +1260,7 @@ public class Application implements AutoCloseable {
             nativeCanvas.scale(contentScaleX, contentScaleY);
 
             // Render root panel and all children (in logical coordinates)
-            rootPanel.render(canvas);
+            rootPanel.renderInternal(canvas);
         } finally {
             nativeCanvas.restoreToCount(saveCount);
         }

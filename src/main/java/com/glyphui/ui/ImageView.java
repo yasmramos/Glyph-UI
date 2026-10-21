@@ -81,7 +81,7 @@ public class ImageView extends Component {
     }
 
     @Override
-    public void render(Canvas canvas) {
+    protected void render(Canvas canvas) {
         if (image != null && image.isLoaded()) {
             canvas.drawImage(image, x, y, width, height);
         }
