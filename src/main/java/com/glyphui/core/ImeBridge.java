@@ -3,6 +3,7 @@ package com.glyphui.core;
 import com.glyphui.core.backend.WindowBackend;
 import com.glyphui.ui.Component;
 import com.glyphui.ui.TextField;
+import com.glyphui.core.internal.ImeTextFieldBridge;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.FontMetrics;
 
@@ -20,7 +21,7 @@ import io.github.humbleui.skija.FontMetrics;
  * <p>Registered by {@link Application} during {@code init()}; backends
  * without IME support simply never query it.</p>
  */
-final class ImeBridge implements WindowBackend.ImeClient {
+class ImeBridge implements WindowBackend.ImeClient {
 
     private final Application application;
     private final Window window;
@@ -58,7 +59,7 @@ final class ImeBridge implements WindowBackend.ImeClient {
         // component's parent chain, offset by the field padding + the text
         // width up to the requested insertion offset.
         float padding = com.glyphui.graphics.Theme.current().getPadding();
-        Font font = field.getFontForIme();
+        Font font = ((ImeTextFieldBridge) field).getFontForIme();
         float lineHeight;
         try {
             FontMetrics metrics = font.getMetrics();

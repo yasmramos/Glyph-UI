@@ -150,7 +150,7 @@ class ApplicationOnDemandTest {
         // The Application constructor already sets paintDirty = true.
 
         assertTrue(readPaintDirty(app));
-        app.renderFrame(); // exercises the private render(): clears flag, draws root panel
+        com.glyphui.core.internal.TestHooks.renderFrame(app); // exercises the private render(): clears flag, draws root panel
 
         assertFalse(readPaintDirty(app), "render must consume the repaint request");
 

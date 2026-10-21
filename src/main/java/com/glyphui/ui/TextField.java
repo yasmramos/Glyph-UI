@@ -25,7 +25,8 @@ import io.github.humbleui.skija.Paint;
  * installed by {@code Application}, Ctrl+A select-all, plain text insertion
  * through {@link #insertText(String)} (also fed by the char callback).</p>
  */
-public class TextField extends Component {
+public class TextField extends Component
+        implements com.glyphui.core.internal.ImeTextFieldBridge {
 
     @Override
     protected String defaultStyleTag() {
@@ -211,14 +212,25 @@ public class TextField extends Component {
     }
 
     /**
-     * Gets the font used to lay out this field's text (the shared theme BODY
-     * font, owned by {@code FontManager}). Exposed for the IME bridge, which
-     * must measure the caret position exactly like {@link #render} does.
+     * {@inheritDoc}
      *
-     * @return the rendering font (never null once a theme exists)
+     * <p>Implementation of the internal IME bridge; not part of the frozen
+     * application-facing widget API.</p>
      */
+    @Override
     public Font getFontForIme() {
         return getFont();
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Delegates to {@link #replaceRange(int, int, String, int)}. Not part
+     * of the frozen application-facing widget API.</p>
+     */
+    @Override
+    public void imeReplaceRange(int lo, int hi, String newText, int newCaret) {
+        replaceRange(lo, hi, newText, newCaret);
     }
 
     /**
@@ -232,7 +244,7 @@ public class TextField extends Component {
      * @param newText  the committed text
      * @param newCaret caret position after the replacement (clamped)
      */
-    public void replaceRange(int lo, int hi, String newText, int newCaret) {
+    void replaceRange(int lo, int hi, String newText, int newCaret) {
         if (!isEnabled()) {
             return;
         }

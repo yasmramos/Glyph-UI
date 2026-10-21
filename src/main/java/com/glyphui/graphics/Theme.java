@@ -255,6 +255,14 @@ public final class Theme {
     /**
      * Gets the font registered for a semantic role.
      *
+     * <p><strong>Not part of the frozen public API:</strong> this accessor is
+     * reserved for toolkit internals (widget font resolution) and unit tests.
+     * It returns a Skija {@code Font} borrowed from the internal manager —
+     * application code must not depend on it, since native types are kept out
+     * of the supported surface (see {@code docs/architecture/api-stability.md}).
+     * The public way to influence fonts is the style system
+     * ({@code font-family} / {@code font-size}).</p>
+     *
      * @param role the font role
      * @return the font (owned by {@link FontManager}; do not close)
      */
@@ -264,6 +272,9 @@ public final class Theme {
 
     /**
      * Gets the font registered for a semantic role at an explicit size.
+     *
+     * <p><strong>Not part of the frozen public API</strong> — see
+     * {@link #getFont(FontRole)} for the rationale.</p>
      *
      * @param role the font role
      * @param size the font size in logical units

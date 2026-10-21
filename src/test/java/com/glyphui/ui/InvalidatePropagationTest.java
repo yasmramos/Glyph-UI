@@ -144,7 +144,7 @@ public class InvalidatePropagationTest {
             // the application paint-dirty through invalidate() propagation.
             app.setRepaintRequester(app::requestRepaint);
             c.setText("hello");
-            assertTrue(app.isPaintDirty(),
+            assertTrue(com.glyphui.core.internal.TestHooks.isPaintDirty(app),
                     "mutating a widget must mark the Application paint-dirty");
         } finally {
             Component.setGlobalRepaintRequester(null);

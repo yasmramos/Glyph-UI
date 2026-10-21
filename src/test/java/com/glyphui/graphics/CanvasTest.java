@@ -52,8 +52,8 @@ class CanvasTest {
     @Test
     @DisplayName("Constructor stores dimensions and exposes native objects")
     void constructorExposesNativeObjectsAndDimensions() {
-        assertNotNull(canvas.getNativeCanvas());
-        assertSame(surfaceHolder[0], canvas.getSurface());
+        assertNotNull(canvas.nativeCanvasForInternalUse());
+        assertSame(surfaceHolder[0], canvas.nativeSurfaceForInternalUse());
         assertEquals(RasterCanvasTestFactory.SIZE, canvas.getWidth());
         assertEquals(RasterCanvasTestFactory.SIZE, canvas.getHeight());
     }

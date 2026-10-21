@@ -88,11 +88,11 @@ public class GraphicsValueTypesTest {
 
         @Test
         public void emptyWrapperReportsNoImage() {
-            Image img = new Image(null);
+            Image img = Image.fromNativeForInternalUse(null);
             assertFalse(img.isLoaded());
             assertEquals(0, img.getWidth());
             assertEquals(0, img.getHeight());
-            assertNull(img.getNativeImage());
+            assertNull(img.nativeImageForInternalUse());
             assertThrows(IllegalStateException.class, img::encodeToPng);
             img.close(); // idempotent on null native
             img.close();
@@ -105,7 +105,7 @@ public class GraphicsValueTypesTest {
             assertTrue(img.isLoaded());
             assertEquals(4, img.getWidth());
             assertEquals(3, img.getHeight());
-            assertNotNull(img.getNativeImage());
+            assertNotNull(img.nativeImageForInternalUse());
 
             byte[] reencoded = img.encodeToPng();
             assertTrue(reencoded.length > 0);
@@ -113,7 +113,7 @@ public class GraphicsValueTypesTest {
             img.close();
             assertFalse(img.isLoaded());
             assertEquals(0, img.getWidth());
-            assertNull(img.getNativeImage());
+            assertNull(img.nativeImageForInternalUse());
             img.close(); // second close is safe
             assertThrows(IllegalStateException.class, img::encodeToPng);
         }

@@ -52,7 +52,7 @@ public class InvalidateRepaintIT {
         TestHooks.resetInvalidateCount(label);
         TestHooks.resetInvalidateCount(root);
 
-        assertTrue(app.isPaintDirty(), "application should be paint-dirty after init");
+        assertTrue(com.glyphui.core.internal.TestHooks.isPaintDirty(app), "application should be paint-dirty after init");
 
         label.setText("updated");
 
@@ -60,7 +60,7 @@ public class InvalidateRepaintIT {
                 "setText() must call invalidate() on the component");
         assertEquals(1, TestHooks.getInvalidateCount(root),
                 "invalidate() must propagate from child to parent panel");
-        assertTrue(app.isPaintDirty(),
+        assertTrue(com.glyphui.core.internal.TestHooks.isPaintDirty(app),
                 "invalidation reaching the root must keep the app paint-dirty");
     }
 
@@ -82,6 +82,6 @@ public class InvalidateRepaintIT {
                 "setVisible() on a child must invalidate its direct parent");
         assertEquals(1, TestHooks.getInvalidateCount(root),
                 "setVisible() on a grandchild must propagate all the way to the root panel");
-        assertTrue(app.isPaintDirty());
+        assertTrue(com.glyphui.core.internal.TestHooks.isPaintDirty(app));
     }
 }
