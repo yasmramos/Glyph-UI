@@ -1,5 +1,6 @@
 package com.glyphui.style;
 
+import com.glyphui.TestBase;
 import com.glyphui.core.FocusManager;
 import com.glyphui.ui.Button;
 import com.glyphui.ui.Component;
@@ -18,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * the component state changes — which is exactly what {@code Application}
  * does once per frame through its {@link StyleEngine}.
  */
-class PseudoClassStateTest {
+class PseudoClassStateTest extends TestBase {
 
     private StyleSheet sheet;
     private Panel root;

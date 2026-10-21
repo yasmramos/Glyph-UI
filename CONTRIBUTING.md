@@ -66,3 +66,25 @@ git config user.email "yasmramos95@gmail.com"
 ```
 
 Authentication uses HTTPS with a personal access token stored via the Git credential helper.
+
+## Phase 1 bug rule
+
+Every bug found during Phase 1 must first get a **regression test that would
+have caught it**, written *before* the fix is applied. Workflow:
+
+1. Reproduce the bug in a failing test (commit or keep it locally red).
+2. Apply the minimal fix.
+3. Confirm the test turns green; run the full suite (`mvn test`).
+4. Commit both together, e.g. `fix(ui): <what was broken>` with the test in
+   the same commit, referencing the issue if one exists.
+
+Test-infrastructure conventions (see `src/test/java/com/glyphui/`):
+
+- Extend `TestBase` — its `@AfterEach` clears all process-wide toolkit state
+  (global repaint hook, global focus manager, current `Application`, cached
+  native fonts) so tests cannot leak state into each other.
+- Use `SkijaTestSupport.assumeAvailable()` / `isAvailable()` for any test
+  that renders or measures text natively; such tests are *skipped*, never
+  failed, on hosts without Skija natives.
+- Test real widgets, not mocks: since paints are lazy, `Button` and friends
+  can be constructed and driven through their event handlers headlessly.

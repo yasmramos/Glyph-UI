@@ -1,5 +1,6 @@
 package com.glyphui.ui;
 
+import com.glyphui.TestBase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -15,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * The hook is how widgets notify the application that visual state changed
  * and an on-demand repaint should be scheduled.
  */
-class RepaintRequesterTest {
+class RepaintRequesterTest extends TestBase {
 
     private AtomicInteger repaintCount;
 

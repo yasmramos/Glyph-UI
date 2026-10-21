@@ -1,5 +1,6 @@
 package com.glyphui.ui;
 
+import com.glyphui.TestBase;
 import com.glyphui.graphics.Dimension;
 import com.glyphui.graphics.Image;
 import com.glyphui.graphics.RasterCanvasTestFactory;
@@ -23,7 +24,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * from pixel dimensions with constraint clamping, non-interactive event
  * behavior and rendering (including the null-image no-op path).
  */
-public class ImageViewTest {
+public class ImageViewTest extends TestBase {
 
     @BeforeAll
     static void requireSkija() {

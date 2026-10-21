@@ -1,5 +1,6 @@
 package com.glyphui.ui;
 
+import com.glyphui.TestBase;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * requester exactly like {@code Application}'s constructor does
  * ({@code Component.setGlobalRepaintRequester(this::requestRepaint)}).</p>
  */
-public class InvalidatePropagationTest {
+public class InvalidatePropagationTest extends TestBase {
 
     /** Mimics Application.paintDirty + requestRepaint(). */
     private final AtomicInteger repaintRequests = new AtomicInteger();

@@ -1,5 +1,6 @@
 package com.glyphui.ui;
 
+import com.glyphui.TestBase;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -8,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for the Component base class.
  * Uses TestComponent to avoid requiring Skija native initialization.
  */
-public class ComponentTest {
+public class ComponentTest extends TestBase {
 
     @Test
     public void testDefaultStateAfterConstruction() {

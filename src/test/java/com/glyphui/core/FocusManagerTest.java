@@ -1,5 +1,6 @@
 package com.glyphui.core;
 
+import com.glyphui.TestBase;
 import com.glyphui.ui.Button;
 import com.glyphui.ui.Component;
 import com.glyphui.ui.Panel;
@@ -20,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Shift+Tab cycling, and automatic focus clearing when a component is
  * hidden, disabled or made unfocusable.
  */
-public class FocusManagerTest {
+public class FocusManagerTest extends TestBase {
 
     /** Repaint counter shared with the manager built in setUp. */
     private final int[] repaintCounter = {0};
