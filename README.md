@@ -315,6 +315,15 @@ The project includes integration tests that create actual JWM windows and captur
 
 Screenshot artifacts from CI builds can be downloaded from GitHub Actions workflow runs.
 
+## API Boundary
+
+The supported public API of this library is defined by a package whitelist;
+everything else — including any package with an `internal` segment such as
+`com.glyphui.core.internal`, which hosts test hooks and non-public classes —
+carries no stability promise. The full decision record (rationale, rejected
+alternatives, enforcement plan) lives in
+[`docs/architecture/internal-boundary.md`](docs/architecture/internal-boundary.md).
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
