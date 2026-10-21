@@ -11,9 +11,9 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for the HiDPI logical/physical separation in {@link Window}.
  *
- * <p>No GLFW window is created here: the tests exercise the cached state
- * (logical {@code glfwGetWindowSize} values vs. physical
- * {@code glfwGetFramebufferSize} values) and the content-scale bookkeeping,
+ * <p>No native window is created here: the tests exercise the cached state
+ * (logical window-size values vs. physical framebuffer-size values) and
+ * the content-scale bookkeeping,
  * including a simulated 2.0x DPI display.</p>
  */
 public class WindowHiDpiTest {
@@ -39,7 +39,7 @@ public class WindowHiDpiTest {
     public void testFramebufferSizeIsPhysicalAndSeparateFromLogical() {
         Window window = new Window("HiDPI", 800, 600);
 
-        // Before any real GLFW query, framebuffer is assumed 1:1
+        // Before any real native query, framebuffer is assumed 1:1
         assertEquals(window.getWidth(), window.getFramebufferWidth());
         assertEquals(window.getHeight(), window.getFramebufferHeight());
 
@@ -82,7 +82,7 @@ public class WindowHiDpiTest {
         Window window = new Window("HiDPI", 800, 600);
         window.setContentScale(2.0f, 2.0f);
 
-        // No live GLFW handle: updateDimensions() must derive the physical
+        // No live native handle: updateDimensions() must derive the physical
         // framebuffer size from logical size * content scale
         window.updateDimensions(500, 400);
 
@@ -108,7 +108,7 @@ public class WindowHiDpiTest {
 
     @Test
     public void testMouseCoordinatesStayInLogicalSpace() {
-        // HiDPI contract: GLFW reports mouse positions in logical window
+        // HiDPI contract: backends report mouse positions in logical window
         // coordinates, and the UI tree lives in logical coordinates too.
         // The component hit-testing therefore needs no physical conversion.
         Window window = new Window("HiDPI", 800, 600);
@@ -120,7 +120,7 @@ public class WindowHiDpiTest {
         // A logical cursor position at (150, 120) — which maps to physical
         // pixel (300, 240) on the 2x framebuffer — must hit the component
         // using its logical bounds unchanged.
-        double logicalX = 150; // GLFW cursor x (logical space)
+        double logicalX = 150; // backend cursor x (logical space)
         double logicalY = 120;
         assertTrue(button.contains((int) logicalX, (int) logicalY),
                 "logical mouse coords must match the logical component tree");

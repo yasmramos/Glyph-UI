@@ -1,18 +1,20 @@
 package com.glyphui.core;
 
+import com.glyphui.core.backend.JwmWindowBackend;
 import com.glyphui.core.backend.WindowBackend;
 
 /**
  * Manages the application window, delegating all native operations to a
- * backend-agnostic {@link WindowBackend} (GLFW/LWJGL by default, JWM when the
- * {@code io.github.humbleui:jwm} dependency is present — see
- * {@link BackendFactory}).
+ * backend-agnostic {@link WindowBackend}. The toolkit's single production
+ * backend is JWM ({@code io.github.humbleui:jwm}); the GLFW/LWJGL backend
+ * was removed, so {@link com.glyphui.core.backend.JwmWindowBackend} is
+ * instantiated directly here.
  *
  * <p>This class exposes the toolkit's public window API: creation/destruction,
  * event pumping, geometry (logical + physical/framebuffer sizes), HiDPI
  * content scale, runtime window attributes, clipboard access and input-event
- * dispatch. None of its signatures leak LWJGL/GLFW types; listeners use the
- * plain functional interfaces declared in {@link WindowBackend}.</p>
+ * dispatch. None of its signatures leak native-windowing types; listeners use
+ * the plain functional interfaces declared in {@link WindowBackend}.</p>
  *
  * <p>{@code Window} owns the native window, so it implements
  * {@link AutoCloseable}. {@link #close()} destroys the window and releases
@@ -51,7 +53,7 @@ public class Window implements AutoCloseable {
      *               defaults)
      */
     public Window(String title, int width, int height, WindowConfig config) {
-        this.backend = BackendFactory.create(
+        this.backend = new JwmWindowBackend(
             title, width, height, config != null ? config : new WindowConfig());
     }
 

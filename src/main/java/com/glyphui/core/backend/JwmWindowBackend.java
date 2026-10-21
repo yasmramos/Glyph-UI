@@ -36,8 +36,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * JWM {@link WindowBackend}: native windows driven by
- * <em>io.github.humbleui:jwm</em>, the toolkit's primary backend. It
- * provides what GLFW (via LWJGL) could not: a real native IME bridge
+ * <em>io.github.humbleui:jwm</em>, the toolkit's only supported windowing
+ * backend. It provides a real native IME bridge
  * ({@code TextInputClient} / {@code EventTextInput}), cross-platform
  * clipboard and per-monitor DPI scale through {@code Screen._scale}.
  *
@@ -917,7 +917,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             cursorY = e._y;
             notifyCursorPos(e._x, e._y);
         } else if (event instanceof EventMouseScroll e) {
-            // Map wheel to toolkit buttons 3 (up) / 4 (down), like GLFW.
+            // Map wheel to toolkit buttons 3 (up) / 4 (down).
             int btn = e._deltaY >= 0 ? 3 : 4;
             notifyMouseButton(btn, true, e._x, e._y, mapNativeModifiers(e._modifiers));
             notifyMouseButton(btn, false, e._x, e._y, mapNativeModifiers(e._modifiers));

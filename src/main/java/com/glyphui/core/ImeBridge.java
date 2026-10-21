@@ -18,7 +18,7 @@ import io.github.humbleui.skija.FontMetrics;
  * on-screen position.</p>
  *
  * <p>Registered by {@link Application} during {@code init()}; backends
- * without IME support (GLFW) simply never query it.</p>
+ * without IME support simply never query it.</p>
  */
 final class ImeBridge implements WindowBackend.ImeClient {
 

@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Integration test that captures a screenshot of all UI components.
- * This test requires GLFW and will be skipped in headless environments.
+ * This test requires a native window (JWM) and will be skipped in headless environments.
  */
 public class AllComponentsScreenshotIT {
 
@@ -29,8 +29,8 @@ public class AllComponentsScreenshotIT {
         // Initialize with raster surface for testing (no GPU context needed)
         // This is more reliable in CI environments with Xvfb
         boolean initialized = app.init("Glyph UI Integration Test", 800, 600, true);
-        // Skip test if GLFW cannot be initialized (headless environment)
-        Assumptions.assumeTrue(initialized, "GLFW not available (headless environment); skipping test");
+        // Skip test if the native window (JWM) cannot be initialized (headless environment)
+        Assumptions.assumeTrue(initialized, "JWM native window not available (headless environment); skipping test");
     }
 
     @AfterEach

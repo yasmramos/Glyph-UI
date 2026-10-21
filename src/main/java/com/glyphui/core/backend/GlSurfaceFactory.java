@@ -7,11 +7,10 @@ import io.github.humbleui.skija.DirectContext;
 import io.github.humbleui.skija.Surface;
 import io.github.humbleui.skija.SurfaceColorFormat;
 import io.github.humbleui.skija.SurfaceOrigin;
-// LWJGL-free framebuffer query: the GL path only ever renders into the
-// default window framebuffer (fbId 0), which every backend binds before
-// handing the context to Skija. The historical code read
-// GL_FRAMEBUFFER_BINDING via LWJGL purely as a sanity check; that binding
-// library dependency was removed with the window-backend abstraction.
+// The GL path only ever renders into the default window framebuffer
+// (fbId 0), which every backend binds before handing the context to
+// Skija. The historical LWJGL-based GL_FRAMEBUFFER_BINDING sanity check
+// was removed together with the GLFW backend.
 
 /**
  * GPU (OpenGL) {@link SurfaceFactory}: creates a Skija
@@ -174,7 +173,7 @@ public class GlSurfaceFactory implements SurfaceFactory {
      * Resolves the GL id of the render-target framebuffer. Glyph-UI always
      * draws into the default window framebuffer, which the active backend
      * binds before creating the surface, so this is 0 for every supported
-     * backend (GLFW makes the window context current whose default FBO is
+     * backend (a GL-capable window makes its context current and its default FBO is
      * id 0; JWM does the same after {@code Window.makeCurrent()}). A future
      * offscreen-FBO pipeline would override this through the backend.
      *

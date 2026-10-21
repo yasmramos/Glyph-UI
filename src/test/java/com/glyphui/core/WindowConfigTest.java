@@ -3,15 +3,14 @@ package com.glyphui.core;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.lwjgl.glfw.GLFW.*;
 
 /**
  * Headless unit tests for {@link WindowConfig} and the config-driven
  * additions to {@link Window} (custom constructor, runtime setters that
- * must be safe with no live GLFW window handle).
+ * must be safe with no live native window handle).
  *
- * <p>No native window is created: every setter guards on
- * {@code windowHandle != NULL}, so these exercise the caching/forwarding
+ * <p>No native window is created: every setter guards on the live
+ * window handle, so these exercise the caching/forwarding
  * logic without a display server.</p>
  */
 public class WindowConfigTest {
@@ -30,7 +29,7 @@ public class WindowConfigTest {
         assertEquals(0, config.samples);           // no MSAA by default
         assertEquals(3, config.glMajor);
         assertEquals(2, config.glMinor);
-        assertEquals(GLFW_OPENGL_CORE_PROFILE, config.glProfile);
+        assertEquals(WindowConfig.GL_PROFILE_CORE, config.glProfile);
         assertTrue(config.glForwardCompat);
         assertEquals(1, config.swapInterval);      // vsync on
         assertTrue(config.center);
@@ -50,7 +49,7 @@ public class WindowConfigTest {
                 .transparentFramebuffer(true)
                 .samples(4)
                 .glVersion(4, 5)
-                .glProfile(GLFW_OPENGL_ANY_PROFILE)
+                .glProfile(WindowConfig.GL_PROFILE_ANY)
                 .glForwardCompat(false)
                 .swapInterval(0)
                 .center(false)
@@ -67,7 +66,7 @@ public class WindowConfigTest {
         assertEquals(4, config.samples);
         assertEquals(4, config.glMajor);
         assertEquals(5, config.glMinor);
-        assertEquals(GLFW_OPENGL_ANY_PROFILE, config.glProfile);
+        assertEquals(WindowConfig.GL_PROFILE_ANY, config.glProfile);
         assertFalse(config.glForwardCompat);
         assertEquals(0, config.swapInterval);
         assertFalse(config.center);
@@ -100,7 +99,7 @@ public class WindowConfigTest {
 
         assertNotNull(window.getConfig());
         assertTrue(window.getConfig().resizable);
-        assertEquals(GLFW_OPENGL_CORE_PROFILE, window.getConfig().glProfile);
+        assertEquals(WindowConfig.GL_PROFILE_CORE, window.getConfig().glProfile);
         // Legacy 3-arg constructor behaves identically
         Window legacy = new Window("Default", 800, 600);
         assertNotNull(legacy.getConfig());

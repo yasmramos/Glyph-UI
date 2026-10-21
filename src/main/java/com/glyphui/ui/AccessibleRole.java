@@ -5,7 +5,7 @@ package com.glyphui.ui;
  *
  * <p>Glyph UI v0.1 exposes the accessibility surface of every component so
  * that a future platform bridge (AT-SPI on Linux, UIA on Windows, NSAccessibility
- * on macOS) does not require retrofitting the widget API. GLFW itself cannot
+ * on macOS) does not require retrofitting the widget API. The windowing layer itself cannot
  * host such a bridge, so no screen-reader integration exists yet — only the
  * role/name/description contract on {@link Component}.</p>
  */

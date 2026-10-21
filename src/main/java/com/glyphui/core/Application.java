@@ -21,8 +21,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * Main application class that manages the event loop, rendering, and window lifecycle.
  *
  * <p>{@code Application} owns every native resource created during
- * {@link #init()} (Skija surface, GPU context and GLFW window), so it
- * implements {@link AutoCloseable} and is intended to be used with
+ * {@link #init()} (Skija surface, optional GPU context and JWM window), so
+ * it implements {@link AutoCloseable} and is intended to be used with
  * try-with-resources:</p>
  *
  * <pre>{@code
@@ -37,7 +37,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * <p>{@link #close()} releases resources in dependency order: the component
  * tree first (widgets close their paints/fonts), then the shared font cache,
  * then the Skija surface, then the DirectContext that created it, and finally
- * the GLFW window.</p>
+ * the JWM window.</p>
  */
 public class Application implements AutoCloseable {
     private Window window;
@@ -169,7 +169,7 @@ public class Application implements AutoCloseable {
     public void requestRepaint() {
         synchronized (this) {
             paintDirty = true;
-            // Wake up the loop if it is blocked in glfwWaitEvents()
+            // Wake up the loop if it is blocked waiting for events
             if (window != null && running) {
                 window.postEmptyEvent();
             }
@@ -434,12 +434,13 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Sets up GLFW callbacks for events with HiDPI support.
+     * Sets up the backend event listeners for input and HiDPI changes.
      *
-     * <p>Coordinate policy: mouse/cursor coordinates from GLFW are in the
-     * logical window space and are propagated unchanged to the component
-     * tree (which is also in logical space thanks to the content-scale
-     * canvas transform). No manual fb/window ratio conversion is needed.</p>
+     * <p>Coordinate policy: mouse/cursor coordinates reported by the backend
+     * are in the logical window space and are propagated unchanged to the
+     * component tree (which is also in logical space thanks to the
+     * content-scale canvas transform). No manual fb/window ratio conversion
+     * is needed.</p>
      */
     private void setupCallbacks() {
         // The backend owns the native event plumbing; every subscription here
@@ -465,7 +466,7 @@ public class Application implements AutoCloseable {
         });
 
         // Mouse button listener — coordinates arrive in LOGICAL space
-        // (backends translate their native identifiers onto the toolkit
+        // (the backend translates its native identifiers onto the toolkit
         // vocabulary: 0 = left, 1 = right, 2 = middle).
         window.setMouseListener((button, pressed, x, y, mods) -> {
             MouseButton glyphButton = convertMouseButton(button);
@@ -550,8 +551,7 @@ public class Application implements AutoCloseable {
         });
 
         // Char listener -- printable text input goes straight to the focused
-        // TextField. On backends without a native IME bridge (GLFW) this is
-        // the only text path; on JWM the TextInputListener below takes
+        // TextField. On the JWM backend the TextInputListener below takes
         // precedence for composed input and the default forwarding (see
         // AbstractWindowBackend#notifyTextInput) keeps plain characters
         // flowing here as well.
@@ -588,15 +588,14 @@ public class Application implements AutoCloseable {
     /**
      * Maps the most common special keys to control characters so widgets can
      * recognize them through {@link KeyEvent#getKeyChar()} without depending
-     * on LWJGL constants. Printable characters arrive through the GLFW char
+     * on native key constants. Printable characters arrive through the char
      * callback instead; unmapped keys produce NUL.
      *
-     * @param glfwKey the GLFW key code
+     * @param key the toolkit key code (see GlyphKeys)
      * @return the mapped character, or 0 when there is no mapping
      */
     /**
-     * Backend-neutral monotonic clock in seconds (replaces GLFW's
-     * {@code glfwGetTime()} so the loop does not depend on LWJGL).
+     * Backend-neutral monotonic clock in seconds.
      *
      * @return elapsed seconds from an arbitrary fixed origin
      */
@@ -631,7 +630,7 @@ public class Application implements AutoCloseable {
      * @param fbHeight the new physical framebuffer height
      */
     private void recreateSurface(int fbWidth, int fbHeight) {
-        // A minimized window reports a 0x0 framebuffer (GLFW and JWM both do).
+        // A minimized window reports a 0x0 framebuffer (JWM does).
         // Skija cannot build an empty raster surface — Surface.makeRaster(...)
         // throws IllegalArgumentException — so keep the previous surface and
         // skip this resize: render() is suppressed while the framebuffer is
@@ -675,9 +674,9 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Converts GLFW mouse button to Glyph MouseButton.
+     * Converts a toolkit mouse button id to a Glyph MouseButton enum value.
      *
-     * @param button the GLFW button code
+     * @param button the toolkit button id (0 = left, 1 = right, 2 = middle)
      * @return the corresponding MouseButton
      */
     private MouseButton convertMouseButton(int button) {
@@ -692,9 +691,9 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Gets modifier keys from GLFW mods.
+     * Gets modifier keys from the toolkit modifier bitmask.
      *
-     * @param mods the GLFW modifier flags
+     * @param mods the modifier flags (see GlyphMods)
      * @return the set of KeyModifiers
      */
     private EnumSet<KeyModifier> getModifiers(int mods) {
@@ -995,8 +994,8 @@ public class Application implements AutoCloseable {
      * method automatically.</p>
      *
      * <p>The posted task marks the frame dirty and wakes up a UI thread
-     * blocked in {@code glfwWaitEvents()} via {@code glfwPostEmptyEvent()},
-     * so it executes promptly even when the window is idle.</p>
+     * blocked waiting for events via {@code postEmptyEvent()}, so it
+     * executes promptly even when the window is idle.</p>
      *
      * @param task the runnable to execute on the UI thread
      */
@@ -1011,8 +1010,8 @@ public class Application implements AutoCloseable {
         uiTaskQueue.add(task);
         requestRepaint();
         // Wake the UI thread if it is blocked waiting for events. Only valid
-        // once GLFW is initialized; before that the queue is drained on the
-        // first run() iteration anyway.
+        // once the window backend is initialized; before that the queue is
+        // drained on the first run() iteration anyway.
         if (window != null) {
             window.postEmptyEvent();
         }
@@ -1025,7 +1024,7 @@ public class Application implements AutoCloseable {
     /**
      * Package-private test hook: drains the posted-task queue on the calling
      * thread and returns how many tasks ran. Used by unit tests that simulate
-     * the UI loop without GLFW/Skija initialization.
+     * the UI loop without native/Skija initialization.
      *
      * @return number of tasks executed
      */
@@ -1102,9 +1101,10 @@ public class Application implements AutoCloseable {
     /**
      * Runs the application main loop with on-demand rendering:
      * frames are only produced when something changed (input events, component
-     * mutations, resize) or an animation is active. On the GPU path there is no
-     * manual FPS cap because glfwSwapInterval(1) in Window.create() provides
-     * vsync; the raster path sleeps briefly while idle to avoid busy-waiting.
+     * mutations, resize) or an animation is active. The JWM backend drives
+     * its own native message loop (see {@code enterEventLoop}); the polling
+     * fallback blocks on waitEvents (GPU) or sleeps briefly while idle
+     * (raster) to avoid busy-waiting.
      */
     public void run() {
         if (!running) {
@@ -1141,9 +1141,9 @@ public class Application implements AutoCloseable {
                         return;
                     }
                 } else {
-                    // GPU backend with a clean frame: block in glfwWaitEvents()
+                    // GPU backend with a clean frame: block in waitEvents()
                     // instead of busy-polling. The loop is woken up by real input
-                    // events or by glfwPostEmptyEvent() from invokeLater(...).
+                    // events or by postEmptyEvent() from invokeLater(...).
                     window.waitEvents();
                 }
             }
@@ -1196,7 +1196,7 @@ public class Application implements AutoCloseable {
 
     /**
      * True while the window has no drawable area — i.e. it is minimized,
-     * because both GLFW and JWM report a 0x0 framebuffer then. Painting is
+     * because JWM reports a 0x0 framebuffer then. Painting is
      * suppressed in that state: the frame would have nowhere to go, and on
      * JWM the present path would ask the native layer (also resized to 0x0)
      * for a frame, whose empty {@code Surface.wrapPixels(...)} throws from
@@ -1282,7 +1282,7 @@ public class Application implements AutoCloseable {
      * <p>Release order follows native-resource ownership: the component tree
      * first (widgets close their paints/fonts), then the shared font cache,
      * then the Skija surface, then the {@code DirectContext} that created it,
-     * and finally the GLFW window. This method is idempotent.</p>
+     * and finally the JWM window. This method is idempotent.</p>
      */
     @Override
     public void close() {
@@ -1346,7 +1346,7 @@ public class Application implements AutoCloseable {
             surfaceFactory = null;
         }
 
-        // Destroy window (GLFW) last
+        // Destroy window (JWM) last
         if (window != null) {
             window.destroy();
         }

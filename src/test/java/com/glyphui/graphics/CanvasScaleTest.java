@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * and save/restore must roll it back, exactly as the per-frame content-scale
  * transform applied by {@code Application.render()} relies on.
  *
- * <p>Uses a pure raster Skija surface, so no GLFW window is required.</p>
+ * <p>Uses a pure raster Skija surface, so no native window is required.</p>
  */
 public class CanvasScaleTest {
 

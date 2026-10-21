@@ -9,15 +9,12 @@ package com.glyphui.events;
  * before invoking the listeners:</p>
  *
  * <ul>
- *   <li>GLFW: {@code GLFW_MOD_SHIFT/CONTROL/ALT/SUPER} map directly onto
- *       SHIFT/CTRL/ALT/SUPER (identical bit values).</li>
  *   <li>JWM: {@code io.github.humbleui.jwm.KeyModifier._mask} bits are
  *       remapped via {@code JwmWindowBackend.mapModifiers(int)}.</li>
  * </ul>
  *
- * <p>The values reproduce the historical GLFW bit layout so that the
- * legacy GLFW plumbing could feed them through unchanged during the
- * migration.</p>
+ * <p>The bit layout is stable toolkit API: serialized events and tests
+ * already rely on these values, so they must not change.</p>
  */
 public final class GlyphMods {
 

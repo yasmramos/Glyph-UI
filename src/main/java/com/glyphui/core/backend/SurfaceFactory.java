@@ -21,7 +21,7 @@ public interface SurfaceFactory {
     /**
      * Creates the initial surface for a freshly opened window.
      *
-     * @param window the GLFW window whose framebuffer (or CPU buffer, for
+     * @param window the toolkit window whose framebuffer (or CPU buffer, for
      *               raster) the surface should target
      * @return the created surface together with its owning context (nullable
      *         for CPU backends) and the logical/physical dimensions used

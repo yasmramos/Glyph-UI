@@ -157,7 +157,7 @@ public class Button extends Component {
     /**
      * Sets the click handler.
      *
-     * <p>The handler is invoked from the GLFW event dispatch inside
+     * <p>The handler is invoked from the backend event dispatch inside
      * {@code Application.run()}, so it always executes on the UI thread by
      * construction; widget mutations and repaint requests made from it need
      * no synchronization.</p>
@@ -518,10 +518,10 @@ public class Button extends Component {
         return false;
     }
 
-    /** GLFW key codes handled without importing LWJGL into the widget layer. */
-    private static final int KEY_ENTER = 257;   // GLFW_KEY_ENTER
-    private static final int KEY_KP_ENTER = 335; // GLFW_KEY_KP_ENTER
-    private static final int KEY_SPACE = 32;    // GLFW_KEY_SPACE
+    /** Toolkit key codes (GlyphKeys wire values) handled by this widget. */
+    private static final int KEY_ENTER = 257;   // GlyphKeys.ENTER
+    private static final int KEY_KP_ENTER = 335; // GlyphKeys.KP_ENTER
+    private static final int KEY_SPACE = 32;    // GlyphKeys.SPACE
 
     @Override
     public void onKeyEvent(KeyEvent event) {

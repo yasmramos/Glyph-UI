@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Integration test that captures a screenshot of all UI components using GPU backend.
- * This test requires GLFW and OpenGL context, and will be skipped in headless environments.
+ * This test requires a native JWM window with an OpenGL context, and will be skipped in headless environments.
  */
 public class AllComponentsGpuScreenshotIT {
 
@@ -28,8 +28,8 @@ public class AllComponentsGpuScreenshotIT {
         app = new Application();
         // Initialize with GPU backend (OpenGL context)
         boolean initialized = app.init("Glyph UI GPU Test", 800, 600, false);
-        // Skip test if GLFW or GL context cannot be initialized
-        Assumptions.assumeTrue(initialized, "GLFW/GL context not available; skipping GPU test");
+        // Skip test if the JWM window or GL context cannot be initialized
+        Assumptions.assumeTrue(initialized, "JWM window/GL context not available; skipping GPU test");
     }
 
     @AfterEach
