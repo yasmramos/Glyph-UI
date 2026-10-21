@@ -146,9 +146,11 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Returns the observable width property. Changes applied through the
-     * property do not mark the bounds as explicitly user-set; use
-     * {@link #setWidth(float)} for that.
+     * Returns the observable width property. The property is the single
+     * source of truth for size changes: assigning to it (directly or via
+     * {@link #setWidth(float)}) marks the bounds as explicitly user-set —
+     * layout managers must then respect the size until {@link #setSize} or a
+     * layout-neutral path resets the flag.
      *
      * @return the width property (never null after first access)
      */
@@ -160,9 +162,9 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Returns the observable height property. Changes applied through the
-     * property do not mark the bounds as explicitly user-set; use
-     * {@link #setHeight(float)} for that.
+     * Returns the observable height property. Like {@link #widthProperty()},
+     * assigning to it marks the bounds as explicitly user-set (see
+     * {@link #isSizeExplicitlySet()}).
      *
      * @return the height property (never null after first access)
      */
@@ -206,11 +208,17 @@ public abstract class Component implements StyleNode, Disposable {
             enabledProperty = new Property<>(Application.getCurrent(), enabled, v -> {
                 if (this.enabled != v) {
                     this.enabled = v;
-                    // A disabled widget cannot keep the keyboard focus.
-                    com.glyphui.core.FocusManager fm =
-                            com.glyphui.core.FocusManager.getGlobalFocusManager();
-                    if (fm != null) {
-                        fm.componentDisabled(this);
+                    if (!v) {
+                        // A disabled widget cannot keep the keyboard focus,
+                        // and it must not linger in :hover/:active — those
+                        // pseudo-classes could otherwise match together with
+                        // :disabled until the next mouse event arrives.
+                        this.state = ComponentState.IDLE;
+                        com.glyphui.core.FocusManager fm =
+                                com.glyphui.core.FocusManager.getGlobalFocusManager();
+                        if (fm != null) {
+                            fm.componentDisabled(this);
+                        }
                     }
                     invalidate();
                 }
@@ -259,6 +267,17 @@ public abstract class Component implements StyleNode, Disposable {
     /** The last computed style produced by the {@code StyleEngine} for this component. */
     private Style computedStyle = Style.EMPTY;
 
+    /**
+     * Cache of the merged (computed + inline) style returned by
+     * {@link #getComputedStyle()}. Rebuilt only when {@code computedStyle} or
+     * {@code inlineStyle} actually change identity — every render/measure pass
+     * used to allocate a fresh merged map and a fresh Builder per call.
+     */
+    private Style effectiveStyleCache;
+    /** Inputs the cache was built from ({@code ==}, not {@code equals}). */
+    private Style cachedEffectiveComputed;
+    private Style cachedEffectiveInline;
+
     /** Explicit HTML-equivalent tag override; null means use {@link #defaultStyleTag()}. */
     private String styleTagOverride;
 
@@ -275,11 +294,13 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Gets the currently installed global repaint requester.
+     * Gets the currently installed global repaint requester. Intended for
+     * tests and diagnostics; application code should never depend on it —
+     * install requesters only through {@code Application}.
      *
      * @return the requester or null
      */
-    public static com.glyphui.core.RepaintRequester getGlobalRepaintRequester() {
+    static com.glyphui.core.RepaintRequester getGlobalRepaintRequester() {
         return globalRepaintRequester;
     }
 
@@ -466,17 +487,30 @@ public abstract class Component implements StyleNode, Disposable {
      * @return the computed style, never null (empty before any engine pass)
      */
     public Style getComputedStyle() {
+        // Identity check: the merge result is referentially stable whenever
+        // both inputs are the same objects as last time, so re-cascading an
+        // unchanged subtree never rebuilds the merged map.
+        if (effectiveStyleCache != null
+                && cachedEffectiveComputed == computedStyle
+                && cachedEffectiveInline == inlineStyle) {
+            return effectiveStyleCache;
+        }
         // Inline style has the highest cascade priority. overrideWith() also
         // strips the synthetic RAW_VALUES var() carrier from the computed
         // style before returning it to callers.
-        return inlineStyle.isEmpty()
+        effectiveStyleCache = inlineStyle.isEmpty()
                 ? computedStyle.withoutRawValues()
                 : computedStyle.overrideWith(inlineStyle);
+        cachedEffectiveComputed = computedStyle;
+        cachedEffectiveInline = inlineStyle;
+        return effectiveStyleCache;
     }
 
     /**
      * Stores the computed style. Called by the style engine; not part of the
-     * public widget API.
+     * public widget API. Kept public so {@code StyleEngine} (a different
+     * package) can reach it and subclasses can observe/intercept cascade
+     * passes; see {@link #getComputedStyle()} for the read path.
      *
      * @param computed the computed (cascaded + inherited) style
      */
@@ -494,6 +528,10 @@ public abstract class Component implements StyleNode, Disposable {
      * Resolves an integer (color/weight) style property for the current
      * component state. Pseudo-class rules already re-cascaded by the
      * {@code StyleEngine} are reflected here automatically.
+     *
+     * <p>The effective style is cached (see {@link #getComputedStyle()}) and
+     * map lookups are O(1), so no further memoization is needed: two widgets
+     * resolving different properties in the same frame must not interfere.</p>
      *
      * @param property       the style property
      * @param explicitOverride the per-instance setter value (may be null)
@@ -592,9 +630,14 @@ public abstract class Component implements StyleNode, Disposable {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
-     * Releases every cached style-derived font. Called from
-     * {@code Application.close()}; theme/registered typefaces are owned by
-     * {@code FontManager} and closed there.
+     * Releases every cached style-derived font. This cache is <b>global and
+     * process-wide</b> (static): in a multi-application process, closing one
+     * application invalidates fonts still referenced by another — those uses
+     * simply rebuild the font lazily on next resolution, so the worst case is
+     * a transient re-allocation, never a crash. Callers should treat this as
+     * JVM-shutdown cleanup only. Theme/registered typefaces are owned by
+     * {@code FontManager} and closed there. Not thread-safe against concurrent
+     * font resolution; call from the UI/shutdown path.
      */
     public static void disposeStyleFonts() {
         for (io.github.humbleui.skija.Font f : STYLE_FONTS.values()) {
@@ -771,6 +814,13 @@ public abstract class Component implements StyleNode, Disposable {
                     .build();
             return;
         }
+        float curW = inlineStyle.getFloat(com.glyphui.style.StyleProperty.WIDTH, Float.NaN);
+        float curH = inlineStyle.getFloat(com.glyphui.style.StyleProperty.HEIGHT, Float.NaN);
+        if (curW == width && curH == height) {
+            // Nothing changed: skip the full Builder rebuild (and the repaint
+            // storm a fresh inline-style object would trigger downstream).
+            return;
+        }
         com.glyphui.style.Style.Builder b = com.glyphui.style.Style.builder()
                 .putAll(inlineStyle);
         b.length(com.glyphui.style.StyleProperty.WIDTH, width);
@@ -908,11 +958,26 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Renders the component on the canvas.
+     * Renders the component on the canvas. Called by the framework (see
+     * {@link Panel#render(Canvas)}); widget authors implement this, but
+     * application code must not invoke it directly — invalidate instead and
+     * let the next frame repaint.
      *
      * @param canvas the canvas to draw on
      */
-    public abstract void render(Canvas canvas);
+    protected abstract void render(Canvas canvas);
+
+    /**
+     * Framework entry point for painting this component. Delegates to the
+     * subclass {@link #render(Canvas)} implementation; call sites (root panel
+     * painting, container child loops) use this instead so widget authors
+     * never see a public render on their API surface.
+     *
+     * @param canvas the canvas to draw on
+     */
+    public final void renderInternal(Canvas canvas) {
+        render(canvas);
+    }
 
     /**
      * Measures the intrinsic size of this component under the given
@@ -1021,9 +1086,12 @@ public abstract class Component implements StyleNode, Disposable {
      * and unit tests. Application code should use {@link #requestFocus()} or
      * the focus manager instead.
      *
+     * <p>Package-private by design: {@code FocusManager} reaches it through
+     * the {@link #applyFocusChange(boolean)} bridge declared in this class.</p>
+     *
      * @param focused the new focus state
      */
-    public void setFocusedInternal(boolean focused) {
+    void setFocusedInternal(boolean focused) {
         if (this.focused == focused) {
             return;
         }
@@ -1034,6 +1102,18 @@ public abstract class Component implements StyleNode, Disposable {
             onFocusLost();
         }
         invalidate();
+    }
+
+    /**
+     * Bridge that lets {@link com.glyphui.core.FocusManager} (a cross-package
+     * collaborator) drive the package-private focus flag without exposing
+     * {@link #setFocusedInternal(boolean)} as public API. Not part of the
+     * widget or application API surface.
+     *
+     * @param focused the new internal focus state
+     */
+    public final void applyFocusChange(boolean focused) {
+        setFocusedInternal(focused);
     }
 
     /**
@@ -1065,13 +1145,17 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Gets the accessibility name of this component. Defaults to the
-     * component id unless overridden via {@link #setAccessibleName(String)}.
+     * Gets the accessibility name of this component. When not explicitly set
+     * via {@link #setAccessibleName(String)}, the default is a human-readable
+     * label derived from the widget itself (text widgets override this); the
+     * base fallback here is the style tag (e.g. {@code "button"},
+     * {@code "label"}) rather than the auto-generated id, which was opaque
+     * noise for screen readers.
      *
-     * @return the accessible name
+     * @return the accessible name, never null
      */
     public String getAccessibleName() {
-        return accessibleName != null ? accessibleName : id;
+        return accessibleName != null ? accessibleName : getStyleTag();
     }
 
     /**
@@ -1081,6 +1165,18 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public void setAccessibleName(String accessibleName) {
         this.accessibleName = accessibleName;
+    }
+
+    /**
+     * The explicit accessibility-name override, or null when the widget should
+     * derive its own readable default (caption, placeholder, style tag).
+     * Lets subclasses distinguish "user set a name" from "base fallback in
+     * effect" without string-comparing against the auto-generated id.
+     *
+     * @return the override or null
+     */
+    protected final String accessibleNameOverride() {
+        return accessibleName;
     }
 
     /**

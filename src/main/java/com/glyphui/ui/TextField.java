@@ -528,7 +528,7 @@ public class TextField extends Component {
     }
 
     @Override
-    public void render(Canvas canvas) {
+    protected void render(Canvas canvas) {
         Theme theme = getTheme();
 
         // Background
@@ -591,8 +591,12 @@ public class TextField extends Component {
 
     @Override
     public String getAccessibleName() {
-        String base = super.getAccessibleName();
-        return (base != null && !base.equals(getId())) ? base : placeholder;
+        // Text fields fall back to their placeholder when no name was set;
+        // the base class default (style tag) is only a last resort.
+        if (accessibleNameOverride() != null) {
+            return accessibleNameOverride();
+        }
+        return placeholder != null && !placeholder.isEmpty() ? placeholder : super.getAccessibleName();
     }
 
     @Override

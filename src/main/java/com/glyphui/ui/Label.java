@@ -85,9 +85,10 @@ public class Label extends Component {
 
     @Override
     public String getAccessibleName() {
-        // Labels are named by their caption unless explicitly overridden
-        String base = super.getAccessibleName();
-        return (base != null && !base.equals(getId())) ? base : text;
+        // Labels are named by their caption unless explicitly overridden.
+        // The base default is now the style tag (never the auto-generated
+        // id), so an explicit check for the override is all that remains.
+        return accessibleNameOverride() != null ? accessibleNameOverride() : text;
     }
 
     @Override
@@ -271,7 +272,7 @@ public class Label extends Component {
     }
 
     @Override
-    public void render(Canvas canvas) {
+    protected void render(Canvas canvas) {
         if (!visible) {
             return;
         }

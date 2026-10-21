@@ -1,12 +1,11 @@
-package com.glyphui.core;
+package com.glyphui.ui;
 
-import com.glyphui.ui.Component;
-import com.glyphui.ui.Panel;
-import com.glyphui.ui.TestComponent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.glyphui.core.Application;
+import com.glyphui.core.RepaintRequester;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;

@@ -123,7 +123,7 @@ class WidgetRasterTest {
             canvas.clear(OPAQUE_BLUE);
             Label label = new Label(10, 40, 200, 60, "Rendered!");
             label.setTextColor(OPAQUE_RED);
-            label.render(canvas);
+            label.renderInternal(canvas);
             canvas.flush();
 
             assertTrue(anyPixelInRegionEquals(OPAQUE_RED, 10, 20, 220, 100),
@@ -137,7 +137,7 @@ class WidgetRasterTest {
             canvas.clear(OPAQUE_BLUE);
             Label label = new Label(10, 40, 200, 60, "Hidden");
             label.setVisible(false);
-            label.render(canvas);
+            label.renderInternal(canvas);
             canvas.flush();
 
             assertEquals(OPAQUE_BLUE, pixelAt(50, 60),
@@ -157,12 +157,12 @@ class WidgetRasterTest {
                 right.setAlignment(Label.TextAlignment.RIGHT);
 
                 canvas.clear(OPAQUE_BLUE);
-                left.render(canvas);
+                left.renderInternal(canvas);
                 canvas.flush();
                 boolean redNearLeft = anyPixelInRegionEquals(OPAQUE_RED, 10, 65, 90, 80);
 
                 canvas.clear(OPAQUE_BLUE);
-                right.render(canvas);
+                right.renderInternal(canvas);
                 canvas.flush();
                 // surface is RasterCanvasTestFactory.SIZE px wide; label spans x=[10,210]
                 int size = RasterCanvasTestFactory.SIZE;
@@ -280,7 +280,7 @@ class WidgetRasterTest {
             canvas.clear(OPAQUE_BLUE);
             Button button = new Button(20, 20, 100, 40, "OK");
             button.setNormalColor(OPAQUE_RED);
-            button.render(canvas);
+            button.renderInternal(canvas);
             canvas.flush();
 
             assertEquals(OPAQUE_RED, pixelAt(70, 40),
@@ -296,7 +296,7 @@ class WidgetRasterTest {
             canvas.clear(OPAQUE_BLUE);
             Button button = new Button(20, 20, 100, 40, "OK");
             button.setVisible(false);
-            button.render(canvas);
+            button.renderInternal(canvas);
             canvas.flush();
 
             assertEquals(OPAQUE_BLUE, pixelAt(70, 40));

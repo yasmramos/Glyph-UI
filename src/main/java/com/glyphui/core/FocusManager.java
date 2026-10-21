@@ -214,10 +214,10 @@ public class FocusManager {
         }
         focusedComponent = newFocus;
         if (old != null) {
-            old.setFocusedInternal(false);
+            old.applyFocusChange(false);
         }
         if (newFocus != null) {
-            newFocus.setFocusedInternal(true);
+            newFocus.applyFocusChange(true);
         }
         if (repaintCallback != null) {
             repaintCallback.run();

@@ -326,9 +326,8 @@ public class Button extends Component {
 
     @Override
     public String getAccessibleName() {
-        // Buttons are named by their caption unless explicitly overridden
-        return super.getAccessibleName() != null && !super.getAccessibleName().equals(getId())
-                ? super.getAccessibleName() : text;
+        // Buttons are named by their caption unless explicitly overridden.
+        return accessibleNameOverride() != null ? accessibleNameOverride() : text;
     }
 
     @Override
@@ -414,7 +413,7 @@ public class Button extends Component {
     }
 
     @Override
-    public void render(Canvas canvas) {
+    protected void render(Canvas canvas) {
         if (!visible) {
             return;
         }

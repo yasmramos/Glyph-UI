@@ -124,7 +124,7 @@ public class ButtonTest {
         }
         
         @Override
-        public void render(com.glyphui.graphics.Canvas canvas) {
+    protected void render(com.glyphui.graphics.Canvas canvas) {
             // No-op for testing
         }
         
