@@ -464,7 +464,7 @@ public final class UiLoader {
         }
         Runnable r = resolveHandler(click, element, "onclick");
         if (r != null) {
-            button.setOnClick(r);
+            button.setOnClick(r::run);
         }
     }
 

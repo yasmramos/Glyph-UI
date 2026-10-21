@@ -1,15 +1,33 @@
 package com.glyphui.ui;
 
 import com.glyphui.core.Application;
-import com.glyphui.graphics.Canvas;
-import com.glyphui.graphics.Property;
-import com.glyphui.events.MouseEvent;
+import com.glyphui.events.GlyphKeys;
 import com.glyphui.events.KeyEvent;
 import com.glyphui.events.KeyEventType;
-import io.github.humbleui.skija.*;
+import com.glyphui.events.MouseEvent;
+import com.glyphui.graphics.Canvas;
+import com.glyphui.graphics.Property;
+import io.github.humbleui.skija.Paint;
+import io.github.humbleui.skija.PaintMode;
+
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * A button component with text, click handler, and visual states.
+ *
+ * <p>Design notes:</p>
+ * <ul>
+ *   <li><b>Lazy paints:</b> the Skija {@link Paint} objects are created on
+ *       first {@link #render(Canvas)} call, never in the constructor. This
+ *       keeps construction (and therefore unit testing of the event/state
+ *       logic) free of any Skija native initialization.</li>
+ *   <li><b>Cached measurement:</b> {@link #measure(float, float)} caches its
+ *       result; the cache is invalidated whenever the caption, the resolved
+ *       style/theme font, padding or explicit-size state changes.</li>
+ *   <li><b>Exception-safe handlers:</b> a throwing {@link ClickListener} can
+ *       never leave the button stuck in the pressed state.</li>
+ * </ul>
  */
 public class Button extends Component {
     /**
@@ -25,8 +43,11 @@ public class Button extends Component {
      */
     public static final float VERTICAL_PADDING = 6.0f;
 
+    /** Logger for click-handler failures (never swallowed silently). */
+    private static final Logger LOG = Logger.getLogger(Button.class.getName());
+
     private String text;
-    private Runnable onClick;
+    private ClickListener onClick;
 
     /** Observable text property (lazily created). */
     private Property<String> textProperty;
@@ -46,29 +67,21 @@ public class Button extends Component {
     private Integer borderColorOverride;
     private Float borderRadiusOverride;
 
-    // Reusable Paint objects to avoid allocation per frame
+    // Reusable Paint objects to avoid allocation per frame. Created lazily on
+    // the first render() so that constructing a Button (and driving its
+    // mouse/key state machine from tests) never touches Skija native code.
     private Paint bgPaint;
     private Paint borderPaint;
     private Paint textPaint;
 
-    /**
-     * Creates a new Button.
-     *
-     * @param x      the x-coordinate of the button
-     * @param y      the y-coordinate of the button
-     * @param width  the width of the button
-     * @param height the height of the button
-     * @param text   the text displayed on the button
-     */
-    public Button(float x, float y, float width, float height) {
-        this(x, y, width, height, "");
-    }
-
-    public Button(float x, float y, float width, float height, String text) {
-        super(x, y, width, height);
-        this.text = text;
-        initDefaults();
-    }
+    // Cached measure() result plus the state it was computed from. Any
+    // change to one of those inputs invalidates the cache.
+    private com.glyphui.graphics.Dimension cachedMeasure;
+    private String cachedMeasureText;
+    private io.github.humbleui.skija.Font cachedMeasureFont;
+    private Float cachedMeasurePadH;
+    private Float cachedMeasurePadV;
+    private Boolean cachedMeasureExplicit;
 
     /**
      * Creates a new Button without explicit bounds. The size will be derived
@@ -83,6 +96,33 @@ public class Button extends Component {
     }
 
     /**
+     * Creates a new Button with explicit bounds.
+     *
+     * @param x      the x-coordinate of the button
+     * @param y      the y-coordinate of the button
+     * @param width  the width of the button
+     * @param height the height of the button
+     */
+    public Button(float x, float y, float width, float height) {
+        this(x, y, width, height, "");
+    }
+
+    /**
+     * Creates a new Button with explicit bounds and caption.
+     *
+     * @param x      the x-coordinate of the button
+     * @param y      the y-coordinate of the button
+     * @param width  the width of the button
+     * @param height the height of the button
+     * @param text   the text displayed on the button
+     */
+    public Button(float x, float y, float width, float height, String text) {
+        super(x, y, width, height);
+        this.text = text;
+        initDefaults();
+    }
+
+    /**
      * Creates a new Button with default (unset) bounds and empty text.
      */
     public Button() {
@@ -90,24 +130,32 @@ public class Button extends Component {
     }
 
     /**
-     * Initializes default paint objects. Colors and fonts are not stored
-     * here: they resolve lazily through the computed style / theme so that
-     * CSS rules and theme switches apply without re-touching each widget.
+     * Initializes default button state.
+     *
+     * <p>No Skija resources are allocated here: the paint objects are built
+     * lazily on the first {@link #render(Canvas)} call so the button is fully
+     * testable (construction + event handling) without native libraries.</p>
      */
     private void initDefaults() {
         this.onClick = null;
+    }
 
-        // Initialize reusable Paint objects
-        this.bgPaint = new Paint();
-        this.bgPaint.setAntiAlias(true);
-
-        this.borderPaint = new Paint();
-        this.borderPaint.setMode(PaintMode.STROKE);
-        this.borderPaint.setStrokeWidth(1.0f);
-        this.borderPaint.setAntiAlias(true);
-
-        this.textPaint = new Paint();
-        this.textPaint.setAntiAlias(true);
+    /** Ensures the reusable paint objects exist (lazy, render-time creation). */
+    private void ensurePaints() {
+        if (bgPaint == null) {
+            bgPaint = new Paint();
+            bgPaint.setAntiAlias(true);
+        }
+        if (borderPaint == null) {
+            borderPaint = new Paint();
+            borderPaint.setMode(PaintMode.STROKE);
+            borderPaint.setStrokeWidth(1.0f);
+            borderPaint.setAntiAlias(true);
+        }
+        if (textPaint == null) {
+            textPaint = new Paint();
+            textPaint.setAntiAlias(true);
+        }
     }
 
     /**
@@ -129,6 +177,7 @@ public class Button extends Component {
         if (textProperty == null) {
             textProperty = new Property<>(Application.getCurrent(), text, newText -> {
                 this.text = newText;
+                invalidateMeasureCache();
                 requestRepaint();
             });
         }
@@ -148,9 +197,9 @@ public class Button extends Component {
     /**
      * Gets the click handler.
      *
-     * @return the onClick runnable
+     * @return the click listener, or null if none is registered
      */
-    public Runnable getOnClick() {
+    public ClickListener getOnClick() {
         return onClick;
     }
 
@@ -160,20 +209,35 @@ public class Button extends Component {
      * <p>The handler is invoked from the backend event dispatch inside
      * {@code Application.run()}, so it always executes on the UI thread by
      * construction; widget mutations and repaint requests made from it need
-     * no synchronization.</p>
+     * no synchronization. Exceptions thrown by the handler are caught and
+     * logged so they cannot corrupt the button's visual state.</p>
      *
-     * @param onClick the runnable to execute on click
+     * @param onClick the listener to invoke on click (may be null to clear)
      */
-    public void setOnClick(Runnable onClick) {
+    public void setOnClick(ClickListener onClick) {
         this.onClick = onClick;
     }
 
     /**
-     * Gets the normal state color. Resolution order: matching CSS rule
-     * (e.g. {@code button:hover} when the state is HOVER) → per-instance
-     * override → theme default.
+     * Clears the current click handler.
      *
-     * @return the normal color (as ARGB int)
+     * <p>Note: no {@code setOnClick(Runnable)} overload is provided on
+     * purpose. Because {@link ClickListener} is a functional interface with
+     * the same abstract-method signature as {@code Runnable#run()}, adding
+     * both overloads would make every lambda call site ambiguous at compile
+     * time. Code holding a legacy {@code Runnable} should wrap it
+     * explicitly, e.g. {@code button.setOnClick(myRunnable::run)}.</p>
+     */
+    public void clearOnClick() {
+        this.onClick = null;
+    }
+
+    /**
+     * Gets the background color for the button's <em>normal</em> (idle)
+     * state. Resolution order: matching CSS rule → per-instance override
+     * ({@link #setNormalColor}) → theme default.
+     *
+     * @return the normal-state color (as ARGB int)
      */
     public int getNormalColor() {
         return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
@@ -194,13 +258,15 @@ public class Button extends Component {
     }
 
     /**
-     * Gets the hover state color (CSS rule → override → theme default).
+     * Gets the background color shown while the pointer hovers over the
+     * button. This getter always reports the <em>hover</em>-state color,
+     * regardless of the button's current state. Resolution: matching CSS
+     * rule → per-instance override ({@link #setHoverColor}) → theme default.
      *
-     * @return the hover color (as ARGB int)
+     * @return the hover-state color (as ARGB int)
      */
     public int getHoverColor() {
-        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
-                hoverColorOverride, getTheme().getControlHoverColor());
+        return resolveStateColor(ComponentState.HOVER);
     }
 
     /**
@@ -217,13 +283,15 @@ public class Button extends Component {
     }
 
     /**
-     * Gets the pressed state color (CSS rule → override → theme default).
+     * Gets the background color shown while the button is pressed. Always
+     * reports the <em>pressed</em> state color regardless of the button's
+     * current state. Resolution: CSS {@code :active} rule → per-instance
+     * override ({@link #setPressedColor}) → theme default.
      *
-     * @return the pressed color (as ARGB int)
+     * @return the pressed-state color (as ARGB int)
      */
     public int getPressedColor() {
-        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
-                pressedColorOverride, getTheme().getControlPressedColor());
+        return resolveStateColor(ComponentState.PRESSED);
     }
 
     /**
@@ -237,6 +305,37 @@ public class Button extends Component {
             this.pressedColorOverride = pressedColor;
             requestRepaint();
         }
+    }
+
+    /**
+     * Resolves the background color the button uses when it is in the given
+     * interaction state, applying the documented cascade: per-instance
+     * override ({@code setHoverColor} etc.) → theme default for that state.
+     * A CSS {@code background} declaration on the base selector applies to
+     * every state and therefore wins over both (see
+     * {@link #getNormalColor()}, which documents the same precedence).
+     *
+     * @param targetState the state whose color is requested
+     * @return the ARGB color for that state
+     */
+    private int resolveStateColor(ComponentState targetState) {
+        Integer override;
+        int themeDefault;
+        switch (targetState) {
+            case PRESSED:
+                override = pressedColorOverride;
+                themeDefault = getTheme().getControlPressedColor();
+                break;
+            case HOVER:
+                override = hoverColorOverride;
+                themeDefault = getTheme().getControlHoverColor();
+                break;
+            default:
+                override = normalColorOverride;
+                themeDefault = getTheme().getControlNormalColor();
+        }
+        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
+                override, themeDefault);
     }
 
     /**
@@ -327,7 +426,17 @@ public class Button extends Component {
     @Override
     public String getAccessibleName() {
         // Buttons are named by their caption unless explicitly overridden.
-        return accessibleNameOverride() != null ? accessibleNameOverride() : text;
+        // A null/blank caption must never yield a null accessible name: fall
+        // back to a generic role label so assistive tech announces "button"
+        // instead of nothing.
+        String override = accessibleNameOverride();
+        if (override != null && !override.isEmpty()) {
+            return override;
+        }
+        if (text != null && !text.isEmpty()) {
+            return text;
+        }
+        return "Button";
     }
 
     @Override
@@ -347,10 +456,21 @@ public class Button extends Component {
         return measure(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY).getHeight();
     }
 
+    /** Drops the cached measurement so the next measure() recomputes. */
+    private void invalidateMeasureCache() {
+        cachedMeasure = null;
+    }
+
     /**
      * Measures the intrinsic size of the button: the caption width plus the
      * theme's horizontal padding, and the font line height plus the theme's
      * vertical padding, both clamped to the supplied maximums.
+     *
+     * <p>The result is cached: repeated layout passes reuse it until the
+     * caption, resolved font/padding, or explicit-size state changes. The
+     * cache key stores strong references to the inputs it captured, so a
+     * later GC of intermediate objects can never make a stale hit look
+     * valid.</p>
      *
      * @param maxWidth  the maximum available width
      * @param maxHeight the maximum available height
@@ -361,27 +481,46 @@ public class Button extends Component {
         // An explicit CSS width/height (or one set through the base
         // measurement path) wins over text-based intrinsic sizing.
         com.glyphui.style.Style s = getComputedStyle();
-        if (sizeExplicitlySet || (s != null && (s.has(com.glyphui.style.StyleProperty.WIDTH)
-                || s.has(com.glyphui.style.StyleProperty.HEIGHT)))) {
+        boolean cssSized = s != null && (s.has(com.glyphui.style.StyleProperty.WIDTH)
+                || s.has(com.glyphui.style.StyleProperty.HEIGHT));
+        if (sizeExplicitlySet || cssSized) {
             // Explicit bounds (bounds constructor / setWidth) behave like an
             // explicit size: no text-based intrinsic sizing.
             return super.measure(maxWidth, maxHeight);
         }
+
         io.github.humbleui.skija.Font f = resolveFont(com.glyphui.graphics.Theme.FontRole.BUTTON);
-        float textWidth = f.measureTextWidth(text == null ? "" : text);
-        io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
-        float lineHeight = metrics.getDescent() - metrics.getAscent();
         com.glyphui.graphics.Theme theme = getTheme();
         // CSS padding (when declared) overrides the theme's button padding.
         float padH = resolveFloatStyle(com.glyphui.style.StyleProperty.PADDING, null,
                 theme != null ? theme.getButtonPaddingHorizontal() : HORIZONTAL_PADDING);
         float padV = resolveFloatStyle(com.glyphui.style.StyleProperty.PADDING, null,
                 theme != null ? theme.getButtonPaddingVertical() : VERTICAL_PADDING);
-        float w = textWidth + 2.0f * padH;
-        float h = lineHeight + 2.0f * padV;
+
+        com.glyphui.graphics.Dimension base = cachedMeasure;
+        boolean cacheHit = base != null
+                && java.util.Objects.equals(cachedMeasureText, text)
+                && cachedMeasureFont == f
+                && cachedMeasurePadH != null && cachedMeasurePadH == padH
+                && cachedMeasurePadV != null && cachedMeasurePadV == padV
+                && Boolean.valueOf(sizeExplicitlySet).equals(cachedMeasureExplicit);
+        if (!cacheHit) {
+            float textWidth = f.measureTextWidth(text == null ? "" : text);
+            io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
+            float lineHeight = metrics.getDescent() - metrics.getAscent();
+            base = new com.glyphui.graphics.Dimension(
+                    textWidth + 2.0f * padH, lineHeight + 2.0f * padV);
+            // Remember exactly which inputs produced this value.
+            cachedMeasure = base;
+            cachedMeasureText = text;
+            cachedMeasureFont = f;
+            cachedMeasurePadH = padH;
+            cachedMeasurePadV = padV;
+            cachedMeasureExplicit = sizeExplicitlySet;
+        }
         return new com.glyphui.graphics.Dimension(
-                Math.min(w, sanitizeConstraint(maxWidth)),
-                Math.min(h, sanitizeConstraint(maxHeight)));
+                Math.min(base.getWidth(), sanitizeConstraint(maxWidth)),
+                Math.min(base.getHeight(), sanitizeConstraint(maxHeight)));
     }
 
     /** Clamps non-finite constraints so measure() stays well-defined. */
@@ -401,14 +540,14 @@ public class Button extends Component {
         if (!enabled) {
             return getTheme().getControlDisabledColor();
         }
-        
+
         switch (state) {
             case PRESSED:
-                return getPressedColor();
+                return resolveStateColor(ComponentState.PRESSED);
             case HOVER:
-                return getHoverColor();
+                return resolveStateColor(ComponentState.HOVER);
             default:
-                return getNormalColor();
+                return resolveStateColor(ComponentState.IDLE);
         }
     }
 
@@ -417,6 +556,10 @@ public class Button extends Component {
         if (!visible) {
             return;
         }
+
+        // Paints are created on demand: the constructor never touches Skija,
+        // so buttons are unit-testable without native libraries.
+        ensurePaints();
 
         // Update background color based on state
         bgPaint.setColor(getBackgroundColor());
@@ -433,7 +576,8 @@ public class Button extends Component {
 
         // Calculate text position (centered) using the theme font
         io.github.humbleui.skija.Font f = getFont();
-        float textWidth = canvas.measureText(text, f);
+        String caption = text == null ? "" : text;
+        float textWidth = canvas.measureText(caption, f);
         float textHeight = canvas.getTextHeight(f);
         float textX = x + (width - textWidth) / 2.0f;
         float textY = y + (height + textHeight) / 2.0f;
@@ -442,7 +586,7 @@ public class Button extends Component {
         textPaint.setColor(enabled ? getTextColor() : getTheme().getControlTextDisabledColor());
 
         // Draw text
-        canvas.drawString(text, textX, textY, textPaint, f);
+        canvas.drawString(caption, textX, textY, textPaint, f);
 
         // Focus ring when this button holds the keyboard focus
         if (isFocused()) {
@@ -481,10 +625,11 @@ public class Button extends Component {
 
             case RELEASE:
                 if (state == ComponentState.PRESSED && isInside) {
-                    // Execute click handler
-                    if (onClick != null) {
-                        onClick.run();
-                    }
+                    // Execute click handler. runClick() catches handler
+                    // exceptions, and the state transition below runs
+                    // unconditionally, so a failing handler can never leave
+                    // the button stuck in PRESSED.
+                    runClick();
                 }
                 setState(isInside ? ComponentState.HOVER : ComponentState.IDLE);
                 break;
@@ -503,41 +648,64 @@ public class Button extends Component {
     }
 
     /**
-     * Programmatically performs a click: runs the registered onClick handler
+     * Programmatically performs a click: runs the registered click handler
      * if present. Useful for tests, keyboard shortcuts and event wiring from
      * markup controllers.
      *
      * @return true if a handler was invoked, false if none is registered
      */
     public boolean performClick() {
-        if (onClick != null) {
-            onClick.run();
-            return true;
-        }
-        return false;
+        return runClick();
     }
 
-    /** Toolkit key codes (GlyphKeys wire values) handled by this widget. */
-    private static final int KEY_ENTER = 257;   // GlyphKeys.ENTER
-    private static final int KEY_KP_ENTER = 335; // GlyphKeys.KP_ENTER
-    private static final int KEY_SPACE = 32;    // GlyphKeys.SPACE
+    /**
+     * Invokes the registered handler defensively: exceptions are caught and
+     * logged so a faulty callback cannot propagate into the event loop or
+     * leave the widget in an inconsistent state.
+     *
+     * @return true if a handler was present and called (even if it threw)
+     */
+    private boolean runClick() {
+        ClickListener handler = onClick;
+        if (handler == null) {
+            return false;
+        }
+        try {
+            handler.onClick();
+        } catch (RuntimeException | Error e) {
+            LOG.log(Level.WARNING, "Button click handler threw; state kept consistent", e);
+        }
+        return true;
+    }
 
     @Override
     public void onKeyEvent(KeyEvent event) {
-        // Keyboard activation for focused buttons: Enter / Space trigger the
-        // click handler on press (and Space on release, matching common UI
-        // conventions closely enough for v0.1).
-        if (!enabled || !isFocused() || event.getType() != KeyEventType.PRESS) {
+        // Keyboard activation for focused buttons. Key codes come from the
+        // toolkit's own GlyphKeys constants — never hardcoded native values.
+        if (!enabled || !isFocused()) {
             return;
         }
         int key = event.getKeyCode();
-        if (key == KEY_ENTER || key == KEY_KP_ENTER || key == KEY_SPACE) {
-            if (onClick != null) {
-                onClick.run();
+        // Enter activates on press (auto-repeat keeps firing while held).
+        if (event.getType() == KeyEventType.PRESS && key == GlyphKeys.ENTER) {
+            runClick();
+            return;
+        }
+        // Space follows the standard button convention: visually depress on
+        // press, activate on release.
+        if (key == GlyphKeys.SPACE) {
+            if (event.getType() == KeyEventType.PRESS) {
+                if (state != ComponentState.PRESSED) {
+                    setState(ComponentState.PRESSED);
+                }
+            } else if (event.getType() == KeyEventType.RELEASE
+                    && state == ComponentState.PRESSED) {
+                runClick();
+                setState(ComponentState.IDLE);
             }
         }
     }
-    
+
     /**
      * Releases resources held by this button.
      * Should be called when the button is no longer needed.
@@ -556,6 +724,7 @@ public class Button extends Component {
             textPaint.close();
             textPaint = null;
         }
+        invalidateMeasureCache();
         // The font comes from FontManager/Theme and is shared — do not close.
     }
 }

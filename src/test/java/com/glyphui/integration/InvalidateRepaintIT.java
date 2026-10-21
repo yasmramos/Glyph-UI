@@ -1,6 +1,7 @@
 package com.glyphui.integration;
 
 import com.glyphui.core.Application;
+import com.glyphui.core.internal.TestHooks;
 import com.glyphui.ui.Component;
 import com.glyphui.ui.Label;
 import com.glyphui.ui.Panel;
@@ -44,20 +45,20 @@ public class InvalidateRepaintIT {
 
         // Reset counters after construction/add so the assertions below only
         // observe invalidations caused by the explicit mutation.
-        label.resetInvalidateCount();
-        root.resetInvalidateCount();
+        TestHooks.resetInvalidateCount(label);
+        TestHooks.resetInvalidateCount(root);
 
         root.add(label);
-        label.resetInvalidateCount();
-        root.resetInvalidateCount();
+        TestHooks.resetInvalidateCount(label);
+        TestHooks.resetInvalidateCount(root);
 
         assertTrue(app.isPaintDirty(), "application should be paint-dirty after init");
 
         label.setText("updated");
 
-        assertEquals(1, label.getInvalidateCount(),
+        assertEquals(1, TestHooks.getInvalidateCount(label),
                 "setText() must call invalidate() on the component");
-        assertEquals(1, root.getInvalidateCount(),
+        assertEquals(1, TestHooks.getInvalidateCount(root),
                 "invalidate() must propagate from child to parent panel");
         assertTrue(app.isPaintDirty(),
                 "invalidation reaching the root must keep the app paint-dirty");
@@ -71,15 +72,15 @@ public class InvalidateRepaintIT {
         nested.add(deepLabel);
         root.add(nested);
 
-        nested.resetInvalidateCount();
-        root.resetInvalidateCount();
-        deepLabel.resetInvalidateCount();
+        TestHooks.resetInvalidateCount(nested);
+        TestHooks.resetInvalidateCount(root);
+        TestHooks.resetInvalidateCount(deepLabel);
 
         deepLabel.setVisible(false);
 
-        assertEquals(1, nested.getInvalidateCount(),
+        assertEquals(1, TestHooks.getInvalidateCount(nested),
                 "setVisible() on a child must invalidate its direct parent");
-        assertEquals(1, root.getInvalidateCount(),
+        assertEquals(1, TestHooks.getInvalidateCount(root),
                 "setVisible() on a grandchild must propagate all the way to the root panel");
         assertTrue(app.isPaintDirty());
     }
