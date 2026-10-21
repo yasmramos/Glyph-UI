@@ -323,7 +323,7 @@ public class Application implements AutoCloseable {
             // deferred to the event loop), so no GL context is current and
             // DirectContext.makeGL() would fail against a null context.
             final boolean tryGpu = !useRasterSurface
-                && window.getBackend().isGlCapable();
+                && window.isGlCapable();
             if (!tryGpu) {
                 this.surfaceFactory = new RasterSurfaceFactory();
                 initSurfaceFromFactory();
@@ -1134,13 +1134,16 @@ public class Application implements AutoCloseable {
         // surfaces) inherit this application's UI-thread affinity, so a draw
         // from a foreign thread fails fast instead of corrupting Skija.
         Canvas.setThreadCheckOwner(() -> uiThread == null ? null : this);
+        // Same fail-fast guard for every Window entry point (item 21): the
+        // native windowing calls behind it are UI-thread-only.
+        window.setThreadCheck(this::checkThread);
 
-        if (window.getBackend().isAppOwnedLoop()) {
+        if (window.isAppOwnedLoop()) {
             // The backend owns the UI thread and its native message loop
             // (JWM): hand it the frame body, which it invokes on this thread
             // once per dispatched event batch. This call blocks until the
             // application shuts down, so there is nothing left to do here.
-            window.getBackend().enterEventLoop(this::frameStep);
+            window.enterBackendEventLoop(this::frameStep);
             return;
         }
 
@@ -1272,7 +1275,7 @@ public class Application implements AutoCloseable {
         if (isGpuBackend()) {
             directContext.flush();
             window.swapBuffers();
-        } else if (window != null && !window.getBackend().isGlCapable()) {
+        } else if (window != null && !window.isGlCapable()) {
             // Raster-only backend (JWM): the frame lives in a CPU surface,
             // so push it onto the native window layer. When the layer is not
             // ready yet (JWM allocates it on the first native frame), ask for

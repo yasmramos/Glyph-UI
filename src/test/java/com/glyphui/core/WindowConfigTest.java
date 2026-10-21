@@ -113,8 +113,9 @@ public class WindowConfigTest {
         window.setTitle("After");
 
         assertEquals("After", window.getTitle());
-        // No live handle -> nothing native was touched; create() would use it later.
-        assertEquals(0L, window.getWindowHandle());
+        // No live handle -> nothing native was touched; create() would use it
+        // later. The raw handle is no longer exposed on Window (internal API);
+        // the headless backend keeps reporting 0 through WindowBackend.
     }
 
     @Test
