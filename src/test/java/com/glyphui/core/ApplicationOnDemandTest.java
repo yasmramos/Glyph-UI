@@ -36,7 +36,7 @@ class ApplicationOnDemandTest {
     @AfterEach
     void tearDown() {
         // Unhook the global repaint requester registered by init paths.
-        com.glyphui.ui.Component.setRepaintRequester(null);
+        com.glyphui.ui.Component.setGlobalRepaintRequester(null);
     }
 
     private static void setField(Object target, String name, Object value) throws Exception {
@@ -159,7 +159,7 @@ class ApplicationOnDemandTest {
         // having registered the global repaint hook.
         java.util.concurrent.atomic.AtomicInteger repaints =
             new java.util.concurrent.atomic.AtomicInteger(0);
-        com.glyphui.ui.Component.setRepaintRequester(repaints::incrementAndGet);
+        com.glyphui.ui.Component.setGlobalRepaintRequester(repaints::incrementAndGet);
         app.requestRepaint();
         assertTrue(readPaintDirty(app), "requestRepaint must re-dirty the flag");
 

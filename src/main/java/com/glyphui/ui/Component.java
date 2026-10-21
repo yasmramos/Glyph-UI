@@ -51,34 +51,21 @@ public abstract class Component implements StyleNode, Disposable {
 
 
     /**
-     * Callback used to notify the application that a component's visual state
-     * changed and a repaint should be scheduled (on-demand rendering).
-     * The default implementation is a no-op so components work standalone
-     * (e.g. in unit tests) without an application attached.
-     */
-    public interface RepaintRequester {
-        void requestRepaint();
-    }
-
-    private static volatile RepaintRequester repaintRequester = () -> { };
-
-    /**
-     * Registers the global repaint requester, typically called by the
-     * {@code Application} during initialization.
+     * Notifies the global repaint requester that this component needs
+     * repainting. Subclasses and containers call this after any mutation
+     * that affects how the component is drawn.
      *
-     * @param requester the callback to invoke on visual mutations, or null to reset to a no-op
-     */
-    public static void setRepaintRequester(RepaintRequester requester) {
-        repaintRequester = (requester != null) ? requester : () -> { };
-    }
-
-    /**
-     * Notifies the registered repaint requester that this component needs repainting.
-     * Subclasses and containers should call this after any mutation that affects
-     * how the component is drawn.
+     * <p>This hook used to be a <em>second</em>, per-class static requester
+     * ({@code Component.setRepaintRequester}) maintained beside the global
+     * one. Two independent process-wide hooks meant {@code Application.init()}
+     * had to install (and {@code close()} release) both, with twin ownership
+     * flags — and every widget copied the confusion into the next 45 widgets.
+     * There is now exactly one hook: {@link #setGlobalRepaintRequester}.
+     * When no application owns it (standalone components, unit tests) the
+     * reference is null and requesting a repaint is a silent no-op.</p>
      */
     protected void requestRepaint() {
-        repaintRequester.requestRepaint();
+        invalidate();
     }
 
     /** Default width used when no explicit bounds were provided and layout is free to decide. */
@@ -141,7 +128,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> xProperty() {
         if (xProperty == null) {
-            xProperty = new Property<>(Application.getCurrent(), x, v -> { this.x = v; requestRepaint(); invalidate(); });
+            xProperty = new Property<>(Application.getCurrent(), x, v -> { this.x = v; invalidate(); });
         }
         return xProperty;
     }
@@ -153,7 +140,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> yProperty() {
         if (yProperty == null) {
-            yProperty = new Property<>(Application.getCurrent(), y, v -> { this.y = v; requestRepaint(); invalidate(); });
+            yProperty = new Property<>(Application.getCurrent(), y, v -> { this.y = v; invalidate(); });
         }
         return yProperty;
     }
@@ -276,8 +263,10 @@ public abstract class Component implements StyleNode, Disposable {
     private String styleTagOverride;
 
     /**
-     * Installs the global repaint requester used to propagate invalidations
-     * that reach the root of the component tree.
+     * Installs the <b>single</b> global repaint requester used to propagate
+     * invalidations that reach the root of the component tree. Called by
+     * {@code Application.init()}; {@code Application.close()} releases it
+     * again (only while the instance still owns it).
      *
      * @param requester the repaint requester (may be null to clear)
      */

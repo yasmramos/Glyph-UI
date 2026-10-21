@@ -64,8 +64,12 @@ public class Panel extends Component {
         }
         children.add(component);
         component.setParent(this);
+        // Single invalidation for the whole mutation: markLayoutDirty()
+        // already routes requestRepaint() -> invalidate() through this
+        // subtree. Calling invalidate() again here double-counted every
+        // structural change (and would have been copied into the next 45
+        // widgets).
         markLayoutDirty();
-        invalidate();
     }
 
     /**
@@ -82,8 +86,9 @@ public class Panel extends Component {
             component.setParent(null);
             component.close();
         }
+        // Same single-invalidation path as add(): markLayoutDirty() already
+        // requests the repaint through this subtree.
         markLayoutDirty();
-        invalidate();
     }
 
     /**
@@ -96,7 +101,6 @@ public class Panel extends Component {
         }
         children.clear();
         markLayoutDirty();
-        invalidate();
     }
 
     /**
@@ -199,20 +203,26 @@ public class Panel extends Component {
 
     @Override
     public void setWidth(float width) {
-        float oldWidth = this.width;
-        super.setWidth(width);
-        if (oldWidth != width) {
-            markLayoutDirty();
+        // Mark layout dirty *before* delegating: super.setWidth() performs
+        // the single invalidation for the whole mutation, so the layout flag
+        // is already set when the repaint propagates. Calling it afterwards
+        // would request a second repaint (double-count bug).
+        boolean changed = this.width != width;
+        if (changed) {
+            layoutDirty = true;
         }
+        super.setWidth(width);
     }
 
     @Override
     public void setHeight(float height) {
-        float oldHeight = this.height;
-        super.setHeight(height);
-        if (oldHeight != height) {
-            markLayoutDirty();
+        // Same pre-mark pattern as setWidth: exactly one invalidation per
+        // user-set resize.
+        boolean changed = this.height != height;
+        if (changed) {
+            layoutDirty = true;
         }
+        super.setHeight(height);
     }
 
     /**

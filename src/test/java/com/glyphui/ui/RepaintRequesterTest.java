@@ -22,13 +22,13 @@ class RepaintRequesterTest {
     @BeforeEach
     void setUp() {
         repaintCount = new AtomicInteger(0);
-        Component.setRepaintRequester(repaintCount::incrementAndGet);
+        Component.setGlobalRepaintRequester(repaintCount::incrementAndGet);
     }
 
     @AfterEach
     void tearDown() {
         // Reset to the default no-op so other tests are unaffected.
-        Component.setRepaintRequester(null);
+        Component.setGlobalRepaintRequester(null);
     }
 
     /** Minimal concrete component exposing the protected repaint hook. */
@@ -63,7 +63,7 @@ class RepaintRequesterTest {
 
         @Test
         void nullRequesterResetsToNoOpAndMutationsAreSafe() {
-            Component.setRepaintRequester(null);
+            Component.setGlobalRepaintRequester(null);
 
             TestComponent component = new TestComponent();
             assertDoesNotThrow(component::triggerRepaint);
@@ -84,7 +84,7 @@ class RepaintRequesterTest {
         @Test
         void replacingRequesterRoutesToTheNewestOne() {
             AtomicInteger second = new AtomicInteger(0);
-            Component.setRepaintRequester(second::incrementAndGet);
+            Component.setGlobalRepaintRequester(second::incrementAndGet);
 
             new TestComponent().triggerRepaint();
 
