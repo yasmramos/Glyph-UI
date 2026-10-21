@@ -48,7 +48,7 @@ public class HiDpiRenderIT {
 
     /** Reads one premultiplied RGBA pixel from the app's raster surface. */
     private int readPixel(Canvas wrapper, int physX, int physY) {
-        io.github.humbleui.skija.Surface skijaSurface = wrapper.getSurface();
+        io.github.humbleui.skija.Surface skijaSurface = wrapper.nativeSurfaceForInternalUse();
         int w = skijaSurface.getWidth();
         int h = skijaSurface.getHeight();
         Bitmap full = new Bitmap();
@@ -90,13 +90,13 @@ public class HiDpiRenderIT {
                 app.getWindow().getWidth() * 2, app.getWindow().getHeight() * 2);
         root.setWidth(app.getWindow().getWidth());
         root.setHeight(app.getWindow().getHeight());
-        app.recreateRasterSurfaceForTesting();
+        com.glyphui.core.internal.TestHooks.recreateRasterSurfaceForTesting(app);
 
         Canvas wrapper = app.getCanvas();
         assertEquals(400, wrapper.getWidth(), "canvas wrapper stays logical");
-        assertEquals(800, wrapper.getSurface().getWidth(), "surface is physical (2x)");
+        assertEquals(800, wrapper.nativeSurfaceForInternalUse().getWidth(), "surface is physical (2x)");
 
-        app.renderFrame();
+        com.glyphui.core.internal.TestHooks.renderFrame(app);
 
         // Inside the scaled region: logical (10,10) -> physical (20,20) is red.
         // The bitmap stores premultiplied RGBA; extract RGB from bytes 1..3.
@@ -114,7 +114,7 @@ public class HiDpiRenderIT {
         // With the background cleared (transparent), the render() clear color
         // (dark gray RGB 30,30,30) must show through instead of red.
         root.setBackgroundColor(io.github.humbleui.skija.Color.makeARGB(0, 0, 0, 0));
-        app.renderFrame();
+        com.glyphui.core.internal.TestHooks.renderFrame(app);
         int cleared = readPixel(wrapper, 20, 20);
         assertNotEquals(0xFF0000, cleared & 0xFFFFFF,
                 "unpainted pixels must fall back to the clear color");
@@ -124,7 +124,7 @@ public class HiDpiRenderIT {
     public void testMatrixIdentityOutsideSaveRestoreScope() {
         // render() wraps the content scale in save/restore; after a frame
         // the persistent CTM must be identity again.
-        app.renderFrame();
+        com.glyphui.core.internal.TestHooks.renderFrame(app);
         float[] m = app.getCanvas().getMatrixArray();
         assertEquals(1.0f, m[0], 1e-4f, "CTM must be restored after render");
         assertEquals(1.0f, m[4], 1e-4f);

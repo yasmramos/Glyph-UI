@@ -31,8 +31,49 @@ public class Image implements AutoCloseable {
      *
      * @param nativeImage the native image (may be null for an empty wrapper)
      */
-    public Image(io.github.humbleui.skija.Image nativeImage) {
+    Image(io.github.humbleui.skija.Image nativeImage) {
         this.nativeImage = nativeImage;
+    }
+
+    /**
+     * Internal factory used by the toolkit and mirrored-package tests to wrap
+     * a native Skija image. NOT public API since the 0.1 surface freeze:
+     * application code should use {@link #load(String)},
+     * {@link #loadResource(String)} or {@link #loadBytes(byte[])} instead, so
+     * that {@code io.github.humbleui.skija.*} types never appear on the
+     * supported API surface. Reached from outside this package through
+     * {@code com.glyphui.core.internal.TestHooks#imageFromNative}.
+     *
+     * @param nativeImage the native image (may be null for an empty wrapper)
+     * @return a wrapper owning the native image
+     */
+    static Image fromNativeForInternalUse(
+            io.github.humbleui.skija.Image nativeImage) {
+        return new Image(nativeImage);
+    }
+
+    /**
+     * Wraps a native Skija image behind a fully opaque, non-native signature.
+     * This is the supported seam for cross-package internal callers (e.g.
+     * {@code com.glyphui.core.internal.TestHooks}) that need to construct
+     * wrappers from raw handles without leaking {@code io.github.humbleui.*}
+     * types onto the frozen public API surface.
+     *
+     * @param handle the native {@code io.github.humbleui.skija.Image}, passed
+     *               as {@code Object}; must be null or that exact type
+     * @return a wrapper owning the native image
+     * @throws IllegalArgumentException if {@code handle} is not a native image
+     */
+    public static Image fromOpaqueHandle(Object handle) {
+        if (handle == null) {
+            return new Image(null);
+        }
+        if (!(handle instanceof io.github.humbleui.skija.Image)) {
+            throw new IllegalArgumentException(
+                    "Expected io.github.humbleui.skija.Image, got "
+                            + handle.getClass().getName());
+        }
+        return new Image((io.github.humbleui.skija.Image) handle);
     }
 
     /**
@@ -112,7 +153,7 @@ public class Image implements AutoCloseable {
      *
      * @return the native image, or null when closed
      */
-    public io.github.humbleui.skija.Image getNativeImage() {
+    io.github.humbleui.skija.Image nativeImageForInternalUse() {
         return nativeImage;
     }
 

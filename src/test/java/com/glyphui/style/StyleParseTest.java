@@ -19,7 +19,7 @@ class StyleParseTest {
     void clearInlineStyleFonts() {
         // The cascade caches fonts built from CSS font-* declarations;
         // release them between tests to avoid leaking Skija handles.
-        com.glyphui.ui.Component.disposeStyleFonts();
+        com.glyphui.core.internal.TestHooks.disposeStyleFonts();
     }
 
     @Test

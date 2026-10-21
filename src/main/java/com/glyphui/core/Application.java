@@ -215,7 +215,7 @@ public class Application implements AutoCloseable {
      *
      * @return true when a repaint has been requested but not yet performed
      */
-    public boolean isPaintDirty() {
+    boolean isPaintDirty() {
         return paintDirty;
     }
 
@@ -515,7 +515,7 @@ public class Application implements AutoCloseable {
         // Always rebind canvas AND surface together: flush() goes through the
         // wrapper's surface reference, so a stale surface would flush into a
         // closed native object.
-        canvas.setNativeCanvas(skijaCanvas, surface);
+        canvas.bindNativeSurface(skijaCanvas, surface);
         canvas.resize(width, height);
 
         requestRepaint();
@@ -526,7 +526,7 @@ public class Application implements AutoCloseable {
      * framebuffer size. Used by tests to simulate HiDPI framebuffer changes
      * without a GL context.
      */
-    public void recreateRasterSurfaceForTesting() {
+    void recreateRasterSurfaceForTesting() {
         checkThread();
         if (window == null) {
             throw new IllegalStateException("Window must be initialized first");
@@ -676,7 +676,7 @@ public class Application implements AutoCloseable {
                 int lo = Math.max(0, Math.min(replacementStart, tf.getText().length()));
                 int hi = Math.max(lo, Math.min(replacementEnd, tf.getText().length()));
                 // Place the caret right after the committed/composed text.
-                tf.replaceRange(lo, hi, text, lo + text.length());
+                tf.imeReplaceRange(lo, hi, text, lo + text.length());
             }
             requestRepaint();
         });
@@ -766,7 +766,7 @@ public class Application implements AutoCloseable {
         // Rebind canvas AND surface together — Canvas.flush() delegates to
         // surface.flushAndSubmit(), so a stale surface reference would
         // flush into the closed (previous) surface.
-        canvas.setNativeCanvas(skijaCanvas, surface);
+        canvas.bindNativeSurface(skijaCanvas, surface);
         canvas.resize(result.logicalWidth(), result.logicalHeight());
 
         // Update root panel size (logical coordinates)
@@ -826,6 +826,11 @@ public class Application implements AutoCloseable {
 
     /**
      * Gets the native window wrapper created during {@link #init()}.
+     *
+     * <p><strong>Not part of the frozen public API:</strong> reserved for the
+     * toolkit's own render loop and integration tests. Application code should
+     * configure windows through {@code Application} / {@code WindowConfig}
+     * instead (see {@code docs/architecture/api-stability.md}).</p>
      *
      * @return the window, or null before init
      */
@@ -892,7 +897,7 @@ public class Application implements AutoCloseable {
      * UI thread (Skija native state is not thread-safe); before {@link
      * #run()} starts any thread qualifies, which keeps headless tests legal.
      */
-    public void renderFrame() {
+    void renderFrame() {
         checkThread();
         render();
     }
@@ -1044,7 +1049,7 @@ public class Application implements AutoCloseable {
      *
      * @return number of tasks executed
      */
-    public int drainUiTasksForTests() {
+    int drainUiTasksForTests() {
         int count = 0;
         Runnable task;
         while ((task = uiTaskQueue.poll()) != null) {
@@ -1248,7 +1253,7 @@ public class Application implements AutoCloseable {
             styleEngine.apply(rootPanel);
         }
 
-        io.github.humbleui.skija.Canvas nativeCanvas = canvas.getNativeCanvas();
+        io.github.humbleui.skija.Canvas nativeCanvas = canvas.nativeCanvasForInternalUse();
         int saveCount = nativeCanvas.save();
         try {
             // Clear once, on the identity CTM, so the whole PHYSICAL surface

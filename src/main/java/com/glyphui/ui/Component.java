@@ -363,13 +363,14 @@ public abstract class Component implements StyleNode, Disposable {
 
     /**
      * Gets how many times this component has been invalidated. Internal
-     * instrumentation hook — not part of the application-facing API (see
-     * {@code docs/architecture/internal-boundary.md}). Tests and diagnostics
-     * should go through {@link com.glyphui.core.internal.TestHooks}.
+     * instrumentation hook — NOT public API since the 0.1 surface freeze;
+     * tests reach it via {@code com.glyphui.core.internal.TestHooks}
+     * (reflectively, since this method is package-private). See
+     * {@code docs/architecture/api-stability.md}.
      *
      * @return the invalidate count
      */
-    public int getInvalidateCount() {
+    int getInvalidateCount() {
         return invalidateCount;
     }
 
@@ -378,7 +379,7 @@ public abstract class Component implements StyleNode, Disposable {
      * hook — see {@link #getInvalidateCount()} for the boundary policy; use
      * {@link com.glyphui.core.internal.TestHooks} from tests.
      */
-    public void resetInvalidateCount() {
+    void resetInvalidateCount() {
         invalidateCount = 0;
     }
 
@@ -642,7 +643,7 @@ public abstract class Component implements StyleNode, Disposable {
      * {@code FontManager} and closed there. Not thread-safe against concurrent
      * font resolution; call from the UI/shutdown path.
      */
-    public static void disposeStyleFonts() {
+    static void disposeStyleFonts() {
         for (io.github.humbleui.skija.Font f : STYLE_FONTS.values()) {
             try {
                 f.close();
@@ -1108,10 +1109,13 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Bridge that lets {@link com.glyphui.core.FocusManager} (a cross-package
-     * collaborator) drive the package-private focus flag without exposing
-     * {@link #setFocusedInternal(boolean)} as public API. Not part of the
-     * widget or application API surface.
+     * Internal focus-flag entry point for {@link com.glyphui.core.FocusManager}
+     * and test harnesses. This is the <em>only</em> non-public-package way to
+     * drive the focus flag; it is intentionally {@code public} because
+     * {@code FocusManager} lives in a different package, but it is NOT part of
+     * the frozen application-facing API (see
+     * {@code docs/architecture/api-stability.md}). Application code should use
+     * {@link #requestFocus()} instead.
      *
      * @param focused the new internal focus state
      */

@@ -100,7 +100,7 @@ class PropertyTest {
             uiRef.set(Thread.currentThread());
             ready.countDown();
             while (!Thread.currentThread().isInterrupted()) {
-                int executed = application.drainUiTasksForTests();
+                int executed = com.glyphui.core.internal.TestHooks.drainUiTasksForTests(application);
                 if (executed == 0) {
                     try {
                         Thread.sleep(1);

@@ -77,7 +77,7 @@ public class Canvas {
      * @param ownerApp the owning application for the thread check (may be null)
      */
     public Canvas(io.github.humbleui.skija.Canvas canvas, Surface surface, int width, int height,
-                  com.glyphui.core.Application ownerApp) {
+           com.glyphui.core.Application ownerApp) {
         this.canvas = java.util.Objects.requireNonNull(canvas, "canvas");
         this.surface = java.util.Objects.requireNonNull(surface, "surface");
         this.width = width;
@@ -143,7 +143,7 @@ public class Canvas {
      *
      * @return the Skija canvas
      */
-    public io.github.humbleui.skija.Canvas getNativeCanvas() {
+    public io.github.humbleui.skija.Canvas nativeCanvasForInternalUse() {
         return canvas;
     }
 
@@ -152,7 +152,7 @@ public class Canvas {
      *
      * @return the Skija surface
      */
-    public Surface getSurface() {
+    public Surface nativeSurfaceForInternalUse() {
         return surface;
     }
 
@@ -161,10 +161,14 @@ public class Canvas {
      * Used when the application recreates its surface (e.g. after a window
      * resize on the raster backend) so wrappers keep drawing to the new target.
      *
+     * <p><strong>Not part of the frozen public API:</strong> documented
+     * escape hatch (see {@code docs/architecture/api-stability.md}); only
+     * {@link com.glyphui.core.Application} rebinds wrapper targets.</p>
+     *
      * @param newCanvas the new Skija canvas
      * @param newSurface the new Skija surface owning the canvas
      */
-    public void setNativeCanvas(io.github.humbleui.skija.Canvas newCanvas, Surface newSurface) {
+    public void bindNativeSurface(io.github.humbleui.skija.Canvas newCanvas, Surface newSurface) {
         this.canvas = newCanvas;
         if (newSurface != null) {
             this.surface = newSurface;
@@ -174,15 +178,15 @@ public class Canvas {
     /**
      * Replaces the underlying native canvas, keeping the current surface reference.
      *
-     * <p><strong>Warning:</strong> this overload leaves {@link #getSurface()} pointing
+     * <p><strong>Warning:</strong> this overload leaves {@link #nativeSurfaceForInternalUse()} pointing
      * at the previous surface. It is only safe when the new canvas belongs to that same
-     * surface; otherwise use {@link #setNativeCanvas(io.github.humbleui.skija.Canvas, Surface)}
+     * surface; otherwise use {@link #bindNativeSurface(io.github.humbleui.skija.Canvas, Surface)}
      * so that {@link #flush()} keeps operating on a live surface.</p>
      *
      * @param newCanvas the new Skija canvas
      */
-    public void setNativeCanvas(io.github.humbleui.skija.Canvas newCanvas) {
-        setNativeCanvas(newCanvas, null);
+    public void bindNativeSurface(io.github.humbleui.skija.Canvas newCanvas) {
+        bindNativeSurface(newCanvas, null);
     }
 
     /**
@@ -383,7 +387,7 @@ public class Canvas {
         io.github.humbleui.types.Rect dst = io.github.humbleui.types.Rect.makeXYWH(x, y, w, h);
         io.github.humbleui.types.Rect src = io.github.humbleui.types.Rect.makeXYWH(
                 0, 0, image.getWidth(), image.getHeight());
-        canvas.drawImageRect(image.getNativeImage(), src, dst, null, true);
+        canvas.drawImageRect(image.nativeImageForInternalUse(), src, dst, null, true);
     }
 
     /**
