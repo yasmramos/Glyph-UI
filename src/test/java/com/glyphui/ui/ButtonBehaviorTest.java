@@ -191,6 +191,43 @@ public class ButtonBehaviorTest extends TestBase {
         assertEquals(1, calls.get());
     }
 
+    /**
+     * Full performClick() contract (Phase 1 checklist): the return value
+     * reports whether a handler was present and invoked, the handler runs
+     * exactly once per call, and clearing the handler returns the button to
+     * the "false" branch. Also pins that performClick() never mutates the
+     * visual state machine — it is a programmatic trigger, not a press.
+     */
+    @Test
+    public void performClickContractRunExactlyOnceAndBooleanResult() {
+        Button button = new Button("Go");
+        AtomicInteger calls = new AtomicInteger();
+
+        // No handler: false, nothing happens.
+        assertFalse(button.performClick(),
+                "performClick without a handler must report false");
+        assertEquals(0, calls.get());
+
+        // With a handler: true, invoked exactly once per call.
+        button.setOnClick(calls::incrementAndGet);
+        assertTrue(button.performClick(),
+                "performClick with a handler must report true");
+        assertTrue(button.performClick());
+        assertTrue(button.performClick());
+        assertEquals(3, calls.get(), "one invocation per performClick() call");
+
+        // State machine untouched by programmatic clicks.
+        org.junit.jupiter.api.Assertions.assertEquals(ComponentState.IDLE,
+                button.getState(),
+                "performClick must not leave the button in PRESSED");
+
+        // Clearing the handler restores the no-handler branch.
+        button.clearOnClick();
+        assertFalse(button.performClick(),
+                "after clearOnClick() the button has no handler again");
+        assertEquals(3, calls.get(), "no extra invocation after clearing");
+    }
+
     // ------------------------------------------------------------------
     // Keyboard activation via GlyphKeys constants
     // ------------------------------------------------------------------
