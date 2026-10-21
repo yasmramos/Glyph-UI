@@ -41,6 +41,13 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 public class Application implements AutoCloseable {
     private Window window;
+    /**
+     * When true, releasing the ESCAPE key closes the window. Off by default:
+     * a toolkit-level "ESC quits the app" behaviour would be copied into
+     * every widget built on top of Application and would hijack the key from
+     * focused text fields. Opt in via {@link #setCloseOnEscape(boolean)}.
+     */
+    private boolean closeOnEscape;
     private Surface surface;
     /**
      * Latest {@link SurfaceResult} produced by {@link #surfaceFactory}.
@@ -68,7 +75,6 @@ public class Application implements AutoCloseable {
     private SurfaceFactory surfaceFactory;
     private boolean running;
     private double lastFrameTime;
-    private int targetFPS;
     private boolean useRasterSurface;
 
     /** When true, the GPU backend is skipped and a raster surface is used directly. */
@@ -106,10 +112,12 @@ public class Application implements AutoCloseable {
      */
     private final ConcurrentLinkedQueue<Runnable> uiTaskQueue = new ConcurrentLinkedQueue<>();
 
-    // Mouse state
+    // Mouse state — the last cursor position reported by the backend. Only
+    // used as a fallback for listeners that do not carry coordinates (the
+    // mouse-button callback always uses its own x/y parameters; see
+    // setupCallbacks()).
     private double mouseX;
     private double mouseY;
-    private boolean[] mouseButtons = new boolean[10];
 
     /** Owns Tab / Shift+Tab focus traversal and the currently focused widget. */
     private FocusManager focusManager;
@@ -119,11 +127,16 @@ public class Application implements AutoCloseable {
     private float contentScaleY = 1.0f;
 
     /**
-     * True while this application owns the static
-     * {@code Component.setGlobalRepaintRequester} hook (installed by
-     * {@link #init}). Tracked explicitly because method references have
+     * True while this application owns the single static repaint hook
+     * ({@code Component.setGlobalRepaintRequester}, installed by
+     * {@link #init()}). Tracked explicitly because method references have
      * unstable identity and cannot be compared with {@code ==}. Cleared by
-     * {@link #close()} so a closed instance never lingers through globals.
+     * {@link #close()} so a closed instance never lingers through globals,
+     * and never cleared over a foreign requester installed after our init
+     * (e.g. by a unit test) — the old second hook
+     * ({@code Component.setRepaintRequester}) had no such flag at all and
+     * was nulled out unconditionally by every close(); it has been removed
+     * so one flag now protects the only remaining hook.
      */
     private boolean globalHookOwnedByThis;
 
@@ -150,16 +163,37 @@ public class Application implements AutoCloseable {
      * Creates a new Application.
      */
     public Application() {
-        this.targetFPS = 60;
         this.running = false;
         this.forceRasterSurface = false;
         this.paintDirty = true; // first frame must always be painted
         this.rootPanel = new Panel(0, 0, 800, 600);
-        // NOTE: the repaint hooks (Component.setGlobalRepaintRequester /
-        // Component.setRepaintRequester) are deliberately NOT installed here.
-        // A constructor that grabs process-wide static state would leak the
-        // hook when the instance is never initialized (e.g. dropped in tests).
-        // init() installs them instead, and close() clears them again.
+        // NOTE: the repaint hook (Component.setGlobalRepaintRequester) is
+        // deliberately NOT installed here. A constructor that grabs
+        // process-wide static state would leak the hook when the instance is
+        // never initialized (e.g. dropped in tests). init() installs it
+        // instead, and close() clears it again.
+    }
+
+    /**
+     * Enables or disables closing the window when the ESCAPE key is
+     * released. <b>Disabled by default</b>: ESC is a regular application
+     * keystroke (dismissing dialogs, cancelling text composition) and an
+     * implicit "ESC quits" wired into the core event loop would be inherited
+     * by every widget built on top of {@code Application}. Call
+     * {@code setCloseOnEscape(true)} before {@link #init()} to opt in to the
+     * legacy behaviour.
+     *
+     * @param closeOnEscape true to close the window on ESCAPE release
+     */
+    public void setCloseOnEscape(boolean closeOnEscape) {
+        this.closeOnEscape = closeOnEscape;
+    }
+
+    /**
+     * @return true when releasing ESCAPE closes the window (default false)
+     */
+    public boolean isCloseOnEscape() {
+        return closeOnEscape;
     }
 
     /**
@@ -186,21 +220,30 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Installs a repaint requester as the global hook so that any component
-     * {@code invalidate()} reaching the root of the tree marks this
-     * application paint-dirty. {@link Component#invalidate()} propagates up
-     * the parent chain until it reaches the top-level panel, which then
-     * invokes this requester (see {@link #requestRepaint()}).
+     * Installs a repaint requester as the single global hook so that any
+     * component {@code invalidate()} reaching the root of the tree marks
+     * this application paint-dirty. {@link Component#invalidate()}
+     * propagates up the parent chain until it reaches the top-level panel,
+     * which then invokes this requester (see {@link #requestRepaint()}).
+     * Widget mutators call {@code Component.requestRepaint()}, which is now
+     * an alias for {@code invalidate()} — there is exactly one repaint hook,
+     * so re-pointing it here rewires every path at once.
      *
-     * <p>The {@link #Application()} constructor already installs this
-     * application as the global requester; this setter allows re-pointing the
-     * hook (e.g. when nesting applications in tests or restoring a previous
-     * requester).</p>
+     * <p>{@link #init()} installs this application as the global requester;
+     * this setter allows re-pointing the hook (e.g. when nesting applications
+     * in tests or restoring a previous requester). Re-pointing through this
+     * method transfers ownership of the global hook: {@link #close()} will
+     * only clear it while this instance still owns it, so a requester
+     * installed by someone else is never nulled out behind their back.</p>
      *
      * @param requester the repaint requester (may be null to clear)
      */
     public void setRepaintRequester(RepaintRequester requester) {
         Component.setGlobalRepaintRequester(requester);
+        // Routing through the setter means this instance's owner claims (or,
+        // for null, releases) the static hook — keep the ownership flag in
+        // sync so close() can restore it symmetrically.
+        globalHookOwnedByThis = (requester != null);
     }
 
     /**
@@ -226,6 +269,21 @@ public class Application implements AutoCloseable {
     
     /**
      * Initializes the application.
+     *
+     * <p><strong>Behaviour notes (read before wiring an app):</strong></p>
+     * <ul>
+     *   <li><b>ESCAPE does not close the window.</b> Closing on ESC is an
+     *       explicit opt-in via {@link #setCloseOnEscape(boolean)} (default
+     *       false), so focused widgets keep the key for their own use.</li>
+     *   <li>{@code init()} installs this instance as the owner of both static
+     *       repaint hooks in {@code Component}; ownership is tracked with the
+     *       twin flags and released symmetrically by {@link #close()}.
+     *       Re-point them through {@link #setRepaintRequester} only.</li>
+     *   <li>A successful {@code init()} publishes this instance as
+     *       {@link #getCurrent()} immediately, so lazily created widget
+     *       properties can marshal to it even before {@link #run()} starts;
+     *       a failed init leaves no trace (see the cleanup below).</li>
+     * </ul>
      *
      * @param title  the window title
      * @param width  the window width
@@ -287,11 +345,10 @@ public class Application implements AutoCloseable {
             }
 
             // Route repaint requests from components to this application.
-            // Two hooks exist in Component: the per-instance legacy requester
-            // (direct widget notifications) and the static global requester
-            // (invalidate() propagation that reaches the tree root). Point
-            // both at this application; close() clears them again.
-            Component.setRepaintRequester(this::requestRepaint);
+            // There is a single static hook in Component (invalidate() at the
+            // tree root invokes it); point it at this application — close()
+            // clears it again, but only if this instance still owns it
+            // (method references have unstable identity, hence the flag).
             Component.setGlobalRepaintRequester(this::requestRepaint);
             globalHookOwnedByThis = true;
 
@@ -316,10 +373,26 @@ public class Application implements AutoCloseable {
             this.contentScaleX = window.getContentScaleX();
             this.contentScaleY = window.getContentScaleY();
 
+            // Publish the marshalling target at the END of a SUCCESSFUL
+            // init(), not in run(): widgets created between init() and
+            // run() (the normal bootstrap order) capture Application.current
+            // lazily through their properties, and until now they saw null,
+            // silently skipping cross-thread marshalling. close() clears it
+            // again; the failure path below must not leave a stale pointer.
+            current = this;
+
             return true;
         } catch (Exception e) {
             System.err.println("Failed to initialize application: " + e.getMessage());
             e.printStackTrace();
+            // A failed init() must leave no global trace behind: drop the
+            // current-instance pointer (in case a re-init overwrote another
+            // app's) and release both repaint hooks if we already claimed
+            // them before throwing. close() performs the full native cleanup.
+            if (current == this) {
+                current = null;
+            }
+            releaseRepaintHooks();
             return false;
         }
     }
@@ -382,16 +455,38 @@ public class Application implements AutoCloseable {
     }
 
     /**
+     * Releases the static repaint hook in {@code Component} if and only if
+     * this instance still owns it (ownership flag — method references have
+     * unstable identity, so the installed requester cannot be compared with
+     * {@code ==}). Shared by {@link #close()} and the failure path of
+     * {@link #init(String, int, int, boolean)} so a half-initialized
+     * application never lingers through process-wide globals.
+     */
+    private void releaseRepaintHooks() {
+        if (globalHookOwnedByThis) {
+            Component.setGlobalRepaintRequester(null);
+            globalHookOwnedByThis = false;
+        }
+    }
+
+    /**
      * Recreates a CPU-backed raster surface at the given size and rebinds it
      * to the existing canvas wrapper. Public shim kept for tests that
      * exercise the raster resize path without a GL context (and without a
-     * fully initialized application); delegates to
-     * {@link RasterSurfaceFactory} so allocation stays in one place.
+     * fully initialized application).
+     *
+     * <p>The <b>active</b> {@link #surfaceFactory} performs the allocation
+     * when one exists: creating a throw-away {@link RasterSurfaceFactory}
+     * instead would bypass the GPU factory's ownership rules and could hand
+     * back a raster surface while a live {@code DirectContext} still owned
+     * the previous render target. Only uninitialized instances (unit-test
+     * shims) fall back to a fresh raster factory.</p>
      *
      * @param width  the new width
      * @param height the new height
      */
     public void recreateRasterSurface(int width, int height) {
+        checkThread();
         if (canvas == null) {
             throw new IllegalStateException("Canvas must be initialized before recreating a raster surface");
         }
@@ -401,14 +496,19 @@ public class Application implements AutoCloseable {
             surface = null;
         }
 
-        // Same factory as initRasterSurface()/the raster branch of
-        // recreateSurface(): keep every allocation path consistent
-        // (makeRasterN32Premul is the idiomatic premultiplied N32 variant of
-        // makeRaster(ImageInfo)). The window may be absent in unit tests, so
-        // the logical size equals the physical one here.
-        SurfaceResult result = new RasterSurfaceFactory()
-            .recreate(null, width, height);
+        // Use the ACTIVE factory whenever one is installed — same code path
+        // as the framebuffer-resize listener and initRasterSurface(), so no
+        // allocation route diverges from the backend's ownership rules. The
+        // window may be absent in unit tests (logical size equals the
+        // physical one there), hence the conditional factory fallback.
+        SurfaceResult result;
+        if (surfaceFactory != null) {
+            result = surfaceFactory.recreate(window, width, height);
+        } else {
+            result = new RasterSurfaceFactory().recreate(null, width, height);
+        }
         surface = result.surface();
+        this.directContext = result.directContext();
         this.surfaceResult = result;
 
         io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
@@ -427,6 +527,7 @@ public class Application implements AutoCloseable {
      * without a GL context.
      */
     public void recreateRasterSurfaceForTesting() {
+        checkThread();
         if (window == null) {
             throw new IllegalStateException("Window must be initialized first");
         }
@@ -472,13 +573,12 @@ public class Application implements AutoCloseable {
             MouseButton glyphButton = convertMouseButton(button);
             MouseEventType type = pressed ? MouseEventType.PRESS : MouseEventType.RELEASE;
 
-            // Guard the state array: some backends report extra buttons
-            // (gaming mice can exceed the three we track).
-            if (button >= 0 && button < mouseButtons.length) {
-                mouseButtons[button] = pressed;
-            }
-
-            MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, glyphButton, 1);
+            // Dispatch at the coordinates reported BY THIS EVENT. Using the
+            // cached mouseX/mouseY here was a real bug: backends deliver the
+            // button event with its own position, and the cache may still
+            // hold the previous cursor-move location (or (0,0) when no move
+            // arrived yet), so clicks landed on the wrong widget.
+            MouseEvent event = new MouseEvent(type, (int) x, (int) y, glyphButton, 1);
             rootPanel.onMouseEvent(event);
             requestRepaint();
         });
@@ -526,7 +626,10 @@ public class Application implements AutoCloseable {
         // when they hold the keyboard focus). Key codes use the toolkit's own
         // GlyphKeys vocabulary mapped by each backend.
         window.setKeyListener((key, pressed, mods) -> {
-            if (!pressed && key == GlyphKeys.ESCAPE) {
+            // ESC closes the window only as an explicit opt-in (see
+            // setCloseOnEscape): by default it stays a normal keystroke for
+            // focused widgets.
+            if (closeOnEscape && !pressed && key == GlyphKeys.ESCAPE) {
                 window.setShouldClose(true);
                 return;
             }
@@ -785,94 +888,23 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Renders a single frame. Exposed for testing purposes.
+     * Renders a single frame. Exposed for testing purposes. Must run on the
+     * UI thread (Skija native state is not thread-safe); before {@link
+     * #run()} starts any thread qualifies, which keeps headless tests legal.
      */
     public void renderFrame() {
+        checkThread();
         render();
     }
 
-
-    
-    /**
-     * Flips an image vertically. Used for GPU backend where surface origin is BOTTOM_LEFT.
-     * @param image the image to flip
-     * @return a new flipped image (caller must close it)
-     */
-    private Image flipVertically(Image image) {
-        int width = image.getWidth();
-        int height = image.getHeight();
-        
-        // For GPU images, we need to read pixels via DirectContext
-        // Create a temporary raster surface to read into
-        Surface tempSurface = Surface.makeRaster(ImageInfo.makeN32Premul(width, height));
-        if (tempSurface == null) {
-            System.err.println("Warning: Failed to create temporary raster surface");
-            return null;
-        }
-        
-        try {
-            // Draw the original image onto the temp surface
-            io.github.humbleui.skija.Canvas tempCanvas = tempSurface.getCanvas();
-            tempCanvas.drawImage(image, 0, 0);
-            
-            // Now read pixels from the raster surface
-            Bitmap bitmap = new Bitmap();
-            bitmap.allocN32Pixels(width, height);
-            
-            try {
-                if (!tempSurface.readPixels(bitmap, 0, 0)) {
-                    System.err.println("Warning: Failed to read pixels from temp surface");
-                    return null;
-                }
-                
-                // Get pixel data as ByteBuffer
-                java.nio.ByteBuffer buffer = bitmap.peekPixels();
-                if (buffer == null) {
-                    System.err.println("Warning: peekPixels returned null");
-                    return null;
-                }
-                
-                // Ensure buffer is at position 0
-                buffer.rewind();
-                
-                // Read bytes from buffer
-                byte[] pixels = new byte[buffer.remaining()];
-                buffer.get(pixels);
-                
-                // Flip pixel data vertically
-                int bytesPerPixel = 4; // RGBA
-                int rowBytes = width * bytesPerPixel;
-                byte[] flipped = new byte[pixels.length];
-                
-                for (int y = 0; y < height; y++) {
-                    int srcRow = y * rowBytes;
-                    int dstRow = (height - 1 - y) * rowBytes;
-                    System.arraycopy(pixels, srcRow, flipped, dstRow, rowBytes);
-                }
-                
-                // Create new image with flipped pixels
-                ImageInfo info = ImageInfo.makeN32Premul(width, height);
-                Image flippedImage = Image.makeRaster(info, flipped, rowBytes);
-                if (flippedImage == null) {
-                    System.err.println("Warning: Failed to create flipped image");
-                    return null;
-                }
-                return flippedImage;
-            } finally {
-                bitmap.close();
-            }
-        } catch (Exception e) {
-            System.err.println("Error flipping image: " + e.getMessage());
-            e.printStackTrace();
-            return null;
-        } finally {
-            tempSurface.close();
-        }
-    }
-    
     /**
      * Captures the current frame to a PNG file.
-     * For GPU backend, flips the image vertically since Skija renders BOTTOM_LEFT.
+     *
+     * <p>No vertical flip is applied: the GPU surface wraps the default
+     * framebuffer with {@code SurfaceOrigin.BOTTOM_LEFT}, but Skija's
+     * {@code makeImageSnapshot()} already normalises snapshots to top-left
+     * row order, so the encoded PNG matches the on-screen orientation for
+     * both backends.</p>
      *
      * <p><strong>Threading:</strong> this method touches Skija native state
      * and the component tree without synchronization; it must be called on
@@ -887,49 +919,36 @@ public class Application implements AutoCloseable {
 
         // Render the current frame first
         renderFrame();
-        
+
         // Flush GPU context if using GPU backend
         if (directContext != null) {
             directContext.flush();
         }
-        
+
         // Create directory if it doesn't exist
         if (file.getParentFile() != null) {
             file.getParentFile().mkdirs();
         }
-        
+
         // Take a snapshot of the surface
         Image image = surface.makeImageSnapshot();
         if (image == null) {
             throw new RuntimeException("Failed to create image snapshot");
         }
-        
-        Image imageToEncode = null;
-        boolean needsFlip = isGpuBackend();
-        
+
         try {
-            // For GPU backend, flip the image vertically
-            if (needsFlip) {
-                imageToEncode = flipVertically(image);
-                if (imageToEncode == null) {
-                    throw new RuntimeException("Failed to flip image for GPU backend");
-                }
-            } else {
-                imageToEncode = image;
-            }
-            
             // Encode to PNG format
-            Data data = imageToEncode.encodeToData(EncodedImageFormat.PNG);
-            
+            Data data = image.encodeToData(EncodedImageFormat.PNG);
+
             // If encoding failed, try alternative approach
             if (data == null) {
-                data = imageToEncode.encodeToData();
+                data = image.encodeToData();
             }
-            
+
             if (data == null) {
                 throw new RuntimeException("Failed to encode image to PNG");
             }
-            
+
             try {
                 // Write bytes to file
                 byte[] bytes = data.getBytes();
@@ -943,9 +962,6 @@ public class Application implements AutoCloseable {
             }
         } finally {
             image.close();
-            if (needsFlip && imageToEncode != null && imageToEncode != image) {
-                imageToEncode.close();
-            }
         }
     }
 
@@ -1304,11 +1320,7 @@ public class Application implements AutoCloseable {
         // have unstable identity (== between this::requestRepaint instances
         // is not guaranteed), so ownership is tracked with an explicit flag
         // set by init().
-        if (globalHookOwnedByThis) {
-            Component.setGlobalRepaintRequester(null);
-            globalHookOwnedByThis = false;
-        }
-        Component.setRepaintRequester(null);
+        releaseRepaintHooks();
 
         if (focusManager != null) {
             if (FocusManager.getGlobalFocusManager() == focusManager) {

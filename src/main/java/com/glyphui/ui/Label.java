@@ -134,7 +134,9 @@ public class Label extends Component {
         if (textProperty == null) {
             textProperty = new Property<>(Application.getCurrent(), text, newText -> {
                 this.text = newText;
-                requestRepaint();
+                // Single invalidation: requestRepaint() delegates to
+                // invalidate(), calling both would double-count and
+                // double-propagate up the parent chain.
                 invalidate();
             });
         }
@@ -243,7 +245,6 @@ public class Label extends Component {
     public void setAlignment(TextAlignment alignment) {
         if (this.alignment != alignment) {
             this.alignment = alignment;
-            requestRepaint();
             invalidate();
         }
     }
