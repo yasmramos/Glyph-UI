@@ -35,6 +35,8 @@ public final class GlyphKeys {
     public static final int PAGE_DOWN = 267;
     public static final int HOME = 268;
     public static final int END = 269;
+    /** Insert toggle. New code — outside the legacy numeric window (256-269). */
+    public static final int INSERT = 270;
     public static final int TAB = 258;
     public static final int SPACE = 32;
 

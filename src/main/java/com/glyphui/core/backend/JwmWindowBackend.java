@@ -8,6 +8,7 @@ import io.github.humbleui.jwm.App;
 import io.github.humbleui.jwm.Clipboard;
 import io.github.humbleui.jwm.ClipboardEntry;
 import io.github.humbleui.jwm.ClipboardFormat;
+import io.github.humbleui.jwm.EventFrame;
 import io.github.humbleui.jwm.EventKey;
 import io.github.humbleui.jwm.EventMouseButton;
 import io.github.humbleui.jwm.EventMouseMove;
@@ -33,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * JWM {@link WindowBackend}: native windows driven by
@@ -52,12 +54,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Until then the backend is fully headless but already answers geometry
  * queries from the cached configuration (see the headless contract).</p>
  *
- * <p>Because the native loop only pumps messages on the JWM UI thread, the
- * toolkit's frame body is driven from a small daemon thread that posts it
- * via {@code App.runOnUIThread(...)} — so {@code Application.run()}'s loop,
- * all widget state and every Skija call stay on the UI thread. When the
- * application signals close, the driver posts {@code App.terminate()} and
- * the native loop unwinds, returning control to {@code enterEventLoop()}.</p>
+ * <p><strong>Frame pacing:</strong> frames are driven by JWM itself through
+ * {@link EventFrame}: each toolkit frame ends with {@code Window.requestFrame
+ * ()}, which schedules the next native frame whose {@code EventFrame} runs
+ * the frame body directly on the UI thread — no polling thread, no sleeps.
+ * A tiny watchdog daemon exists only to break the request→frame→request
+ * cycle when the application asks to close: it posts {@code App.terminate()}
+ * so the native loop unwinds and {@code enterEventLoop()} returns.</p>
  *
  * <p><strong>Rendering:</strong> raster-first. The application paints into
  * a CPU Skija surface; on every frame the backend blits it onto JWM's
@@ -91,8 +94,10 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     /** True when the deferred native bootstrap failed; the loop must not start. */
     private volatile boolean bootstrapFailed;
 
-    /** Frame driver thread posting the toolkit loop onto the JWM UI thread. */
+    /** Close-watchdog thread (see startCloseWatchdog). */
     private volatile Thread frameDriver;
+    /** One full iteration of the toolkit's frame loop, run on EventFrame. */
+    private final AtomicReference<Runnable> frameBody = new AtomicReference<>();
 
     /** True while JWM's native message loop is pumping (enterEventLoop). */
     private volatile boolean nativeLoopActive;
@@ -256,6 +261,11 @@ public class JwmWindowBackend extends AbstractWindowBackend {
      * window. The layer keeps JWM's default {@code ColorInfo} (N32/premul),
      * which matches the N32 premul surface the raster factory produces.</p>
      *
+     * <p>{@code setLayer(...)} reattaches the SAME live layer object after a
+     * minimize/restore cycle; JWM then keeps its resized surface instead of
+     * allocating a fresh one, so the cached {@link #layerSurface} survives and
+     * must be preserved across the call (see below).</p>
+     *
      * @param w the freshly created window (UI thread)
      */
     private void attachLayer(Window w) {
@@ -268,6 +278,16 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             return;
         }
         try {
+            io.github.humbleui.jwm.skija.LayerRasterSkija existing = rasterLayer;
+            if (existing != null) {
+                // Re-attach after minimize/restore: keep the live layer and
+                // whatever surface JWM already allocated on it. Forcing the
+                // cache to null here made every restore wait for another
+                // present() round-trip before pixels could flow.
+                this.layerAttached = true;
+                w.setLayer(existing);
+                return;
+            }
             io.github.humbleui.jwm.skija.LayerRasterSkija layer =
                 new io.github.humbleui.jwm.skija.LayerRasterSkija();
             // Publish BEFORE setLayer(): attaching fires EventWindowScreenChange
@@ -278,8 +298,10 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             this.layerSurface = null;
             this.layerAttached = true;
             w.setLayer(layer);
-            // Null until JWM runs the layer's first frame (see resolveLayerSurface).
-            this.layerSurface = layer.getSurface();
+            // Leave layerSurface null on purpose: getSurface() is null until
+            // JWM runs the layer's first frame anyway, and resolveLayerSurface
+            // () does the lazy resolution on the first present(). A previous
+            // version eagerly overwrote the cache here right after setLayer.
         } catch (RuntimeException e) {
             throw new IllegalStateException("Cannot create JWM presentation layer", e);
         }
@@ -380,14 +402,48 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     @Override
     public void destroy() {
         stopFrameDriver();
+        frameBody.set(null);
         pendingBootstrap = false;
+        // Full native-state reset: a half-reset backend could resurrect a
+        // closed window on the next enterEventLoop()/present() cycle.
+        boolean loopAlive = nativeLoopActive;
+        initAttempted.set(false);
+        bootstrapFailed = false;
+        nativeLoopActive = false;
+        useGl = false;
+        textInputEnabled = false;
         Window w = jwmWindow;
         jwmWindow = null;
+        rasterLayer = null;
+        layerSurface = null;
+        layerAttached = false;
         if (w != null) {
-            try {
-                w.close();
-            } catch (Throwable ignored) {
-                // already closed / wrong thread
+            // JWM's window operations are UI-thread-only; destroy() may be
+            // called from any thread (shutdown hooks), so marshal the close
+            // onto the loop instead of touching the HWND off-thread. If the
+            // loop is gone, the window died with it already.
+            // loopAlive: App.runOnUIThread(...) requires a pumping native loop
+            // (JWM exposes no isRunning() query), and without one the window
+            // already died together with the loop.
+            if (loopAlive) {
+                try {
+                    final Window toClose = w;
+                    App.runOnUIThread(() -> {
+                        try {
+                            toClose.close();
+                        } catch (Throwable ignored) {
+                            // already closed
+                        }
+                    });
+                } catch (Throwable ignored) {
+                    // UI thread no longer pumping: nothing left to close.
+                }
+            } else {
+                try {
+                    w.close();
+                } catch (Throwable ignored) {
+                    // already closed / wrong thread
+                }
             }
         }
         shouldClose = true;
@@ -451,38 +507,48 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     }
 
     /**
-     * Starts the daemon that drives the toolkit loop while JWM pumps
-     * messages. Every frame body is posted onto the JWM UI thread through
-     * {@code App.runOnUIThread(...)}, so widget state and Skija stay
-     * single-threaded; when the application asks to close, the driver posts
-     * {@code App.terminate()} to unwind the native loop.
+     * Starts the close-watchdog. Frames themselves are driven by JWM through
+     * {@link EventFrame} (see {@link #handleJwmEvent}): every toolkit frame
+     * ends with {@code requestFrame()}, which schedules the next native frame
+     * and runs the frame body back on the UI thread — no polling, no sleeps.
+     * This daemon exists only to break that self-sustaining cycle when the
+     * application asks to close: it posts {@code App.terminate()} so the
+     * native loop unwinds and {@code enterEventLoop()} returns. It also seeds
+     * the very first {@code EventFrame} while the layer is not attached yet
+     * (a minimized start), since {@code Window.requestFrame()} is gated on
+     * JWM's "has attached layer" flag from Java and may be ignored otherwise.
      *
      * @param onFrame one full iteration of the toolkit's frame loop
      */
     private void startFrameDriver(Runnable onFrame) {
         loopRunning.set(true);
+        frameBody.set(onFrame);
         Thread driver = new Thread(() -> {
             while (loopRunning.get() && !shouldClose()) {
-                App.runOnUIThread(() -> {
-                    if (shouldClose()) {
-                        return;
-                    }
-                    try {
-                        onFrame.run();
-                    } catch (Throwable t) {
-                        // Throwing into the native dispatcher would abort the
-                        // message loop: report and shut down cleanly instead.
-                        System.err.println("Glyph UI: frame step failed ("
-                            + t.getMessage() + ").");
-                        t.printStackTrace();
-                        setShouldClose(true);
-                    }
-                });
                 try {
-                    Thread.sleep(8); // ~120 Hz cadence; frames stay dirty-gated
+                    Thread.sleep(16);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
+                }
+                if (!loopRunning.get() || shouldClose()) {
+                    break;
+                }
+                if (frameBody.get() == null) {
+                    // destroy() ran concurrently: stop touching native state.
+                    break;
+                }
+                if (!layerAttached) {
+                    Window w = jwmWindow;
+                    if (w != null) {
+                        try {
+                            // Seed the EventFrame chain until present() takes
+                            // over the request-per-frame pacing.
+                            w.requestFrame();
+                        } catch (Throwable ignored) {
+                            // window closing
+                        }
+                    }
                 }
             }
             if (nativeLoopActive) {
@@ -492,21 +558,24 @@ public class JwmWindowBackend extends AbstractWindowBackend {
                     // Native loop already gone.
                 }
             }
-        }, "glyphui-jwm-driver");
+        }, "glyphui-jwm-close-watchdog");
         driver.setDaemon(true);
         this.frameDriver = driver;
         driver.start();
     }
 
-    /** Stops the frame driver (idempotent). */
+    /** Stops the close-watchdog (idempotent). */
     private void stopFrameDriver() {
         loopRunning.set(false);
+        frameBody.set(null);
         Thread driver = this.frameDriver;
         this.frameDriver = null;
         if (driver != null) {
             driver.interrupt();
             try {
-                driver.join(1000);
+                // The watchdog sleeps at most 16 ms per tick; a long join
+                // would stall shutdown behind a wedged UI thread.
+                driver.join(100);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -526,20 +595,22 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     }
 
     @Override
-    public void pollEvents() {
+    public boolean pollEvents() {
         // JWM dispatches events from its own loop; nothing to poll here.
+        return true;
     }
 
     @Override
     public void waitEvents() {
+        // Not used on the JWM path: Application.run() blocks inside
+        // enterEventLoop(...), where JWM owns the waiting/pumping entirely.
+        // Kept as a minimal park so any other caller still yields a frame
+        // slot instead of spinning (see WindowBackend javadoc).
         Window w = jwmWindow;
         if (w == null) {
             sleepQuietly(16);
             return;
         }
-        // Block until an event arrives: park briefly, JWM keeps dispatching
-        // into onJwmEvent from the UI thread. requestFrame guarantees the
-        // loop wakes periodically even with zero input (raster pacing).
         long deadline = System.nanoTime() + 16_000_000L;
         while (System.nanoTime() < deadline && !shouldClose()) {
             sleepQuietly(2);
@@ -760,12 +831,12 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     public void setSize(int width, int height) {
         Window w = jwmWindow;
         if (w != null) {
+            // Only ask the native window: the authoritative notifyWindowSize
+            // + notifyFramebufferSize come from EventWindowResize, which JWM
+            // dispatches synchronously enough for same-frame reads. Notifying
+            // here too fired the listeners twice per resize (double surface
+            // recreation down the chain).
             w.setContentSize(width, height);
-            // The authoritative update arrives via EventWindowResize; keep
-            // the cache optimistic so same-frame reads see the new size.
-            notifyWindowSize(width, height);
-            notifyFramebufferSize(Math.round(width * contentScaleX),
-                                  Math.round(height * contentScaleY));
         } else {
             updateDimensions(width, height);
         }
@@ -793,11 +864,6 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         }
         w.setFullScreen(fullscreen);
         config.fullscreen = fullscreen;
-    }
-
-    @Override
-    public long getWindowHandle() {
-        return 0L; // JWM exposes no numeric handle
     }
 
     // ------------------------------------------------------------------
@@ -869,12 +935,16 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     private void handleJwmEvent(io.github.humbleui.jwm.Event event) {
         Window w = jwmWindow;
         if (event instanceof EventWindowResize e) {
-            // Logical size = content area (window rect includes decorations)
-            notifyWindowSize(e.getContentWidth(), e.getContentHeight());
+            // Logical size = content area (window rect includes decorations).
+            // The framebuffer is derived from the LOGICAL content size, exactly
+            // as notifyWindowSize caches it — never from JWM's window rect, so
+            // titlebar/decoration heights cannot leak into pixel geometry.
+            int cw = e.getContentWidth();
+            int ch = e.getContentHeight();
+            notifyWindowSize(cw, ch);
             Screen s = w != null ? w.getScreen() : null;
             float scale = s != null && s._scale > 0f ? s._scale : 1f;
-            notifyFramebufferSize(Math.round(e.getContentWidth() * scale),
-                                  Math.round(e.getContentHeight() * scale));
+            notifyFramebufferSize(Math.round(cw * scale), Math.round(ch * scale));
             if (w != null) {
                 if (e.getContentWidth() <= 0 || e.getContentHeight() <= 0) {
                     // Minimized: drop the layer *before* JWM re-feeds the
@@ -897,6 +967,24 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         } else if (event instanceof EventWindowClose) {
             shouldClose = true;
             loopRunning.set(false);
+        } else if (event instanceof EventFrame) {
+            // JWM's native frame tick: run one toolkit frame directly on the
+            // UI thread. present()/requestNewFrame() call requestFrame() at
+            // the end of every frame, which schedules the next EventFrame —
+            // that closed loop is the whole pacing system (see class doc).
+            Runnable body = frameBody.get();
+            if (body != null && !shouldClose()) {
+                try {
+                    body.run();
+                } catch (Throwable t) {
+                    // Throwing into the native dispatcher would abort the
+                    // message loop: report and shut down cleanly instead.
+                    System.err.println("Glyph UI: frame step failed ("
+                        + t.getMessage() + ").");
+                    t.printStackTrace();
+                    setShouldClose(true);
+                }
+            }
         } else if (event instanceof EventKey e) {
             Integer code = KEY_MAP.get(e._key);
             if (code != null) {
@@ -905,8 +993,15 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         } else if (event instanceof EventTextInput e) {
             notifyTextInput(e._text, e._replacementStart, e._replacementEnd);
         } else if (event instanceof EventTextInputMarked) {
-            // Pre-edit (composing) text: not surfaced through the neutral
-            // API yet; ignore so the committed EventTextInput drives input.
+            // KNOWN LIMITATION (documented per review item 29): the pre-edit /
+            // composing text carried by this event is NOT surfaced through the
+            // neutral toolkit API — WindowBackend has no marked-text callback,
+            // so widgets cannot draw an underline under the in-progress IME
+            // composition. Committed text still arrives correctly via
+            // EventTextInput above; only the live composition preview is lost.
+            // Wiring this needs a new TextInputListener method (backend SPI),
+            // deliberately out of scope here. Ignoring is safe: JWM keeps the
+            // marked range and folds it into the committed event.
         } else if (event instanceof EventMouseButton e) {
             cursorX = e._x;
             cursorY = e._y;
@@ -917,10 +1012,32 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             cursorY = e._y;
             notifyCursorPos(e._x, e._y);
         } else if (event instanceof EventMouseScroll e) {
-            // Map wheel to toolkit buttons 3 (up) / 4 (down).
-            int btn = e._deltaY >= 0 ? 3 : 4;
-            notifyMouseButton(btn, true, e._x, e._y, mapNativeModifiers(e._modifiers));
-            notifyMouseButton(btn, false, e._x, e._y, mapNativeModifiers(e._modifiers));
+            // Wheel gestures are surfaced as press/release pairs on the
+            // neutral virtual wheel buttons (BTN_WHEEL_UP/DOWN/LEFT/RIGHT —
+            // see WindowBackend.MouseListener). One pair per line of integer
+            // magnitude, so a fast flick scrolls proportionally instead of
+            // being flattened to a single notch.
+            int mods = mapNativeModifiers(e._modifiers);
+            float dy = Float.isFinite(e._deltaY) ? e._deltaY : 0f;
+            float dx = Float.isFinite(e._deltaX) ? e._deltaX : 0f;
+            int stepsY = Math.min(16, (int) Math.abs(dy));
+            if (stepsY == 0 && dy != 0f) {
+                stepsY = 1; // sub-notch deltas still scroll one line
+            }
+            for (int i = 0; i < stepsY; i++) {
+                int btn = dy > 0 ? BTN_WHEEL_UP : BTN_WHEEL_DOWN;
+                notifyMouseButton(btn, true, e._x, e._y, mods);
+                notifyMouseButton(btn, false, e._x, e._y, mods);
+            }
+            int stepsX = Math.min(16, (int) Math.abs(dx));
+            if (stepsX == 0 && dx != 0f) {
+                stepsX = 1;
+            }
+            for (int i = 0; i < stepsX; i++) {
+                int btn = dx > 0 ? BTN_WHEEL_RIGHT : BTN_WHEEL_LEFT;
+                notifyMouseButton(btn, true, e._x, e._y, mods);
+                notifyMouseButton(btn, false, e._x, e._y, mods);
+            }
         }
     }
 
@@ -943,8 +1060,30 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     private void applyScreenScale(Screen screen) {
         float scale = screen != null && screen._scale > 0f ? screen._scale : 1f;
         setContentScale(scale, scale);
-        notifyFramebufferSize(Math.round(windowWidth * scale),
-                              Math.round(windowHeight * scale));
+        // Use the window's REAL current geometry when it exists: the cached
+        // windowWidth/windowHeight lag behind maximize/fullscreen transitions,
+        // and deriving the framebuffer from stale caches desyncs the surface
+        // from the layer. While headless/pre-bootstrap there is no native
+        // query to make and no live listener contract to keep (the toolkit
+        // derives the framebuffer from scale × logical size on demand), so do
+        // not fire a spurious notifyFramebufferSize — the earlier code used to
+        // announce a phantom resize at bootstrap time.
+        Window w = jwmWindow;
+        if (w == null) {
+            return;
+        }
+        int width = windowWidth;
+        int height = windowHeight;
+        try {
+            IRect content = w.getContentRect();
+            if (content != null && content.getWidth() > 0 && content.getHeight() > 0) {
+                width = content.getWidth();
+                height = content.getHeight();
+            }
+        } catch (Throwable ignored) {
+            // Native query unavailable mid-close: cached values stand.
+        }
+        notifyFramebufferSize(Math.round(width * scale), Math.round(height * scale));
     }
 
     // ------------------------------------------------------------------
@@ -987,7 +1126,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         KEY_MAP.put(Key.PAGE_UP, GlyphKeys.PAGE_UP);
         KEY_MAP.put(Key.PAGE_DOWN, GlyphKeys.PAGE_DOWN);
         KEY_MAP.put(Key.DELETE, GlyphKeys.DELETE);
-        KEY_MAP.put(Key.INSERT, GlyphKeys.UP); // no INSERT in toolkit set; UP-compatible 265
+        KEY_MAP.put(Key.INSERT, GlyphKeys.INSERT);
         KEY_MAP.put(Key.MINUS, GlyphKeys.MINUS);
         KEY_MAP.put(Key.EQUALS, GlyphKeys.EQUAL);
         KEY_MAP.put(Key.SLASH, GlyphKeys.SLASH);
@@ -1028,15 +1167,25 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         return out;
     }
 
+    /** Toolkit mouse-button ids used on the neutral listener wire (see MouseListener javadoc). */
+    static final int BTN_LEFT = 0;
+    static final int BTN_RIGHT = 1;
+    static final int BTN_MIDDLE = 2;
+    /** Wheel gestures are emitted as press/release pairs on these virtual buttons. */
+    static final int BTN_WHEEL_UP = 3;
+    static final int BTN_WHEEL_DOWN = 4;
+    static final int BTN_WHEEL_LEFT = 5;
+    static final int BTN_WHEEL_RIGHT = 6;
+
     /** JWM MouseButton → toolkit ids (0=left, 1=right, 2=middle). */
     private static int buttonToToolkit(io.github.humbleui.jwm.MouseButton b) {
         return switch (b) {
-            case PRIMARY -> 0;
-            case SECONDARY -> 1;
-            case MIDDLE -> 2;
-            case BACK -> 3;
-            case FORWARD -> 4;
-            default -> 0;
+            case PRIMARY -> BTN_LEFT;
+            case SECONDARY -> BTN_RIGHT;
+            case MIDDLE -> BTN_MIDDLE;
+            case BACK -> BTN_WHEEL_UP;    // legacy collision kept for compatibility
+            case FORWARD -> BTN_WHEEL_DOWN;
+            default -> BTN_LEFT;
         };
     }
 }
