@@ -1,11 +1,11 @@
 # Glyph UI
 
-A modern UI toolkit built on Skija and LWJGL for Java 17+.
+A modern UI toolkit built on Skija and JWM for Java 17+.
 
 ## Features
 
 - Modern rendering engine powered by Skija (Skia for Java)
-- Window management and event handling via LWJGL/GLFW
+- Window management and event handling via JWM (io.github.humbleui:jwm)
 - Component-based UI architecture
 - Support for rounded corners, custom colors, and text rendering
 - Event system for mouse and keyboard input
@@ -25,7 +25,7 @@ A modern UI toolkit built on Skija and LWJGL for Java 17+.
 On macOS, you need to add the `-XstartOnFirstThread` JVM argument:
 
 ```bash
-mvn exec:java -Dexec.mainClass="com.glyphui.Main" -Dexec.vmArgs="-XstartOnFirstThread"
+cd glyph-ui-examples && mvn exec:java -Dexec.vmArgs="-XstartOnFirstThread"
 ```
 
 Or configure your IDE to include this VM argument when running the application.
@@ -36,25 +36,44 @@ Or configure your IDE to include this VM argument when running the application.
 mvn clean compile
 ```
 
-## Running
+## Running the examples
+
+Runnable demos live in the separate [`glyph-ui-examples`](glyph-ui-examples)
+Maven project, which depends on the toolkit jar. Install the library locally
+first, then run any example from the examples directory:
 
 ```bash
-mvn exec:java -Dexec.mainClass="com.glyphui.Main"
+mvn install -DskipTests          # from the repository root (installs glyph-ui)
+cd glyph-ui-examples
+mvn exec:java                    # runs com.glyphui.examples.DemoButtons
 ```
 
 On macOS:
 ```bash
-mvn exec:java -Dexec.mainClass="com.glyphui.Main" -Dexec.vmArgs="-XstartOnFirstThread"
+mvn exec:java -Dexec.vmArgs="-XstartOnFirstThread"
 ```
+
+### Window backend
+
+JWM (`io.github.humbleui:jwm`) is the single supported window backend. The
+former GLFW/LWJGL backend and the runtime backend-selection factory were
+removed; `Window` instantiates `JwmWindowBackend` directly. The public
+`WindowBackend` interface stays in place as the stable seam between the
+toolkit and the native layer.
+
+JWM owns the process UI thread: its native message loop is started by
+`Application.run()` (through `WindowBackend.enterEventLoop`), not by
+`Application.init()`, which stays fully headless until then. Frames are
+blitted from the CPU surface onto the window layer via
+`WindowBackend.present(...)`.
 
 ## Project Structure
 
 ```
 src/main/java/com/glyphui/
-├── Main.java                 # Example application entry point
 ├── core/
 │   ├── Application.java      # Main application class with event loop
-│   └── Window.java           # Window abstraction using GLFW
+│   └── Window.java           # Window abstraction using JWM
 ├── graphics/
 │   └── Canvas.java           # Skija drawing wrapper
 ├── ui/
@@ -70,9 +89,19 @@ src/main/java/com/glyphui/
 │   ├── MouseButton.java      # Mouse button enum
 │   ├── KeyEventType.java     # Key event type enum
 │   └── KeyModifier.java      # Key modifier enum
+├── markup/
+│   ├── Tokenizer.java        # .glyph lexer (three-mode scanner)
+│   ├── Parser.java           # .glyph recursive-descent parser -> AST
+│   └── UiLoader.java         # AST -> widget tree mapper
 └── layout/
     ├── LayoutManager.java    # Base class for layout managers
     └── FlowLayout.java       # Flow layout implementation
+
+glyph-ui-examples/            # Separate Maven project with runnable demos
+├── pom.xml                   # Depends on the glyph-ui artifact
+└── src/main/
+    ├── java/com/glyphui/examples/DemoButtons.java
+    └── resources/demo/       # ui.glyph + app.css declarative markup demo
 ```
 
 ## Usage Example
@@ -80,7 +109,7 @@ src/main/java/com/glyphui/
 `Application` implements `AutoCloseable`, so the recommended pattern is
 try-with-resources. Closing the application disposes the whole component tree
 in cascade (each widget releases its native paints/fonts), then frees the
-shared font cache, the Skija surface, the GPU context and finally the GLFW
+shared font cache, the Skija surface, the GPU context and finally the JWM
 window - always in the correct dependency order:
 
 ```java
@@ -140,7 +169,7 @@ exposes observable properties (`button.textProperty().set(...)`,
 `widthProperty()`, `heightProperty()`, `visibleProperty()`, `enabledProperty()`).
 When `Property.set(...)` is called from a background thread, the framework
 marshals the change onto the UI thread automatically (queue +
-`glfwPostEmptyEvent` wakeup), marks the frame dirty and notifies listeners on
+`postEmptyEvent` wakeup), marks the frame dirty and notifies listeners on
 the UI thread. The classic setters (`setText`, `setVisible`, ...) delegate to
 these properties, so they are equally thread-safe:
 
@@ -165,26 +194,25 @@ re-layout atomically). It is also the escape hatch used internally by
 properties. `Application.isUiThread()` / `checkThread()` let you assert or
 detect the current thread when writing custom components.
 
-The event loop blocks in `glfwWaitEvents()` while idle (GPU backend), so
+The event loop blocks in the backend's wait-for-events call while idle (GPU backend), so
 cross-thread updates applied through properties wake it up immediately instead
 of waiting for the next poll tick.
 
 ## Dependencies
 
 - **Skija** (io.github.humbleui:skija-*) - Skia graphics library for Java
-- **LWJGL 3** - Lightweight Java Game Library for windowing and input
-  - lwjgl
-  - lwjgl-glfw
-  - lwjgl-opengl
+- **JWM** (io.github.humbleui:jwm) - native windowing backend (IME, clipboard, DPI)
 
 ## License
 
 This project is open source. See the LICENSE file for details.
 
-## Declarative UI: HTML-like markup + CSS subset
+## Declarative UI: `.glyph` markup + CSS subset
 
-Glyph-UI lets you declare interfaces in an HTML-like markup file and style them
-with a CSS subset, resolved against the live widget tree.
+Glyph-UI lets you declare interfaces in a `.glyph` markup file and style them
+with a CSS subset, resolved against the live widget tree. `.glyph` is scanned
+by the built-in `Tokenizer`/`Parser` (no third-party HTML parser) into a raw
+AST that `UiLoader` maps onto widgets.
 
 > **This is NOT a browser.** There is no JavaScript engine, no DOM, and only a
 > documented subset of CSS is supported. Unknown properties/selectors are
@@ -193,10 +221,38 @@ with a CSS subset, resolved against the live widget tree.
 ### Markup (`UiLoader`)
 
 ```java
-StyleSheet sheet = StyleSheet.fromResource("/demo/app.css");
-Panel root = UiLoader.loadFromResource("/demo/ui.html", new MyController());
-StyleEngine.apply(root, sheet);
+UiLoader loader = new UiLoader();
+Panel root = (Panel) loader.load("/demo/ui.glyph", new MyController());
+
+// A <link rel="stylesheet" href="app.css"/> found while parsing is exposed here:
+StyleSheet sheet = loader.getLastStyleSheet();
+if (sheet != null) {
+    StyleEngine.apply(root, sheet);
+}
 ```
+
+`.glyph` syntax is XML-like:
+
+```glyph
+<!-- comments use the HTML form -->
+<link rel="stylesheet" href="app.css"/>
+<body>
+  <div id="card" class="card" layout="flex">
+    <label class="title">Hello</label>
+    <button id="ok" onclick="onOk">OK</button>
+  </div>
+</body>
+```
+
+- Elements use `<Tag attr="value">children</Tag>` or the self-closing
+  `<Tag/>` form; unquoted values (`layout=flex`) are accepted.
+- Content may contain `{path.to.value}` interpolations and the literal-brace
+  escapes `{{` / `}}`. The parser captures interpolations as `BindingNode`s,
+  but wiring them to reactive properties is not implemented yet, so
+  `UiLoader` reports them as warnings.
+- Inline `<style>` blocks are **not** supported (the `{` delimiter collides
+  with interpolations). Link an external sheet with
+  `<link rel="stylesheet" href="app.css"/>` instead.
 
 Supported tags (unknown tags become a generic `Panel` with a warning):
 
@@ -206,12 +262,14 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `button`   | `Button`    | text from tag body; `onclick="methodName"`   |
 | `label`, `p` | `Label`   | text from tag body                           |
 | `input`    | `TextField` | `value` attribute; `onchange="methodName"`   |
-| `img`      | `ImageView` | `src` resolved via classpath resource        |
+| `img`      | `ImageView` | `src` resolved through the loader's `ImageProvider` |
 
 Attributes: `class`, `id`, `style="..."` (inline CSS), `layout="flex"` /
 `layout="flow"` on containers, and `onclick`/`onchange` which are resolved by
 name against a registered controller object via reflection (no-arg or
-component-arg public methods).
+component-arg public methods). `head`, `title`, `meta`, `link`, `style`,
+`script` and `base` are document metadata and never become widgets; a `body`
+element, when present, becomes the root container.
 
 ### CSS subset
 
@@ -248,14 +306,23 @@ mvn test
 
 ### Integration Tests
 
-The project includes integration tests that create actual GLFW windows and capture screenshots. These tests require a display server:
+The project includes integration tests that create actual JWM windows and capture screenshots. These tests require a display server:
 
 - **Linux**: Install Xvfb (`sudo apt-get install xvfb`) and run with `xvfb-run -a mvn test`
 - **macOS/Windows**: A physical display is required, or use virtual display software
 
-**Note on Monocle**: Monocle is specific to JavaFX and does NOT apply to this toolkit, which uses LWJGL/GLFW + Skija for rendering.
+**Note on Monocle**: Monocle is specific to JavaFX and does NOT apply to this toolkit, which uses JWM + Skija for rendering.
 
 Screenshot artifacts from CI builds can be downloaded from GitHub Actions workflow runs.
+
+## API Boundary
+
+The supported public API of this library is defined by a package whitelist;
+everything else — including any package with an `internal` segment such as
+`com.glyphui.core.internal`, which hosts test hooks and non-public classes —
+carries no stability promise. The full decision record (rationale, rejected
+alternatives, enforcement plan) lives in
+[`docs/architecture/internal-boundary.md`](docs/architecture/internal-boundary.md).
 
 ## Contributing
 

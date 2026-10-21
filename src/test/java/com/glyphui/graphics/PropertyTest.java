@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for {@link Property}: thread marshalling, listener notification,
  * one-way bindings and delegation from classic widget setters.
  *
- * <p>The cross-thread tests use a bare {@code new Application()} (no GLFW /
+ * <p>The cross-thread tests use a bare {@code new Application()} (no native /
  * Skija initialization) with the {@code uiThread} field set via reflection to
  * simulate a running UI loop, so no GPU or display is required.</p>
  */
@@ -72,7 +72,7 @@ class PropertyTest {
     /**
      * Minimal stand-in for Application.run(): registers the current thread as
      * the UI thread and continuously drains the posted-task queue, so sets
-     * marshalled via invokeLater are executed without GLFW/Skija.
+     * marshalled via invokeLater are executed without a native window/Skija.
      */
     private static final class LoopDriver {
         final Application app;

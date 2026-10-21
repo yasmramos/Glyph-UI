@@ -62,7 +62,7 @@ public class KeyEventTest {
     public void testKeyEventEnterKey() {
         KeyEvent event = new KeyEvent(KeyEventType.PRESS, 257, '\n', EnumSet.noneOf(KeyModifier.class));
 
-        assertEquals(257, event.getKeyCode(), "Enter key code (GLFW_KEY_ENTER)");
+        assertEquals(257, event.getKeyCode(), "Enter key code (GlyphKeys.ENTER)");
         assertEquals('\n', event.getKeyChar());
     }
 }

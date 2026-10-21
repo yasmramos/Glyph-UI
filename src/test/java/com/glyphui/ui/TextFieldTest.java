@@ -18,18 +18,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for {@link TextField} editing behavior driven through the
- * keyboard event API (no GLFW window required): caret movement, insertion,
+ * keyboard event API (no native window required): caret movement, insertion,
  * backspace/delete, selection and Ctrl+A. Also verifies accessibility role
  * defaults across widgets.
  */
 public class TextFieldTest {
 
-    private static final int KEY_LEFT = 263;   // GLFW_KEY_LEFT
-    private static final int KEY_HOME = 268;   // GLFW_KEY_HOME
-    private static final int KEY_END = 269;    // GLFW_KEY_END
+    private static final int KEY_LEFT = 263;   // GlyphKeys.LEFT
+    private static final int KEY_HOME = 268;   // GlyphKeys.HOME
+    private static final int KEY_END = 269;    // GlyphKeys.END
     private static final int KEY_BACKSPACE = 259;
     private static final int KEY_DELETE = 261;
-    private static final int KEY_A = 29;       // GLFW_KEY_A
+    private static final int KEY_A = 29;       // GlyphKeys.A
 
     private TextField field;
 
