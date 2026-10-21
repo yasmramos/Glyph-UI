@@ -1,5 +1,6 @@
 package com.glyphui.graphics;
 
+import com.glyphui.SkijaTestSupport;
 import io.github.humbleui.skija.Surface;
 
 /**
@@ -23,13 +24,8 @@ public final class RasterCanvasTestFactory {
      * @return true if the Skija native library can be loaded on this machine
      */
     public static boolean isAvailable() {
-        try {
-            try (Surface s = Surface.makeRasterN32Premul(1, 1)) {
-                return s != null;
-            }
-        } catch (Throwable t) {
-            return false;
-        }
+        // Single source of truth for native availability across the suite.
+        return SkijaTestSupport.isAvailable();
     }
 
     /**

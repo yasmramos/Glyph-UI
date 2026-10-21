@@ -1,5 +1,6 @@
 package com.glyphui.ui;
 
+import com.glyphui.TestBase;
 import com.glyphui.events.MouseEvent;
 import com.glyphui.events.MouseEventType;
 import com.glyphui.events.MouseButton;
@@ -10,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Unit tests for Panel component.
  */
-public class PanelTest {
+public class PanelTest extends TestBase {
 
     @Test
     public void testAddComponent() {

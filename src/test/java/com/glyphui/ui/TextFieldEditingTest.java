@@ -1,5 +1,6 @@
 package com.glyphui.ui;
 
+import com.glyphui.TestBase;
 import com.glyphui.core.FocusManager;
 import com.glyphui.events.KeyEvent;
 import com.glyphui.events.KeyEventType;
@@ -30,7 +31,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * notification, disabled behavior and rendering paths against an in-memory
  * raster surface. Complements {@link TextFieldTest}.
  */
-public class TextFieldEditingTest {
+public class TextFieldEditingTest extends TestBase {
 
     private static final int KEY_LEFT = 263;
     private static final int KEY_RIGHT = 262;

@@ -1,5 +1,6 @@
 package com.glyphui.core;
 
+import com.glyphui.TestBase;
 import com.glyphui.ui.TestComponent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * the content-scale bookkeeping,
  * including a simulated 2.0x DPI display.</p>
  */
-public class WindowHiDpiTest {
+public class WindowHiDpiTest extends TestBase {
 
     @AfterEach
     public void tearDown() {

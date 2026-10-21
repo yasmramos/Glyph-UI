@@ -1,5 +1,6 @@
 package com.glyphui.integration;
 
+import com.glyphui.TestBase;
 import com.glyphui.core.Application;
 import com.glyphui.core.internal.TestHooks;
 import com.glyphui.ui.Component;
@@ -19,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>Requires a native JWM window (skipped in headless environments).</p>
  */
-public class InvalidateRepaintIT {
+public class InvalidateRepaintIT extends TestBase {
 
     private Application app;
 

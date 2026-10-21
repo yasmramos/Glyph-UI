@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Skia raster surface (no GPU / windowing required). Tests are skipped with an
  * assumption if the Skija native library cannot be loaded on the host.
  */
-class WidgetRasterTest {
+class WidgetRasterTest extends com.glyphui.TestBase {
 
     private static final int OPAQUE_BLUE = 0xFF0000FF;
     private static final int OPAQUE_RED = 0xFFFF0000;

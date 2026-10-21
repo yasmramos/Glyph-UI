@@ -1,5 +1,6 @@
 package com.glyphui.ui;
 
+import com.glyphui.TestBase;
 import com.glyphui.core.FocusManager;
 import com.glyphui.events.GlyphKeys;
 import com.glyphui.events.KeyEvent;
@@ -22,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * render(), construction and the whole mouse/keyboard state machine can be
  * exercised headlessly.
  */
-public class ButtonBehaviorTest {
+public class ButtonBehaviorTest extends TestBase {
 
     private FocusManager focusManager;
 

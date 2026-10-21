@@ -1,5 +1,6 @@
 package com.glyphui.core;
 
+import com.glyphui.TestBase;
 import com.glyphui.graphics.RasterCanvasTestFactory;
 import com.glyphui.ui.TestComponent;
 import io.github.humbleui.skija.Surface;
@@ -24,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * application instance is built directly and internal state is wired via
  * reflection (same package, so package-private members are accessible).
  */
-class ApplicationOnDemandTest {
+class ApplicationOnDemandTest extends TestBase {
 
     private Application app;
 

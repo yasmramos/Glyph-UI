@@ -1,5 +1,8 @@
 package com.glyphui.ui;
 
+import com.glyphui.SkijaTestSupport;
+import com.glyphui.TestBase;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -8,7 +11,19 @@ import static org.junit.jupiter.api.Assertions.*;
  * Unit tests for the Label widget, focusing on constructors without explicit
  * bounds and preferred-size computation.
  */
-public class LabelTest {
+public class LabelTest extends TestBase {
+
+    /**
+     * Several tests below measure real text through Skija's font machinery.
+     * When the native library cannot load on this host those tests are
+     * skipped (assumption), not failed. Constructor/state tests still run
+     * everywhere, but a uniform guard is simpler and matches the file's
+     * dominant purpose.
+     */
+    @BeforeEach
+    public void requireSkijaForTextMeasurement() {
+        SkijaTestSupport.assumeAvailable();
+    }
 
     @Test
     public void testBoundsConstructorMarksSizeExplicit() {

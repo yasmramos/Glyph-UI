@@ -1,5 +1,6 @@
 package com.glyphui.ui;
 
+import com.glyphui.TestBase;
 import com.glyphui.core.FocusManager;
 import com.glyphui.events.KeyEvent;
 import com.glyphui.events.KeyEventType;
@@ -22,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * backspace/delete, selection and Ctrl+A. Also verifies accessibility role
  * defaults across widgets.
  */
-public class TextFieldTest {
+public class TextFieldTest extends TestBase {
 
     private static final int KEY_LEFT = 263;   // GlyphKeys.LEFT
     private static final int KEY_HOME = 268;   // GlyphKeys.HOME
