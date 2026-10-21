@@ -240,8 +240,7 @@ public class Button extends Component {
      * @return the normal-state color (as ARGB int)
      */
     public int getNormalColor() {
-        return resolveIntStyle(com.glyphui.style.StyleProperty.BACKGROUND,
-                normalColorOverride, getTheme().getControlNormalColor());
+        return resolveStateColor(ComponentState.IDLE);
     }
 
     /**
