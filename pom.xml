@@ -10,13 +10,12 @@
     <packaging>jar</packaging>
 
     <name>Glyph UI</name>
-    <description>A modern UI toolkit built on Skija and LWJGL</description>
+    <description>A modern UI toolkit built on Skija and JWM</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <lwjgl.version>3.4.3</lwjgl.version>
         <skija.version>0.116.2</skija.version>
         <jwm.version>0.4.25</jwm.version>
         <jacoco.version>0.8.11</jacoco.version>
@@ -33,7 +32,6 @@
                 </os>
             </activation>
             <properties>
-                <lwjgl.natives>natives-windows</lwjgl.natives>
                 <skija.artifact>skija-windows-x64</skija.artifact>
             </properties>
         </profile>
@@ -49,7 +47,6 @@
                 </os>
             </activation>
             <properties>
-                <lwjgl.natives>natives-linux</lwjgl.natives>
                 <skija.artifact>skija-linux-x64</skija.artifact>
             </properties>
         </profile>
@@ -64,7 +61,6 @@
                 </os>
             </activation>
             <properties>
-                <lwjgl.natives>natives-macos</lwjgl.natives>
                 <skija.artifact>skija-macos-x64</skija.artifact>
             </properties>
         </profile>
@@ -79,7 +75,6 @@
                 </os>
             </activation>
             <properties>
-                <lwjgl.natives>natives-macos-arm64</lwjgl.natives>
                 <skija.artifact>skija-macos-arm64</skija.artifact>
             </properties>
         </profile>
@@ -98,45 +93,6 @@
             <groupId>io.github.humbleui</groupId>
             <artifactId>${skija.artifact}</artifactId>
             <version>${skija.version}</version>
-        </dependency>
-
-        <!-- LWJGL Core -->
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl</artifactId>
-            <version>${lwjgl.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl</artifactId>
-            <version>${lwjgl.version}</version>
-            <classifier>${lwjgl.natives}</classifier>
-        </dependency>
-
-        <!-- LWJGL GLFW -->
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-glfw</artifactId>
-            <version>${lwjgl.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-glfw</artifactId>
-            <version>${lwjgl.version}</version>
-            <classifier>${lwjgl.natives}</classifier>
-        </dependency>
-
-        <!-- LWJGL OpenGL -->
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-opengl</artifactId>
-            <version>${lwjgl.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-opengl</artifactId>
-            <version>${lwjgl.version}</version>
-            <classifier>${lwjgl.natives}</classifier>
         </dependency>
 
         <!-- ph-css: CSS parser used by the style subsystem -->

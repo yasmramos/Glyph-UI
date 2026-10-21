@@ -5,7 +5,7 @@ import io.github.humbleui.skija.Surface;
 /**
  * Test helper that creates a {@link Canvas} backed by an in-memory Skia raster surface.
  *
- * <p>This avoids any GLFW/OpenGL windowing while still exercising the real Skija
+ * <p>This avoids any native windowing/OpenGL while still exercising the real Skija
  * native code paths (rasterization happens on the CPU). If the Skija native library
  * cannot be loaded (e.g. missing libEGL on the host), {@link #isAvailable()} returns
  * false and tests using this factory should be skipped via

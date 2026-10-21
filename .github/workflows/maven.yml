@@ -21,7 +21,7 @@ jobs:
         distribution: 'temurin'
         cache: maven
 
-    - name: Install system dependencies for GLFW/OpenGL
+    - name: Install system dependencies for JWM/X11/OpenGL
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -34,8 +34,6 @@ jobs:
           libxi6 \
           libxinerama1 \
           libxxf86vm1 \
-          libglfw3 \
-          libglfw3-dev \
           libegl1
 
     - name: Ensure screenshots directory exists

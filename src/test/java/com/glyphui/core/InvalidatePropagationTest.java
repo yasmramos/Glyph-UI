@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * application's {@code paintDirty} flag.
  *
  * <p>The full integration variant (mutating a real widget inside a running
- * {@link Application}) lives in the IT suite which requires GLFW; these unit
+ * {@link Application}) lives in the IT suite which requires a native window; these unit
  * tests verify the same contract headlessly by installing a repaint
  * requester exactly like {@code Application}'s constructor does
  * ({@code Component.setGlobalRepaintRequester(this::requestRepaint)}).</p>
@@ -121,7 +121,7 @@ public class InvalidatePropagationTest {
 
     @Test
     public void testApplicationSetRepaintRequesterDelegatesToComponentHook() {
-        // Without init() (no GLFW needed), exercise the public API method
+        // Without init() (no native window needed), exercise the public API method
         // that documents the invalidate()->requestRepaint() wiring.
         Application app = new Application();
         try {

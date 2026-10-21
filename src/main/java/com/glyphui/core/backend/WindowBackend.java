@@ -8,22 +8,18 @@ import com.glyphui.core.WindowConfig;
  * <p>{@code WindowBackend} abstracts everything the toolkit needs from a
  * native window: creation/destruction, event pumping, geometry (logical and
  * physical/framebuffer sizes), HiDPI content scale, runtime window
- * attributes, clipboard access and input-event dispatch. Concrete backends
- * adapt a specific windowing library to this API:</p>
+ * attributes, clipboard access and input-event dispatch. Keeping this
+ * interface free of native-library types lets the toolkit swap or grow its
+ * windowing layer without touching the rest of the code base.</p>
  *
- * <ul>
- *   <li>{@link JwmWindowBackend} — the default backend, built on
- *       <em>io.github.humbleui:jwm</em> (with IME support through
- *       {@code TextInputClient}).</li>
- *   <li>{@link GlfwWindowBackend} — optional legacy backend built on
- *       LWJGL/GLFW.</li>
- * </ul>
+ * <p>The toolkit's single production implementation is
+ * {@link JwmWindowBackend}, built on <em>io.github.humbleui:jwm</em> (with
+ * IME support through {@code TextInputClient}). The GLFW/LWJGL backend was
+ * removed; JWM is now the only supported windowing path.</p>
  *
  * <p>The interface deliberately avoids any backend-specific types in its
- * signatures: listeners are plain functional interfaces declared below (the
- * "window handle" parameter of the historical GLFW callbacks is simply
- * dropped). Key codes arriving at
- * {@link KeyListener} and mouse button ids arriving at
+ * signatures: listeners are plain functional interfaces declared below. Key
+ * codes arriving at {@link KeyListener} and mouse button ids arriving at
  * {@link MouseListener} use the toolkit's own numeric vocabulary
  * ({@link com.glyphui.events.GlyphKeys} / 0=left, 1=right, 2=middle); each
  * backend translates its native identifiers before dispatching. Modifier
@@ -44,7 +40,7 @@ public interface WindowBackend extends AutoCloseable {
 
     // ------------------------------------------------------------------
     // Listener functional interfaces (backend-agnostic replacements for
-    // the LWJGL GLFWXxxCallbackI types used by the original API)
+    // the native callback types of windowing libraries)
     // ------------------------------------------------------------------
 
     /** Receives logical window-size changes, in logical units. */
@@ -73,8 +69,8 @@ public interface WindowBackend extends AutoCloseable {
 
     /**
      * Receives committed / composed text from the platform input method
-     * (IME). Backends without a native IME bridge (GLFW) never fire this
-     * listener; JWM dispatches its {@code EventTextInput} here. The default
+     * (IME). Backends without a native IME bridge never fire this listener;
+     * JWM dispatches its {@code EventTextInput} here. The default
      * implementation forwards to the {@link CharListener} one codepoint at a
      * time so applications written against the char callback keep working.
      *
@@ -323,8 +319,8 @@ public interface WindowBackend extends AutoCloseable {
 
     /**
      * Receives cursor-position updates in logical window coordinates.
-     * Backends deliver both axes in a single call (GLFW's separate x/y
-     * doubles are coalesced by the backend before dispatching).
+     * Backends deliver both axes in a single call (native libraries may
+     * report them separately; the backend coalesces before dispatching).
      */
     @FunctionalInterface
     interface CursorPosListener {
@@ -378,8 +374,8 @@ public interface WindowBackend extends AutoCloseable {
      * Returns true when the backend owns the process-wide UI thread and its
      * event loop cannot be pumped from the caller thread (JWM: the native
      * library must be started from the main thread via {@code App.start} and
-     * dispatches all window events from it). When this returns false (GLFW,
-     * headless tests) {@code Application.run()} keeps its classical
+     * dispatches all window events from it). When this returns false (e.g.
+     * headless test backends) {@code Application.run()} keeps its classical
      * poll/wait loop driven by the calling thread.
      *
      * @return true for app-owned-loop backends
@@ -407,8 +403,7 @@ public interface WindowBackend extends AutoCloseable {
     /**
      * Requests that the native event loop wake up and run another frame as
      * soon as possible (raster path has no vsync to pace frames). Default:
-     * no-op — GLFW/polling backends are paced by swap intervals and real
-     * events.
+     * no-op — polling backends are paced by swap intervals and real events.
      */
     default void requestNewFrame() {
     }

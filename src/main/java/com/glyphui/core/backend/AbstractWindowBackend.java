@@ -215,7 +215,7 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     }
 
     /**
-     * Default: no native IME bridge (GLFW); backends with IME support
+     * Default: no native IME bridge; backends with IME support
      * override and consult {@link #imeClient}.
      */
     @Override
@@ -226,7 +226,7 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     // Notification helpers used by concrete backends when native events
     // arrive. Each helper refreshes the cached state FIRST so that
     // listeners observing getWidth()/getFramebufferWidth()/... already
-    // see the new values (the historical GLFW callback ordering contract).
+    // see the new values (the callback ordering contract).
     // ------------------------------------------------------------------
 
     /** Fires the logical-size listener after caching the new size. */
@@ -326,7 +326,7 @@ public abstract class AbstractWindowBackend implements WindowBackend {
 
     /**
      * Native modifier remap hook. The default passes the bits through
-     * unchanged — valid for GLFW, whose {@code GLFW_MOD_*} layout is
+     * unchanged — valid for backends whose native modifier layout is
      * identical to {@link GlyphMods}. JWM overrides it.
      */
     protected int mapNativeModifiers(int nativeMods) {

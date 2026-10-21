@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@link Application} must propagate {@code invalidate()} up to the root and
  * mark the application paint-dirty ({@code requestRepaint()}).
  *
- * <p>Requires GLFW (skipped in headless environments).</p>
+ * <p>Requires a native JWM window (skipped in headless environments).</p>
  */
 public class InvalidateRepaintIT {
 
@@ -26,7 +26,7 @@ public class InvalidateRepaintIT {
     public void setUp() {
         app = new Application();
         boolean initialized = app.init("Invalidate IT", 800, 600, true);
-        Assumptions.assumeTrue(initialized, "GLFW not available (headless environment); skipping test");
+        Assumptions.assumeTrue(initialized, "JWM native window not available (headless environment); skipping test");
     }
 
     @AfterEach

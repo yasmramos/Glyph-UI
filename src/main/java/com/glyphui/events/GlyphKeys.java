@@ -3,20 +3,19 @@ package com.glyphui.events;
 /**
  * Toolkit-owned key-code constants.
  *
- * <p>Historically the widget layer compared raw GLFW numeric codes (e.g.
- * {@code 259} for Backspace) hard-coded inside {@link com.glyphui.ui.TextField}.
- * With the backend abstraction ({@code WindowBackend}) each native backend
- * maps its own physical key identifiers onto these stable toolkit codes
- * before dispatching a {@link KeyEvent}, so widgets never depend on LWJGL
- * or JWM constants again.</p>
+ * <p>The widget layer never compares raw native key codes (historically it
+ * used numbers like {@code 259} for Backspace hard-coded inside
+ * {@link com.glyphui.ui.TextField}). With the backend abstraction
+ * ({@code WindowBackend}) the native backend maps its own physical key
+ * identifiers onto these stable toolkit codes before dispatching a
+ * {@link KeyEvent}, so widgets never depend on JWM constants directly.</p>
  *
  * <p><strong>Wire compatibility:</strong> the numeric values of the special
- * keys intentionally match the legacy GLFW codes that existing tests and
- * serialized events already use (Enter = 257, Backspace = 259, ...), and
- * printable ASCII keys carry their uppercase code point ('A' = 65). The A-Z
- * mapping is identical in GLFW (which uses US-ASCII key codes) and JWM
- * (whose {@code Key.DIGIT_A..DIGIT_Z} ordinals coincide with ASCII), so both
- * backends can forward these values without translation.</p>
+ * keys are part of the toolkit's public vocabulary — existing tests and
+ * serialized events already use them (Enter = 257, Backspace = 259, ...) —
+ * and printable ASCII keys carry their uppercase code point ('A' = 65),
+ * which matches the JWM {@code Key.DIGIT_A..DIGIT_Z} ordinals, so the
+ * backend forwards those values without translation.</p>
  */
 public final class GlyphKeys {
 
@@ -79,7 +78,7 @@ public final class GlyphKeys {
     public static final int D8 = '8';
     public static final int D9 = '9';
 
-    // --- Punctuation (legacy GLFW wire values) ----------------------------
+    // --- Punctuation ------------------------------------------------------
     public static final int MINUS = 45;          // '-'
     public static final int EQUAL = 61;          // '='
     public static final int SLASH = 47;          // '/'
@@ -92,14 +91,14 @@ public final class GlyphKeys {
     public static final int LEFT_BRACKET = 91;   // '['
     public static final int RIGHT_BRACKET = 93;  // ']'
 
-    // --- Modifier keys (legacy GLFW wire values) --------------------------
+    // --- Modifier keys ----------------------------------------------------
     public static final int LEFT_SHIFT = 340;
     public static final int LEFT_CONTROL = 341;
     public static final int LEFT_ALT = 342;
     public static final int LEFT_SUPER = 343;
     public static final int CAPS_LOCK = 280;
 
-    // --- Function keys (legacy GLFW wire values: F1=290..F12=301) ---------
+    // --- Function keys (F1=290..F12=301) ----------------------------------
     public static final int F1 = 290;
     public static final int F2 = 291;
     public static final int F3 = 292;

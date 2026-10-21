@@ -12,10 +12,10 @@ import io.github.humbleui.skija.Paint;
 /**
  * Single-line editable text field.
  *
- * <p><b>IME limitations (v0.1):</b> text input flows through GLFW's raw
- * {@code glfwSetCharCallback} / {@code glfwSetKeyCallback} and clipboard
- * access uses {@code glfwGetClipboardString}/{@code glfwSetClipboardString}.
- * GLFW does not expose an IME API, so real input-method composition windows
+ * <p><b>IME notes:</b> text input flows through the backend char/key
+ * listeners and clipboard access goes through the backend-neutral
+ * {@code Window.setClipboardString}/{@code getClipboardString} API. The JWM
+ * backend additionally exposes a native IME bridge, so real input-method composition windows
  * and candidate lists (CJK input, dead-key composition on some platforms)
  * are NOT supported — characters arrive already committed. This is documented
  * in the README.</p>
@@ -32,16 +32,16 @@ public class TextField extends Component {
         return "input";
     }
 
-    /** GLFW key codes used here without importing LWJGL into the widget layer. */
-    private static final int KEY_BACKSPACE = 259; // GLFW_KEY_BACKSPACE
-    private static final int KEY_DELETE = 261;    // GLFW_KEY_DELETE
-    private static final int KEY_RIGHT = 262;     // GLFW_KEY_RIGHT
-    private static final int KEY_LEFT = 263;      // GLFW_KEY_LEFT
-    private static final int KEY_DOWN = 264;      // GLFW_KEY_DOWN
-    private static final int KEY_UP = 265;        // GLFW_KEY_UP
-    private static final int KEY_HOME = 268;      // GLFW_KEY_HOME
-    private static final int KEY_END = 269;       // GLFW_KEY_END
-    private static final int KEY_ENTER = 257;     // GLFW_KEY_ENTER
+    /** Toolkit key codes (GlyphKeys wire values) used inline below. */
+    private static final int KEY_BACKSPACE = 259; // GlyphKeys.BACKSPACE
+    private static final int KEY_DELETE = 261;    // GlyphKeys.DELETE
+    private static final int KEY_RIGHT = 262;     // GlyphKeys.RIGHT
+    private static final int KEY_LEFT = 263;      // GlyphKeys.LEFT
+    private static final int KEY_DOWN = 264;      // GlyphKeys.DOWN
+    private static final int KEY_UP = 265;        // GlyphKeys.UP
+    private static final int KEY_HOME = 268;      // GlyphKeys.HOME
+    private static final int KEY_END = 269;       // GlyphKeys.END
+    private static final int KEY_ENTER = 257;     // GlyphKeys.ENTER
 
     /** Clipboard bridge installed by {@code Application} at startup. */
     private static Runnable clipboardCopyHandler;   // copies this field's selection to the system clipboard
@@ -109,8 +109,8 @@ public class TextField extends Component {
     /**
      * Installs the process-wide clipboard hooks used by Ctrl+C/X/V. The
      * copy hook is expected to call {@link #getSelectedText()} on the
-     * focused field and push it through {@code glfwSetClipboardString};
-     * the paste hook reads {@code glfwGetClipboardString} and feeds it to
+     * focused field and push it through {@code Window.setClipboardString};
+     * the paste hook reads {@code Window.getClipboardString} and feeds it to
      * {@link #insertText(String)} on the focused field.
      *
      * @param copyHandler  runnable that copies the focused field's selection
@@ -287,7 +287,7 @@ public class TextField extends Component {
 
     /**
      * Inserts text at the caret, replacing the current selection first.
-     * This is the entry point used by the GLFW char callback.
+     * This is the entry point used by the backend char callback.
      *
      * @param chars the text to insert (ignored when null/empty or disabled)
      */
@@ -411,7 +411,7 @@ public class TextField extends Component {
                         deleteSelectionIfNeeded();
                         invalidate();
                     } else if (c == 'v' && clipboardPasteHandler != null) {
-                        // Application reads glfwGetClipboardString and calls insertText
+                        // Application reads the clipboard and calls insertText
                         clipboardPasteHandler.run();
                     }
                 }
@@ -420,7 +420,7 @@ public class TextField extends Component {
     }
 
     /**
-     * Called by the GLFW char callback plumbing (via {@code Application})
+     * Called by the backend char callback plumbing (via {@code Application})
      * when a printable character is typed while this field has focus.
      *
      * @param ch the typed character

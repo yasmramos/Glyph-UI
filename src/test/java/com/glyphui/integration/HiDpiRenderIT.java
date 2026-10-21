@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * the native canvas and paint the (logical) UI into the (physical) raster
  * surface at double resolution — verified by reading back pixels.
  *
- * <p>Requires GLFW (skipped in headless environments).</p>
+ * <p>Requires a native JWM window (skipped in headless environments).</p>
  */
 public class HiDpiRenderIT {
 
@@ -33,10 +33,10 @@ public class HiDpiRenderIT {
         try {
             initialized = app.init("HiDPI IT", 400, 300, true);
         } catch (Throwable t) {
-            // GLFW/native libraries unavailable in this environment
-            Assumptions.abort("GLFW not available (headless environment); skipping test: " + t);
+            // JWM/native libraries unavailable in this environment
+            Assumptions.abort("JWM native window not available (headless environment); skipping test: " + t);
         }
-        Assumptions.assumeTrue(initialized, "GLFW not available (headless environment); skipping test");
+        Assumptions.assumeTrue(initialized, "JWM native window not available (headless environment); skipping test");
     }
 
     @AfterEach

@@ -4,11 +4,11 @@ package com.glyphui.core;
  * Mutable, fluent configuration applied as window hints <em>before</em>
  * {@link Window#create()} creates the native window.
  *
- * <p>The field vocabulary is backend-neutral: no LWJGL/GLFW types appear in
- * any public signature. The legacy GLFW backend translates these values onto
- * {@code glfwWindowHint} calls inside
- * {@link com.glyphui.core.backend.GlfwWindowBackend}; other backends (JWM)
- * honour whatever subset they support and ignore the rest.</p>
+ * <p>The field vocabulary is backend-neutral: no native windowing types
+ * appear in any public signature. The JWM backend
+ * ({@link com.glyphui.core.backend.JwmWindowBackend}) honours whatever
+ * subset of these options its platform API supports and ignores the
+ * rest.</p>
  *
  * <p>Defaults reproduce the historical behaviour of {@link Window}: a
  * visible, resizable, decorated window with an OpenGL 3.2 core /
@@ -31,20 +31,18 @@ package com.glyphui.core;
  */
 public final class WindowConfig {
 
-    // --- GL profile constants (toolkit-owned; wire-compatible with the
-    //     historical GLFW values so existing code keeps working) ----------
-    // These MUST stay equal to GLFW's real hint values: the legacy backend
-    // passes cfg.glProfile straight to glfwWindowHint(GLFW_OPENGL_PROFILE, …)
-    // and GLFW only recognises ANY / CORE / COMPAT (values verified against
-    // org.lwjgl.glfw.GLFW: CORE=204801, COMPAT=204802, ANY=0).
-    /** Any OpenGL profile — driver chooses (GLFW value: 0). */
+    // --- GL profile constants (toolkit-owned numeric vocabulary) ---------
+    // The JWM backend renders through a raster presentation layer today,
+    // so these hints are currently informational; the constants remain as
+    // part of the public configuration vocabulary.
+    /** Any OpenGL profile — driver chooses. */
     public static final int GL_PROFILE_ANY = 0;
     /** No OpenGL context at all (alias of {@link #GL_PROFILE_ANY}). */
     public static final int GL_PROFILE_NONE = GL_PROFILE_ANY;
-    /** OpenGL core profile (GLFW value: 204801). */
-    public static final int GL_PROFILE_CORE = 204801;
-    /** OpenGL compatibility profile (GLFW value: 204802). */
-    public static final int GL_PROFILE_COMPAT = 204802;
+    /** OpenGL core profile. */
+    public static final int GL_PROFILE_CORE = 1;
+    /** OpenGL compatibility profile. */
+    public static final int GL_PROFILE_COMPAT = 2;
 
     /** Logical window width/height requested at creation. */
     public int width = 800;
@@ -54,33 +52,33 @@ public final class WindowConfig {
     public String title = "Glyph-UI";
 
     // --- Window hints ------------------------------------------------------
-    /** Visibility at creation (legacy {@code GLFW_VISIBLE}). */
+    /** Visibility at creation. */
     public boolean visible = true;
-    /** User resizing allowed (legacy {@code GLFW_RESIZABLE}). */
+    /** User resizing allowed. */
     public boolean resizable = true;
-    /** Title bar / borders (legacy {@code GLFW_DECORATED}). */
+    /** Title bar / borders. */
     public boolean decorated = true;
-    /** Start maximized (legacy {@code GLFW_MAXIMIZED}). */
+    /** Start maximized. */
     public boolean maximized = false;
-    /** Stays above other windows (legacy {@code GLFW_FLOATING}). */
+    /** Stays above other windows. */
     public boolean floating = false;
-    /** Grab keyboard focus at creation (legacy {@code GLFW_FOCUSED}). */
+    /** Grab keyboard focus at creation. */
     public boolean focused = true;
-    /** Per-pixel alpha framebuffer (legacy {@code GLFW_TRANSPARENT_FRAMEBUFFER}). */
+    /** Per-pixel alpha framebuffer. */
     public boolean transparentFramebuffer = false;
-    /** MSAA samples for the default framebuffer (legacy {@code GLFW_SAMPLES}). */
+    /** MSAA samples for the default framebuffer. */
     public int samples = 0;
-    /** Requested GL context major version (legacy {@code GLFW_CONTEXT_VERSION_MAJOR}). */
+    /** Requested GL context major version. */
     public int glMajor = 3;
-    /** Requested GL context minor version (legacy {@code GLFW_CONTEXT_VERSION_MINOR}). */
+    /** Requested GL context minor version. */
     public int glMinor = 2;
     /** GL profile: one of {@link #GL_PROFILE_CORE}, {@link #GL_PROFILE_COMPAT}, {@link #GL_PROFILE_ANY}. */
     public int glProfile = GL_PROFILE_CORE;
-    /** Forward-compatible context (legacy {@code GLFW_OPENGL_FORWARD_COMPAT}). */
+    /** Forward-compatible context. */
     public boolean glForwardCompat = true;
 
     // --- Window-level behaviour -------------------------------------------
-    /** Swap interval (vsync): 1 = vsync on, 0 = off, N = every Nth refresh. */
+    /** Swap interval (vsync): 1 = vsync on, 0 = off, N = every Nth refresh (honoured by GL-capable backends). */
     public int swapInterval = 1;
     /** Center the window on the primary monitor after creation. */
     public boolean center = true;
