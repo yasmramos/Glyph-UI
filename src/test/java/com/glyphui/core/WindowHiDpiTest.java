@@ -31,8 +31,6 @@ public class WindowHiDpiTest {
         // getWidth()/getHeight() must expose the LOGICAL size
         assertEquals(800, window.getWidth());
         assertEquals(600, window.getHeight());
-        assertEquals(800, window.getWindowWidth());
-        assertEquals(600, window.getWindowHeight());
     }
 
     @Test
@@ -60,8 +58,7 @@ public class WindowHiDpiTest {
     @Test
     public void testContentScaleDefaultsToOne() {
         Window window = new Window("HiDPI", 800, 600);
-        assertEquals(1.0f, window.getContentScale());
-        assertEquals(1.0f, window.getContentScaleX());
+                assertEquals(1.0f, window.getContentScaleX());
         assertEquals(1.0f, window.getContentScaleY());
     }
 
@@ -70,11 +67,11 @@ public class WindowHiDpiTest {
         Window window = new Window("HiDPI", 1024, 768);
         window.setContentScale(2.0f, 2.0f);
 
-        assertEquals(2.0f, window.getContentScale());
-        assertEquals(2.0f, window.getContentScaleX());
+                assertEquals(2.0f, window.getContentScaleX());
         assertEquals(2.0f, window.getContentScaleY());
-        // getContentScale() assumes uniform scaling (x == y)
-        assertEquals(window.getContentScaleX(), window.getContentScale(), 0.0f);
+                // getContentScale() was removed: callers needing a uniform factor
+        // derive it as Math.max(getContentScaleX(), getContentScaleY()).
+        assertEquals(window.getContentScaleX(), window.getContentScaleY(), 0.0f);
     }
 
     @Test

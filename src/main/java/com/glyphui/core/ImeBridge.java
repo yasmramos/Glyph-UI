@@ -80,9 +80,8 @@ final class ImeBridge implements WindowBackend.ImeClient {
         // backend reports in logical screen units).
         float sx = Math.max(window.getContentScaleX(), 0.01f);
         float sy = Math.max(window.getContentScaleY(), 0.01f);
-        int[] winPos = window.getPosition();
-        int ox = winPos != null ? winPos[0] : 0;
-        int oy = winPos != null ? winPos[1] : 0;
+        int ox = window.getPositionX();
+        int oy = window.getPositionY();
 
         return new int[]{
             Math.round((ox + left) * sx),
