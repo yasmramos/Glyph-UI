@@ -163,6 +163,17 @@ public interface WindowBackend extends AutoCloseable {
     // ------------------------------------------------------------------
     // Event loop plumbing
     // ------------------------------------------------------------------
+    //
+    // CONTRACT: these are internal plumbing driven exclusively by the
+    // toolkit's own loops — Application.run()/renderFrame() and Window's
+    // package-private delegators. They are NOT part of the application-
+    // facing API (see docs/architecture/internal-boundary.md). NOTE:
+    // interface members are implicitly public and an implementation may
+    // not weaken them (JLS 9.4), so concrete backends must keep these
+    // methods public even though no application ever calls them; the
+    // boundary is enforced at the Window facade, not at the SPI. Keep
+    // new plumbing out of this list unless the toolkit loop genuinely
+    // needs it.
 
     /** Presents the frame (swaps front/back buffers). */
     void swapBuffers();
@@ -173,8 +184,13 @@ public interface WindowBackend extends AutoCloseable {
     /** Requests (or cancels) window close. Safe before {@link #create()}. */
     void setShouldClose(boolean shouldClose);
 
-    /** Processes all pending events without blocking. */
-    void pollEvents();
+    /**
+     * Processes all pending events without blocking.
+     *
+     * @return always {@code true} for compatibility with the historical
+     *         GLFW-style contract; no caller relies on the value
+     */
+    boolean pollEvents();
 
     /** Blocks until at least one event arrives, then processes them. */
     void waitEvents();
@@ -189,8 +205,10 @@ public interface WindowBackend extends AutoCloseable {
     // Geometry & metadata
     // ------------------------------------------------------------------
 
-    /** @return the native window handle, or 0 when no live window exists */
-    long getWindowHandle();
+    // NOTE: the former getWindowHandle() accessor was deleted outright.
+    // JWM exposes no numeric handle (it always returned 0) and nothing in
+    // the toolkit or its tests ever called it — a constant with no meaning
+    // is worse than no method at all.
 
     /** @return the logical window width */
     int getWidth();
