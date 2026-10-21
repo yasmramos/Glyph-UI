@@ -46,6 +46,76 @@ public class ButtonBehaviorTest extends TestBase {
         return new KeyEvent(type, keyCode, ' ', EnumSet.noneOf(com.glyphui.events.KeyModifier.class));
     }
 
+    // ------------------------------------------------------------------
+    // Phase 1 bug regression tests (test-first rule: each test below was
+    // written to reproduce a real defect before the fix landed).
+    // ------------------------------------------------------------------
+
+    @Test
+    public void stateColorGettersReturnTheirOwnStateRegardlessOfButtonState() {
+        // Bug: getNormalColor()/getHoverColor()/getPressedColor() used to
+        // resolve colors against the button's *current* state, so asking for
+        // the normal color while the button hovered returned the hover color.
+        Button button = new Button(0, 0, 100, 40, "Colors");
+        int normal = 0xFF112233;
+        int hover = 0xFF445566;
+        int pressed = 0xFF778899;
+        button.setNormalColor(normal);
+        button.setHoverColor(hover);
+        button.setPressedColor(pressed);
+
+        // While idle, all three getters must agree with their names.
+        assertEquals(ComponentState.IDLE, button.getState());
+        assertEquals(normal, button.getNormalColor());
+        assertEquals(hover, button.getHoverColor());
+        assertEquals(pressed, button.getPressedColor());
+
+        // The regression: hovering must not change what getNormalColor()
+        // reports — it promises the NORMAL-state color, not the live one.
+        button.setState(ComponentState.HOVER);
+        assertEquals(ComponentState.HOVER, button.getState(), "test setup");
+        assertEquals(normal, button.getNormalColor(),
+                "getNormalColor() must return the normal color even while HOVERED");
+        assertEquals(hover, button.getHoverColor());
+        assertEquals(pressed, button.getPressedColor());
+
+        // Same contract while PRESSED.
+        button.setState(ComponentState.PRESSED);
+        assertEquals(normal, button.getNormalColor());
+        assertEquals(hover, button.getHoverColor());
+        assertEquals(pressed, button.getPressedColor());
+    }
+
+    @Test
+    public void widthPropertySetAndSetWidthBothMarkSizeExplicitlySet() {
+        // Contract decision: widthProperty().set() and setWidth() are two
+        // paths onto the SAME mutation — both mark bounds as explicitly
+        // user-set so layout managers must respect them. setWidth() delegates
+        // to the property internally, and the property's onChange hook
+        // (applyWidthExplicit) sets the flag.
+        Button contentSized = new Button("Auto");
+        assertFalse(contentSized.isSizeExplicitlySet(),
+                "content-sized constructor must leave layout free to size the button");
+
+        contentSized.widthProperty().set(150f);
+        assertTrue(contentSized.isSizeExplicitlySet(),
+                "widthProperty().set() must mark sizeExplicitlySet like setWidth() does");
+        assertEquals(150f, contentSized.getWidth());
+
+        Button setterPath = new Button("Auto");
+        setterPath.setWidth(150f);
+        assertTrue(setterPath.isSizeExplicitlySet(),
+                "setWidth() must mark sizeExplicitlySet");
+        assertEquals(150f, setterPath.getWidth());
+
+        // Height follows the same contract.
+        Button heightPath = new Button("Auto");
+        heightPath.heightProperty().set(60f);
+        assertTrue(heightPath.isSizeExplicitlySet(),
+                "heightProperty().set() must mark sizeExplicitlySet too");
+        assertEquals(60f, heightPath.getHeight());
+    }
+
     /** Attaches the button to a panel and gives it keyboard focus. */
     private Button focusedButton() {
         Panel root = new Panel(0, 0, 200, 100);
