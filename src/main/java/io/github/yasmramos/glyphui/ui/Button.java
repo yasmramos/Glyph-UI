@@ -84,6 +84,18 @@ public class Button extends Component {
     private Boolean cachedMeasureExplicit;
 
     /**
+     * Creates a button at (0, 0) with the given size and text - the common
+     * case for buttons positioned by their parent's layout.
+     *
+     * @param width  the width of the button
+     * @param height the height of the button
+     * @param text   the text displayed on the button
+     */
+    public Button(float width, float height, String text) {
+        this(0, 0, width, height, text);
+    }
+
+    /**
      * Creates a new Button without explicit bounds. The size will be derived
      * from the preferred (measured) text size when a layout manager runs.
      *
