@@ -855,6 +855,14 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     }
 
     @Override
+    public void minimize() {
+        Window w = jwmWindow;
+        if (w != null) {
+            w.minimize();
+        }
+    }
+
+    @Override
     public void setFullscreen(boolean fullscreen) {
         Window w = jwmWindow;
         // Headless contract: without a live window this is a guarded no-op

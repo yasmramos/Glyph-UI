@@ -60,6 +60,7 @@ public final class Theme {
     private final int controlTextDisabledColor;
     private final int borderColor;
     private final int inputBackgroundColor;
+    private final int titleBarBackgroundColor;
     private final float controlCornerRadius;
     private final float focusRingRadius;
     private final float padding;
@@ -82,6 +83,7 @@ public final class Theme {
         this.controlTextDisabledColor = b.controlTextDisabledColor;
         this.borderColor = b.borderColor;
         this.inputBackgroundColor = b.inputBackgroundColor;
+        this.titleBarBackgroundColor = b.titleBarBackgroundColor;
         this.controlCornerRadius = b.controlCornerRadius;
         this.focusRingRadius = b.focusRingRadius;
         this.padding = b.padding;
@@ -163,6 +165,7 @@ public final class Theme {
         b.controlTextDisabledColor = controlTextDisabledColor;
         b.borderColor = borderColor;
         b.inputBackgroundColor = inputBackgroundColor;
+        b.titleBarBackgroundColor = titleBarBackgroundColor;
         b.controlCornerRadius = controlCornerRadius;
         b.focusRingRadius = focusRingRadius;
         b.padding = padding;
@@ -241,6 +244,17 @@ public final class Theme {
      */
     public int getInputBackgroundColor() {
         return inputBackgroundColor;
+    }
+
+    /**
+     * Gets the fill color of the title-bar strip in a window decorated by the
+     * toolkit (custom title bar). It is a separate token so the bar can read
+     * as chrome distinct from the page background beneath it.
+     *
+     * @return title-bar background color (ARGB)
+     */
+    public int getTitleBarBackgroundColor() {
+        return titleBarBackgroundColor;
     }
 
     /** @return corner radius for controls, logical units */
@@ -329,6 +343,7 @@ public final class Theme {
         private int controlTextDisabledColor;
         private int borderColor;
         private int inputBackgroundColor;
+        private int titleBarBackgroundColor;
         private float controlCornerRadius;
         private float focusRingRadius;
         private float padding;
@@ -368,6 +383,9 @@ public final class Theme {
                 // Text-entry surface: a clean white well so the field reads as
                 // an editable area rather than a hole in the background.
                 this.inputBackgroundColor = Color.makeARGB(255, 255, 255, 255);
+                // Title-bar chrome: a hair darker than the page so the bar
+                // reads as a distinct strip above the content.
+                this.titleBarBackgroundColor = Color.makeARGB(255, 235, 235, 235);
             } else {
                 this.backgroundColor = Color.makeARGB(255, 30, 30, 30);
                 this.foregroundColor = Color.makeARGB(255, 240, 240, 240);
@@ -382,6 +400,9 @@ public final class Theme {
                 // Text-entry surface: slightly above the page background so the
                 // field reads as an editable well instead of vanishing into it.
                 this.inputBackgroundColor = Color.makeARGB(255, 42, 42, 42);
+                // Title-bar chrome: a hair darker than the page so the bar
+                // reads as a distinct strip above the content.
+                this.titleBarBackgroundColor = Color.makeARGB(255, 24, 24, 24);
             }
             return this;
         }
@@ -397,6 +418,7 @@ public final class Theme {
         public Builder controlTextDisabledColor(int argb) { this.controlTextDisabledColor = argb; return this; }
         public Builder borderColor(int argb) { this.borderColor = argb; return this; }
         public Builder inputBackgroundColor(int argb) { this.inputBackgroundColor = argb; return this; }
+        public Builder titleBarBackgroundColor(int argb) { this.titleBarBackgroundColor = argb; return this; }
         public Builder controlCornerRadius(float r) { this.controlCornerRadius = r; return this; }
         public Builder focusRingRadius(float r) { this.focusRingRadius = r; return this; }
         public Builder padding(float p) { this.padding = p; return this; }

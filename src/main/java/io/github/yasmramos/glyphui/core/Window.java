@@ -37,7 +37,9 @@ import io.github.yasmramos.glyphui.core.backend.WindowBackend;
  */
 public class Window implements AutoCloseable {
 
-    /** The active native-window backend; never null. */
+    /**
+     * The active native-window backend; never null.
+     */
     private final WindowBackend backend;
 
     /**
@@ -67,11 +69,19 @@ public class Window implements AutoCloseable {
     }
 
     /**
+     * Whether the window is currently maximized. JWM does not expose a way to
+     * read native maximized state, so the toolkit tracks it here. With an
+     * undecorated (custom title-bar) window every maximize/restore transition
+     * goes through {@link #setMaximized(boolean)}, keeping this accurate.
+     */
+    private boolean maximized;
+
+    /**
      * Creates a new Window with the default {@link WindowConfig}
      * (visible, resizable, decorated, OpenGL 3.2 core, centered).
      *
-     * @param title  the window title
-     * @param width  the window width (logical)
+     * @param title the window title
+     * @param width the window width (logical)
      * @param height the window height (logical)
      */
     public Window(String title, int width, int height) {
@@ -113,7 +123,6 @@ public class Window implements AutoCloseable {
     // ------------------------------------------------------------------
     // Lifecycle
     // ------------------------------------------------------------------
-
     /**
      * Initializes the backend and creates the native window.
      *
@@ -121,7 +130,13 @@ public class Window implements AutoCloseable {
      */
     public boolean create() {
         checkThread();
-        return backend.create();
+        boolean ok = backend.create();
+        if (ok) {
+            // Seed the tracked maximized flag from whatever the backend applied
+            // at creation time (WindowConfig.maximized).
+            this.maximized = getConfig().maximized;
+        }
+        return ok;
     }
 
     /**
@@ -339,62 +354,100 @@ public class Window implements AutoCloseable {
     // ------------------------------------------------------------------
     // Runtime window attributes
     // ------------------------------------------------------------------
-
-    /** Shows a hidden window. */
+    /**
+     * Shows a hidden window.
+     */
     public void show() {
         checkThread();
         backend.show();
     }
 
-    /** Hides the window without destroying it. */
+    /**
+     * Hides the window without destroying it.
+     */
     public void hide() {
         checkThread();
         backend.hide();
     }
 
-    /** Toggles window decorations (title bar / borders). */
+    /**
+     * Toggles window decorations (title bar / borders).
+     */
     public void setDecorated(boolean decorated) {
         checkThread();
         backend.setDecorated(decorated);
     }
 
-    /** Toggles user resizing. */
+    /**
+     * Toggles user resizing.
+     */
     public void setResizable(boolean resizable) {
         checkThread();
         backend.setResizable(resizable);
     }
 
-    /** Toggles always-on-top floating state. */
+    /**
+     * Toggles always-on-top floating state.
+     */
     public void setFloating(boolean floating) {
         checkThread();
         backend.setFloating(floating);
     }
 
-    /** Sets window opacity (0.0 fully transparent .. 1.0 opaque). */
+    /**
+     * Sets window opacity (0.0 fully transparent .. 1.0 opaque).
+     */
     public void setOpacity(float opacity) {
         checkThread();
         backend.setOpacity(opacity);
     }
 
-    /** Moves the window to screen coordinates (x, y). */
+    /**
+     * Moves the window to screen coordinates (x, y).
+     */
     public void setPosition(int x, int y) {
         checkThread();
         backend.setPosition(x, y);
     }
 
-    /** Resizes the window (logical units). */
+    /**
+     * Resizes the window (logical units).
+     */
     public void setSize(int width, int height) {
         checkThread();
         backend.setSize(width, height);
     }
 
-    /** Maximizes or restores the window. */
+    /**
+     * Maximizes or restores the window.
+     */
     public void setMaximized(boolean maximized) {
         checkThread();
         backend.setMaximized(maximized);
+        this.maximized = maximized;
     }
 
-    /** Enters/exits fullscreen mode on the primary monitor. */
+    /**
+     * Minimizes (iconifies) the window. Used by a custom title bar's minimize
+     * button; the user restores it from the taskbar.
+     */
+    public void minimize() {
+        backend.minimize();
+    }
+
+    /**
+     * Reports whether the window is maximized, per the toolkit's own tracking
+     * (see the {@code maximized} field for why this is not read from the OS).
+     *
+     * @return true when the window is maximized
+     */
+    public boolean isMaximized() {
+        return maximized;
+    }
+
+    /**
+     * Enters/exits fullscreen mode on the primary monitor.
+     */
     public void setFullscreen(boolean fullscreen) {
         checkThread();
         backend.setFullscreen(fullscreen);

@@ -278,6 +278,9 @@ public interface WindowBackend extends AutoCloseable {
 
     void setMaximized(boolean maximized);
 
+    /** Minimizes (iconifies) the window; the user restores it from the taskbar. */
+    void minimize();
+
     void setFullscreen(boolean fullscreen);
 
     /**

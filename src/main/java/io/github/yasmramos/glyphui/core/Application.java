@@ -268,15 +268,30 @@ public class Application implements AutoCloseable {
     /**
      * Initializes the application.
      *
-     * @param title  the window title
-     * @param width  the window width
+     * @param title the window title
+     * @param width the window width
      * @param height the window height
      * @return true if initialization was successful
      */
     public boolean init(String title, int width, int height) {
-        return init(title, width, height, false);
+        return init(title, width, height, null, false);
     }
-    
+
+    /**
+     * Initializes the application with an explicit window configuration — for
+     * example a {@code decorated(false)} window that supplies its own custom
+     * title bar instead of the native one.
+     *
+     * @param title the window title
+     * @param width the window width
+     * @param height the window height
+     * @param config the window configuration (null uses defaults)
+     * @return true if initialization was successful
+     */
+    public boolean init(String title, int width, int height, WindowConfig config) {
+        return init(title, width, height, config, false);
+    }
+
     /**
      * Initializes the application.
      *
@@ -298,22 +313,39 @@ public class Application implements AutoCloseable {
      * @param title  the window title
      * @param width  the window width
      * @param height the window height
-     * @param useRasterSurface if true, forces the raster backend and skips the GPU
-     *                         initialization attempt entirely (for testing)
+     * @param useRasterSurface if true, forces the raster backend and skips the
+     * GPU initialization attempt entirely (for testing)
      * @return true if initialization was successful
      */
     public boolean init(String title, int width, int height, boolean useRasterSurface) {
+        return init(title, width, height, null, useRasterSurface);
+    }
+
+    /**
+     * Full initialization entry point: explicit window configuration plus
+     * surface selection.
+     *
+     * @param title the window title
+     * @param width the window width
+     * @param height the window height
+     * @param config the window configuration (null uses defaults)
+     * @param useRasterSurface if true, forces the raster backend and skips the
+     * GPU initialization attempt entirely (for testing)
+     * @return true if initialization was successful
+     */
+    public boolean init(String title, int width, int height, WindowConfig config,
+            boolean useRasterSurface) {
         // Idempotency guard: a second init() would leak the previous window,
         // surface and DirectContext (two GL contexts, orphaned native handles).
         if (running || window != null) {
             throw new IllegalStateException("Application already initialized; "
-                + "call close() before re-initializing");
+                    + "call close() before re-initializing");
         }
         try {
             this.forceRasterSurface = useRasterSurface;
 
             // Create window
-            window = new Window(title, width, height);
+            window = new Window(title, width, height, config);
             if (!window.create()) {
                 // Do not leave a half-initialized application behind: release
                 // the (failed) window so a later close()/re-init is consistent.

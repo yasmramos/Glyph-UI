@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import io.github.yasmramos.glyphui.layout.LayoutManager;
 import io.github.humbleui.skija.Color;
+import io.github.humbleui.skija.Paint;
 
 /**
  * A container component that can hold other components.
@@ -18,14 +19,18 @@ public class Panel extends Component {
      * Reusable background paint, created lazily on first render and closed in
      * {@link #dispose()} to avoid per-frame native allocations.
      */
-    private io.github.humbleui.skija.Paint bgPaint;
+    private Paint bgPaint;
+
+    public Panel(float width, float height) {
+        this(0, 0, width, height);
+    }
 
     /**
      * Creates a new Panel.
      *
-     * @param x      the x-coordinate of the panel
-     * @param y      the y-coordinate of the panel
-     * @param width  the width of the panel
+     * @param x the x-coordinate of the panel
+     * @param y the y-coordinate of the panel
+     * @param width the width of the panel
      * @param height the height of the panel
      */
     public Panel(float x, float y, float width, float height) {
