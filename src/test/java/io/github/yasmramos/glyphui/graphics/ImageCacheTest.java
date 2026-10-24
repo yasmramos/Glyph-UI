@@ -1,5 +1,7 @@
 package io.github.yasmramos.glyphui.graphics;
 
+import io.github.yasmramos.glyphui.graphics.Image;
+import io.github.yasmramos.glyphui.graphics.ImageCache;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

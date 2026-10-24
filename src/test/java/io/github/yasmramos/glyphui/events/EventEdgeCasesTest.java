@@ -1,5 +1,11 @@
 package io.github.yasmramos.glyphui.events;
 
+import io.github.yasmramos.glyphui.events.KeyEventType;
+import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.KeyModifier;
+import io.github.yasmramos.glyphui.events.MouseButton;
+import io.github.yasmramos.glyphui.events.KeyEvent;
+import io.github.yasmramos.glyphui.events.MouseEvent;
 import org.junit.jupiter.api.Test;
 
 import java.util.EnumSet;

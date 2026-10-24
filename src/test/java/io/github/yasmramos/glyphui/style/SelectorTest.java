@@ -1,5 +1,7 @@
 package io.github.yasmramos.glyphui.style;
 
+import io.github.yasmramos.glyphui.style.StyleNode;
+import io.github.yasmramos.glyphui.style.Selector;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.style;
 
+import io.github.yasmramos.glyphui.style.CssValues;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 

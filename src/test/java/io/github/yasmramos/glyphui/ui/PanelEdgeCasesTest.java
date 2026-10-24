@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.KeyModifier;

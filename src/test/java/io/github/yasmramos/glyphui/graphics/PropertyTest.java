@@ -1,5 +1,7 @@
 package io.github.yasmramos.glyphui.graphics;
 
+import io.github.yasmramos.glyphui.graphics.Property;
+import io.github.yasmramos.glyphui.graphics.ChangeListener;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Label;

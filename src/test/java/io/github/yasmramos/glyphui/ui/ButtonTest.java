@@ -6,6 +6,8 @@ import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseButton;
+import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.ComponentState;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
 import org.junit.jupiter.api.BeforeEach;

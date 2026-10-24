@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.graphics;
 
+import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.humbleui.skija.ImageInfo;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.Surface;

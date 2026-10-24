@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.markup;
 
+import io.github.yasmramos.glyphui.markup.UiLoader;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.style.StyleProperty;

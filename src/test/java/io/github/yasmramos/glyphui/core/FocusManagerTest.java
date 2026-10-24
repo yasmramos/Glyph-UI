@@ -1,6 +1,7 @@
 package io.github.yasmramos.glyphui.core;
 
 import io.github.yasmramos.glyphui.TestBase;
+import io.github.yasmramos.glyphui.core.FocusManager;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Panel;

@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;

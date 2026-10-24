@@ -1,5 +1,8 @@
 package io.github.yasmramos.glyphui.events;
 
+import io.github.yasmramos.glyphui.events.KeyEventType;
+import io.github.yasmramos.glyphui.events.KeyModifier;
+import io.github.yasmramos.glyphui.events.KeyEvent;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

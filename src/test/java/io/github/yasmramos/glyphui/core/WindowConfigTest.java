@@ -1,5 +1,7 @@
 package io.github.yasmramos.glyphui.core;
 
+import io.github.yasmramos.glyphui.core.WindowConfig;
+import io.github.yasmramos.glyphui.core.Window;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

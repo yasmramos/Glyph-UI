@@ -1,5 +1,7 @@
 package io.github.yasmramos.glyphui.style;
 
+import io.github.yasmramos.glyphui.style.Style;
+import io.github.yasmramos.glyphui.style.StyleProperty;
 import org.junit.jupiter.api.Test;
 
 import java.util.EnumMap;

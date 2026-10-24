@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.graphics.RasterCanvasTestFactory;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.FontStyle;

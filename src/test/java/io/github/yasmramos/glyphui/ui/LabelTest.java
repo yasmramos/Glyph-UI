@@ -3,6 +3,7 @@ package io.github.yasmramos.glyphui.ui;
 import io.github.yasmramos.glyphui.SkijaTestSupport;
 import io.github.yasmramos.glyphui.TestBase;
 import org.junit.jupiter.api.BeforeEach;
+import io.github.yasmramos.glyphui.ui.Label;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

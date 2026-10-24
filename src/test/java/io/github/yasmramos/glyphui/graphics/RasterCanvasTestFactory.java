@@ -1,6 +1,7 @@
 package io.github.yasmramos.glyphui.graphics;
 
 import io.github.yasmramos.glyphui.SkijaTestSupport;
+import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.humbleui.skija.Surface;
 
 /**

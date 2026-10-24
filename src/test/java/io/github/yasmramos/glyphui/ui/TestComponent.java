@@ -1,16 +1,19 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 
 /**
- * A lightweight test component that doesn't require Skija initialization.
- * Used for unit testing without native dependencies.
+ * A lightweight test component that doesn't require Skija initialization. Used
+ * for unit testing without native dependencies.
  */
 public class TestComponent extends Component {
 
-    /** Fixed preferred size used by layout tests (no native font measurement). */
+    /**
+     * Fixed preferred size used by layout tests (no native font measurement).
+     */
     public static final float PREFERRED_WIDTH = 50f;
     public static final float PREFERRED_HEIGHT = 30f;
 
@@ -26,7 +29,11 @@ public class TestComponent extends Component {
     public void setConsumeMouseEvents(boolean consumeMouseEvents) {
         this.consumeMouseEvents = consumeMouseEvents;
     }
-    
+
+    public TestComponent(int width, int height) {
+        super(width, height);
+    }
+
     public TestComponent(int x, int y, int width, int height) {
         super(x, y, width, height);
     }
@@ -48,35 +55,35 @@ public class TestComponent extends Component {
     public float getPreferredHeight() {
         return isSizeExplicitlySet() ? getHeight() : PREFERRED_HEIGHT;
     }
-    
+
     @Override
     protected void render(Canvas canvas) {
         renderCalled = true;
     }
-    
+
     @Override
     public boolean onMouseEvent(MouseEvent event) {
         mouseEventHandled = true;
         return consumeMouseEvents;
     }
-    
+
     @Override
     public void onKeyEvent(KeyEvent event) {
         keyEventHandled = true;
     }
-    
+
     public boolean isRenderCalled() {
         return renderCalled;
     }
-    
+
     public boolean isMouseEventHandled() {
         return mouseEventHandled;
     }
-    
+
     public boolean isKeyEventHandled() {
         return keyEventHandled;
     }
-    
+
     public void resetFlags() {
         renderCalled = false;
         mouseEventHandled = false;

@@ -1,6 +1,7 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.graphics.Dimension;
+import io.github.yasmramos.glyphui.layout.FlowLayout;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -60,14 +61,14 @@ public class MeasureTest {
 
     @Test
     public void testFlowLayoutConsumesMeasureForWrappingComponents() {
-        Panel panel = new Panel(0, 0, 100, 200);
-        panel.setLayoutManager(new io.github.yasmramos.glyphui.layout.FlowLayout(5, 10));
+        Panel panel = new Panel(100, 200);
+        panel.setLayoutManager(new FlowLayout(5, 10));
 
-        Component first = new TestComponent(0, 0, 50, 30);
+        Component first = new TestComponent(50, 30);
         // Second component reports a preferred width wider than the row can
         // hold once the first one is placed — it must wrap AND be re-measured
         // against the fresh row width.
-        Component second = new TestComponent(0, 0, 90, 30) {
+        Component second = new TestComponent(90, 30) {
             @Override
             public Dimension measure(float maxWidth, float maxHeight) {
                 float w = Math.min(90.0f, Math.max(0.0f, maxWidth));

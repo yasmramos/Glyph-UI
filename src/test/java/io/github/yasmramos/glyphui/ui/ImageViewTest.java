@@ -1,6 +1,8 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.TestBase;
+import io.github.yasmramos.glyphui.ui.AccessibleRole;
+import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Image;
 import io.github.yasmramos.glyphui.graphics.RasterCanvasTestFactory;

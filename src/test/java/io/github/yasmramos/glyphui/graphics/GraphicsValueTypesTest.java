@@ -1,5 +1,9 @@
 package io.github.yasmramos.glyphui.graphics;
 
+import io.github.yasmramos.glyphui.graphics.Canvas;
+import io.github.yasmramos.glyphui.graphics.Image;
+import io.github.yasmramos.glyphui.graphics.Dimension;
+import io.github.yasmramos.glyphui.graphics.Fonts;
 import io.github.humbleui.skija.Surface;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Nested;

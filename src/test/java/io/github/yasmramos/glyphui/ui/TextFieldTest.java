@@ -1,6 +1,12 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.TestBase;
+import io.github.yasmramos.glyphui.ui.TextField;
+import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.AccessibleRole;
+import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.core.FocusManager;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;

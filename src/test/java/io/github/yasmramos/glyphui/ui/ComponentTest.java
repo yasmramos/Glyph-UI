@@ -1,6 +1,8 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.TestBase;
+import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.ComponentState;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

@@ -1,6 +1,7 @@
 package io.github.yasmramos.glyphui.core;
 
 import io.github.yasmramos.glyphui.TestBase;
+import io.github.yasmramos.glyphui.core.Window;
 import io.github.yasmramos.glyphui.ui.TestComponent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

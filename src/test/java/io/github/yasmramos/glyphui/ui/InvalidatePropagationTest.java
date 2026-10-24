@@ -1,6 +1,11 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.TestBase;
+import io.github.yasmramos.glyphui.core.Application;
+import io.github.yasmramos.glyphui.core.RepaintRequester;
+import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.TestComponent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

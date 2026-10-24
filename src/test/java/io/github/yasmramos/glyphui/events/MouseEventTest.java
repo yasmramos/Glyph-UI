@@ -1,5 +1,8 @@
 package io.github.yasmramos.glyphui.events;
 
+import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.MouseButton;
+import io.github.yasmramos.glyphui.events.MouseEvent;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.layout;
 
+import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.TestComponent;
 import org.junit.jupiter.api.Test;
