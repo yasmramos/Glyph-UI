@@ -171,6 +171,33 @@ public class Panel extends Component {
     }
 
     /**
+     * Descends into the children to find the deepest component at a point.
+     * Children are laid out in this panel's local space, so the point is
+     * translated by this panel's origin before testing them. The topmost child
+     * wins: children render in insertion order, so the last one is on top.
+     *
+     * @param px the x-coordinate in the parent's space
+     * @param py the y-coordinate in the parent's space
+     * @return the deepest component at the point, this panel when no child
+     *         claims it, or null when the point is outside the panel
+     */
+    @Override
+    public Component getComponentAt(float px, float py) {
+        if (!visible || !contains(px, py)) {
+            return null;
+        }
+        float lx = px - x;
+        float ly = py - y;
+        for (int i = children.size() - 1; i >= 0; i--) {
+            Component hit = children.get(i).getComponentAt(lx, ly);
+            if (hit != null) {
+                return hit;
+            }
+        }
+        return this;
+    }
+
+    /**
      * Gets the layout manager for this panel.
      *
      * @return the layout manager

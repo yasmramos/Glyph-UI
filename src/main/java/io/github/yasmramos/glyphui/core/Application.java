@@ -6,6 +6,7 @@ import io.github.yasmramos.glyphui.core.backend.SurfaceFactory;
 import io.github.yasmramos.glyphui.core.backend.SurfaceResult;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.ComponentState;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.events.*;
@@ -118,6 +119,15 @@ public class Application implements AutoCloseable {
     // setupCallbacks()).
     private double mouseX;
     private double mouseY;
+
+    /**
+     * The component currently under the pointer (deepest hit). Tracking it lets
+     * the application clear the hover state of the previous component when the
+     * pointer moves onto a different one: routing only delivers a move to the
+     * component under the cursor, so a widget that is left behind would
+     * otherwise stay stuck in {@link ComponentState#HOVER}.
+     */
+    private Component hovered;
 
     /** Owns Tab / Shift+Tab focus traversal and the currently focused widget. */
     private FocusManager focusManager;
@@ -602,6 +612,9 @@ public class Application implements AutoCloseable {
             MouseEventType type = anyButtonHeld ? MouseEventType.DRAG : MouseEventType.MOVE;
             MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, MouseButton.LEFT, 0);
             rootPanel.onMouseEvent(event);
+            if (type == MouseEventType.MOVE) {
+                updateHover();
+            }
             requestRepaint();
         });
 
@@ -785,6 +798,28 @@ public class Application implements AutoCloseable {
         rootPanel.setHeight(result.logicalHeight());
 
         requestRepaint();
+    }
+
+    /**
+     * Recomputes the hover target after a plain pointer move (no button held).
+     *
+     * <p>The move event has already been routed to whichever component is now
+     * under the cursor, which sets that component's hover state. This method
+     * clears the hover of the component that was hovered before, if the pointer
+     * has moved onto a different one. Routing only ever delivers a move to the
+     * component under the cursor, so without this the left-behind component
+     * would stay stuck in {@link ComponentState#HOVER} until something else
+     * happened to repaint it.</p>
+     */
+    private void updateHover() {
+        Component target = rootPanel.getComponentAt((float) mouseX, (float) mouseY);
+        if (target == hovered) {
+            return;
+        }
+        if (hovered != null && hovered.getState() == ComponentState.HOVER) {
+            hovered.setState(ComponentState.IDLE);
+        }
+        hovered = target;
     }
 
     /**

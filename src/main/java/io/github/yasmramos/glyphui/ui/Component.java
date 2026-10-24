@@ -962,6 +962,25 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
+     * Returns the deepest visible component covering the given point, or
+     * {@code null} when the point is outside this component.
+     *
+     * <p>The point is in this component's parent coordinate space (the same
+     * space {@link #contains} uses). Containers such as {@link Panel} override
+     * this to descend into their children, so the result is the leaf widget
+     * under the cursor. Used by the application to track hover: when the
+     * pointer moves onto a different component, the previous one must have its
+     * hover state cleared even though it will not receive the move event.</p>
+     *
+     * @param px the x-coordinate to check
+     * @param py the y-coordinate to check
+     * @return the deepest component at the point, or null if none
+     */
+    public Component getComponentAt(float px, float py) {
+        return (visible && contains(px, py)) ? this : null;
+    }
+
+    /**
      * Renders the component on the canvas. Called by the framework (see
      * {@link Panel#render(Canvas)}); widget authors implement this, but
      * application code must not invoke it directly — invalidate instead and
