@@ -13,6 +13,7 @@ import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.TextField;
 
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -318,31 +319,23 @@ public final class UiLoader {
 
     private Component createForTag(Element element, String tag) {
         switch (tag) {
-            case "button": {
+            case "button" -> {
                 Button b = new Button(0, 0, 120, 32, textOf(element));
                 return b;
             }
-            case "label":
-            case "p":
-            case "h1":
-            case "h2":
-            case "h3":
-            case "h4":
-            case "h5":
-            case "h6": {
+            case "label", "p", "h1", "h2", "h3", "h4", "h5", "h6" -> {
                 String sizeAttr = attr(element, "font-size");
                 Label l = new Label(0, 0, 200, 24, textOf(element));
                 if (!sizeAttr.isEmpty()) {
                     try {
-                        l.setFontSize(Float.parseFloat(sizeAttr.replaceAll("[^0-9.]", "")));
+                        l.setFontSize(Float.valueOf(sizeAttr.replaceAll("[^0-9.]", "")));
                     } catch (NumberFormatException e) {
                         warn("Bad font-size '" + sizeAttr + "' on <" + tag + ">");
                     }
                 }
                 return l;
             }
-            case "input":
-            case "textarea": {
+            case "input", "textarea" -> {
                 TextField tf = new TextField();
                 String value = !attr(element, "value").isEmpty()
                         ? attr(element, "value") : textOf(element);
@@ -351,7 +344,7 @@ public final class UiLoader {
                 }
                 return tf;
             }
-            case "img": {
+            case "img" -> {
                 ImageView iv = new ImageView();
                 String src = attr(element, "src");
                 if (!src.isEmpty()) {
@@ -368,18 +361,13 @@ public final class UiLoader {
                 }
                 return iv;
             }
-            case "div":
-            case "body":
-            case "section":
-            case "span":
-            case "panel":
-            case "root":
-            case "ui":
-                return new Panel(0, 0, Float.NaN, Float.NaN);
-            default: {
+            case "div", "body", "section", "span", "panel", "root", "ui" -> {
+                return new Panel(Float.NaN, Float.NaN);
+            }
+            default -> {
                 // Unknown tag: generic panel that still matches its own type selector.
                 warn("Unknown tag <" + tag + ">, mapped to generic Panel");
-                Panel p = new Panel(0, 0, Float.NaN, Float.NaN);
+                Panel p = new Panel(Float.NaN, Float.NaN);
                 p.setStyleTag(tag);
                 return p;
             }
@@ -423,7 +411,7 @@ public final class UiLoader {
             return;
         }
         try {
-            consumer.accept(Float.parseFloat(raw.trim()));
+            consumer.accept(Float.valueOf(raw.trim()));
         } catch (NumberFormatException e) {
             warn("Bad numeric attribute " + attr + "='" + raw + "' on <"
                     + element.getTagName() + ">");
@@ -436,14 +424,9 @@ public final class UiLoader {
             return;
         }
         switch (layout) {
-            case "flex":
-                panel.setLayoutManager(new FlexLayout());
-                break;
-            case "flow":
-                panel.setLayoutManager(new FlowLayout());
-                break;
-            default:
-                warn("Unknown layout '" + layout + "' on <" + element.getTagName() + ">");
+            case "flex" -> panel.setLayoutManager(new FlexLayout());
+            case "flow" -> panel.setLayoutManager(new FlowLayout());
+            default -> warn("Unknown layout '" + layout + "' on <" + element.getTagName() + ">");
         }
     }
 
@@ -485,8 +468,8 @@ public final class UiLoader {
             return () -> {
                 try {
                     m.invoke(controller);
-                } catch (Exception e) {
-                    LOG.warning("Handler '" + methodName + "' failed: " + e);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    LOG.warning(() -> "Handler '" + methodName + "' failed: " + e);
                 }
             };
         } catch (NoSuchMethodException e) {
@@ -497,8 +480,8 @@ public final class UiLoader {
                 return () -> {
                     try {
                         m.invoke(controller, target);
-                    } catch (Exception ex) {
-                        LOG.warning("Handler '" + methodName + "' failed: " + ex);
+                    } catch (IllegalAccessException | InvocationTargetException ex) {
+                        LOG.warning(() -> "Handler '" + methodName + "' failed: " + ex);
                     }
                 };
             } catch (NoSuchMethodException ex) {
@@ -699,6 +682,6 @@ public final class UiLoader {
 
     private void warn(String message) {
         warnings.add(message);
-        LOG.warning("[UiLoader] " + message);
+        LOG.warning(() -> "[UiLoader] " + message);
     }
 }

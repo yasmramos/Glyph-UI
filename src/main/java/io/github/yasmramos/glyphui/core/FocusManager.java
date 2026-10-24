@@ -196,8 +196,8 @@ public class FocusManager {
         if (isFocusCandidate(component)) {
             out.add(component);
         }
-        if (component instanceof Panel) {
-            for (Component child : ((Panel) component).getChildren()) {
+        if (component instanceof Panel panel) {
+            for (Component child : panel.getChildren()) {
                 collectFocusable(child, out);
             }
         }

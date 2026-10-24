@@ -13,33 +13,46 @@ import java.util.List;
  * A single-axis flexbox layout (subset of CSS Flexbox) that sizes children
  * through {@link Component#measure(float, float)}.
  *
- * <p>Supported properties, read from each panel's computed {@link Style}
+ * <p>
+ * Supported properties, read from each panel's computed {@link Style}
  * (overridable programmatically via the setters):</p>
  * <ul>
- *   <li>{@code flex-direction}: {@code row} (default) or {@code column}</li>
- *   <li>{@code justify-content}: {@code flex-start} (default),
- *       {@code center}, {@code flex-end}, {@code space-between},
- *       {@code space-around}</li>
- *   <li>{@code align-items}: {@code stretch} (default), {@code flex-start},
- *       {@code center}, {@code flex-end}</li>
- *   <li>{@code gap}: spacing between items</li>
- *   <li>{@code padding}: inner spacing (from the container style)</li>
+ * <li>{@code flex-direction}: {@code row} (default) or {@code column}</li>
+ * <li>{@code justify-content}: {@code flex-start} (default), {@code center},
+ * {@code flex-end}, {@code space-between}, {@code space-around}</li>
+ * <li>{@code align-items}: {@code stretch} (default), {@code flex-start},
+ * {@code center}, {@code flex-end}</li>
+ * <li>{@code gap}: spacing between items</li>
+ * <li>{@code padding}: inner spacing (from the container style)</li>
  * </ul>
  *
- * <p>Child {@code flex-grow} is honoured: leftover main-axis space is shared
+ * <p>
+ * Child {@code flex-grow} is honoured: leftover main-axis space is shared
  * proportionally among growing items. Child margins are respected as extra
  * spacing around each item.</p>
  */
 public class FlexLayout extends LayoutManager {
 
-    /** Main axis orientation. */
-    public enum Direction { ROW, COLUMN }
+    /**
+     * Main axis orientation.
+     */
+    public enum Direction {
+        ROW, COLUMN
+    }
 
-    /** Main-axis distribution of items. */
-    public enum Justify { FLEX_START, CENTER, FLEX_END, SPACE_BETWEEN, SPACE_AROUND }
+    /**
+     * Main-axis distribution of items.
+     */
+    public enum Justify {
+        FLEX_START, CENTER, FLEX_END, SPACE_BETWEEN, SPACE_AROUND
+    }
 
-    /** Cross-axis alignment of items. */
-    public enum Align { STRETCH, FLEX_START, CENTER, FLEX_END }
+    /**
+     * Cross-axis alignment of items.
+     */
+    public enum Align {
+        STRETCH, FLEX_START, CENTER, FLEX_END
+    }
 
     private Direction direction;
     private Justify justify;
@@ -47,12 +60,18 @@ public class FlexLayout extends LayoutManager {
     private Float gapOverride;
     private Float paddingOverride;
 
-    /** Creates a flex layout with the given main-axis direction. */
+    /**
+     * Creates a flex layout with the given main-axis direction.
+     *
+     * @param direction
+     */
     public FlexLayout(Direction direction) {
         this(direction, Justify.FLEX_START, Align.STRETCH);
     }
 
-    /** Creates a row/flex-start/stretch flex layout with style-driven gaps. */
+    /**
+     * Creates a row/flex-start/stretch flex layout with style-driven gaps.
+     */
     public FlexLayout() {
         this(Direction.ROW, Justify.FLEX_START, Align.STRETCH);
     }
@@ -61,8 +80,8 @@ public class FlexLayout extends LayoutManager {
      * Creates a flex layout with explicit defaults; the computed style of the
      * panel still wins over these when it declares the property.
      *
-     * @param direction  main axis orientation
-     * @param justify    main-axis distribution
+     * @param direction main axis orientation
+     * @param justify main-axis distribution
      * @param alignItems cross-axis alignment
      */
     public FlexLayout(Direction direction, Justify justify, Align alignItems) {
@@ -71,14 +90,37 @@ public class FlexLayout extends LayoutManager {
         this.alignItems = alignItems;
     }
 
-    public Direction getDirection() { return direction; }
-    public void setDirection(Direction direction) { this.direction = direction; }
-    public Justify getJustify() { return justify; }
-    public void setJustify(Justify justify) { this.justify = justify; }
-    public Align getAlignItems() { return alignItems; }
-    public void setAlignItems(Align alignItems) { this.alignItems = alignItems; }
-    public void setGap(float gap) { this.gapOverride = gap; }
-    public void setPadding(float padding) { this.paddingOverride = padding; }
+    public Direction getDirection() {
+        return direction;
+    }
+
+    public void setDirection(Direction direction) {
+        this.direction = direction;
+    }
+
+    public Justify getJustify() {
+        return justify;
+    }
+
+    public void setJustify(Justify justify) {
+        this.justify = justify;
+    }
+
+    public Align getAlignItems() {
+        return alignItems;
+    }
+
+    public void setAlignItems(Align alignItems) {
+        this.alignItems = alignItems;
+    }
+
+    public void setGap(float gap) {
+        this.gapOverride = gap;
+    }
+
+    public void setPadding(float padding) {
+        this.paddingOverride = padding;
+    }
 
     @Override
     public void layout(Panel panel) {
@@ -177,21 +219,16 @@ public class FlexLayout extends LayoutManager {
             float mainPos = cursor;
             float crossPos;
             switch (align) {
-                case CENTER:
-                    crossPos = contentCross(dir, contentX, contentY)
+                case CENTER -> crossPos = contentCross(dir, contentX, contentY)
                             + (availableCross - crossSize) / 2;
-                    break;
-                case FLEX_END:
-                    crossPos = contentCross(dir, contentX, contentY)
+                case FLEX_END -> crossPos = contentCross(dir, contentX, contentY)
                             + availableCross - crossSize - marginEnd[i];
-                    break;
-                case STRETCH:
+                case STRETCH -> {
                     crossPos = contentCross(dir, contentX, contentY) + marginStart[i] * 0;
                     crossSize = Math.max(0, availableCross - marginStart[i] - marginEnd[i]);
-                    break;
-                default: // FLEX_START
+                }
+                default -> // FLEX_START
                     crossPos = contentCross(dir, contentX, contentY) + 0;
-                    break;
             }
 
             if (row) {
@@ -218,16 +255,12 @@ public class FlexLayout extends LayoutManager {
     }
 
     private static float leadingOffset(Justify j, float freeSpace, int n, float gap) {
-        switch (j) {
-            case CENTER:
-                return freeSpace / 2;
-            case FLEX_END:
-                return freeSpace;
-            case SPACE_AROUND:
-                return n > 0 ? freeSpace / n / 2 : 0;
-            default:
-                return 0;
-        }
+        return switch (j) {
+            case CENTER -> freeSpace / 2;
+            case FLEX_END -> freeSpace;
+            case SPACE_AROUND -> n > 0 ? freeSpace / n / 2 : 0;
+            default -> 0;
+        };
     }
 
     private static float itemGrow(Component c) {
@@ -241,33 +274,43 @@ public class FlexLayout extends LayoutManager {
     }
 
     private static Direction parseDirection(String raw, Direction fallback) {
-        if (raw == null) return fallback;
+        if (raw == null) {
+            return fallback;
+        }
         String v = raw.trim().toLowerCase();
-        if (v.startsWith("column")) return Direction.COLUMN;
-        if (v.startsWith("row")) return Direction.ROW;
+        if (v.startsWith("column")) {
+            return Direction.COLUMN;
+        }
+        if (v.startsWith("row")) {
+            return Direction.ROW;
+        }
         return fallback;
     }
 
     private static Justify parseJustify(String raw, Justify fallback) {
-        if (raw == null) return fallback;
-        switch (raw.trim().toLowerCase()) {
-            case "center": return Justify.CENTER;
-            case "flex-end": case "end": return Justify.FLEX_END;
-            case "space-between": return Justify.SPACE_BETWEEN;
-            case "space-around": return Justify.SPACE_AROUND;
-            case "flex-start": case "start": return Justify.FLEX_START;
-            default: return fallback;
+        if (raw == null) {
+            return fallback;
         }
+        return switch (raw.trim().toLowerCase()) {
+            case "center" -> Justify.CENTER;
+            case "flex-end", "end" -> Justify.FLEX_END;
+            case "space-between" -> Justify.SPACE_BETWEEN;
+            case "space-around" -> Justify.SPACE_AROUND;
+            case "flex-start", "start" -> Justify.FLEX_START;
+            default -> fallback;
+        };
     }
 
     private static Align parseAlign(String raw, Align fallback) {
-        if (raw == null) return fallback;
-        switch (raw.trim().toLowerCase()) {
-            case "center": return Align.CENTER;
-            case "flex-end": case "end": return Align.FLEX_END;
-            case "flex-start": case "start": return Align.FLEX_START;
-            case "stretch": return Align.STRETCH;
-            default: return fallback;
+        if (raw == null) {
+            return fallback;
         }
+        return switch (raw.trim().toLowerCase()) {
+            case "center" -> Align.CENTER;
+            case "flex-end", "end" -> Align.FLEX_END;
+            case "flex-start", "start" -> Align.FLEX_START;
+            case "stretch" -> Align.STRETCH;
+            default -> fallback;
+        };
     }
 }

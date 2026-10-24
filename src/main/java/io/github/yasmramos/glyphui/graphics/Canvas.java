@@ -3,6 +3,8 @@ package io.github.yasmramos.glyphui.graphics;
 import io.github.humbleui.skija.*;
 import io.github.humbleui.types.Rect;
 import io.github.humbleui.types.RRect;
+import io.github.yasmramos.glyphui.core.Application;
+import java.util.function.Supplier;
 
 /**
  * Canvas wrapper that provides drawing methods using Skija.
@@ -39,7 +41,7 @@ public class Canvas {
      * {@link #Canvas(io.github.humbleui.skija.Canvas, Surface, int, int, io.github.yasmramos.glyphui.core.Application)}
      * constructor and by {@link #bindToApplication(io.github.yasmramos.glyphui.core.Application)}.
      */
-    private volatile io.github.yasmramos.glyphui.core.Application ownerApp;
+    private volatile Application ownerApp;
 
     /**
      * Optional static hook returning the application that new unbound
@@ -49,8 +51,7 @@ public class Canvas {
      * without threading an explicit reference through every call site.
      * Must be cleared when the application closes.
      */
-    private static volatile java.util.function.Supplier<io.github.yasmramos.glyphui.core.Application>
-            threadCheckOwnerSupplier;
+    private static volatile Supplier<Application> threadCheckOwnerSupplier;
 
     /**
      * Creates a new Canvas wrapper without thread affinity (the caller is
@@ -77,7 +78,7 @@ public class Canvas {
      * @param ownerApp the owning application for the thread check (may be null)
      */
     public Canvas(io.github.humbleui.skija.Canvas canvas, Surface surface, int width, int height,
-           io.github.yasmramos.glyphui.core.Application ownerApp) {
+                  Application ownerApp) {
         this.canvas = java.util.Objects.requireNonNull(canvas, "canvas");
         this.surface = java.util.Objects.requireNonNull(surface, "surface");
         this.width = width;
@@ -91,13 +92,12 @@ public class Canvas {
      *
      * @param supplier returns the application to bind new wrappers to, or null
      */
-    public static void setThreadCheckOwner(
-            java.util.function.Supplier<io.github.yasmramos.glyphui.core.Application> supplier) {
+    public static void setThreadCheckOwner(Supplier<Application> supplier) {
         threadCheckOwnerSupplier = supplier;
     }
 
-    private static io.github.yasmramos.glyphui.core.Application currentThreadCheckOwner() {
-        java.util.function.Supplier<io.github.yasmramos.glyphui.core.Application> s = threadCheckOwnerSupplier;
+    private static Application currentThreadCheckOwner() {
+        Supplier<Application> s = threadCheckOwnerSupplier;
         if (s == null) {
             return null;
         }
@@ -116,7 +116,7 @@ public class Canvas {
      *
      * @param app the owning application (may be null to unbind)
      */
-    public void bindToApplication(io.github.yasmramos.glyphui.core.Application app) {
+    public void bindToApplication(Application app) {
         this.ownerApp = app;
     }
 
@@ -130,7 +130,7 @@ public class Canvas {
      * @throws IllegalStateException when drawing from a foreign thread
      */
     private void checkUiThread() {
-        io.github.yasmramos.glyphui.core.Application app = ownerApp;
+        Application app = ownerApp;
         if (app != null && !app.isUiThread()) {
             throw new IllegalStateException(
                 "Canvas drawing must run on the Glyph UI thread; use "
@@ -250,7 +250,7 @@ public class Canvas {
      */
     public float[] getMatrixArray() {
         checkUiThread();
-        io.github.humbleui.skija.Matrix33 m = canvas.getLocalToDeviceAsMatrix33();
+        Matrix33 m = canvas.getLocalToDeviceAsMatrix33();
         return m.getMat();
     }
 

@@ -10,13 +10,15 @@ package io.github.yasmramos.glyphui.core;
  * subset of these options its platform API supports and ignores the
  * rest.</p>
  *
- * <p>Defaults reproduce the historical behaviour of {@link Window}: a
- * visible, resizable, decorated window with an OpenGL 3.2 core /
- * forward-compatible context, no MSAA (the Skija render target is created
- * with samples=0, so a multisampled default framebuffer would never be
- * resolved), centered on the primary monitor and shown immediately.</p>
+ * <p>
+ * Defaults reproduce the historical behaviour of {@link Window}: a visible,
+ * resizable, decorated window with an OpenGL 3.2 core / forward-compatible
+ * context, no MSAA (the Skija render target is created with samples=0, so a
+ * multisampled default framebuffer would never be resolved), centered on the
+ * primary monitor and shown immediately.</p>
  *
- * <p>Example:</p>
+ * <p>
+ * Example:</p>
  * <pre>{@code
  * Window w = new Window("My App", 1280, 720,
  *         WindowConfig.create()
@@ -25,9 +27,10 @@ package io.github.yasmramos.glyphui.core;
  *                 .visible(false));         // show it yourself later
  * }</pre>
  *
- * <p>Note: not every hint is honoured on every platform (e.g. Wayland
- * ignores positioning and transparency on some compositors). These are
- * limitations of the backend, not of this class.</p>
+ * <p>
+ * Note: not every hint is honoured on every platform (e.g. Wayland ignores
+ * positioning and transparency on some compositors). These are limitations of
+ * the backend, not of this class.</p>
  */
 public final class WindowConfig {
 
@@ -37,18 +40,26 @@ public final class WindowConfig {
     // part of the public configuration vocabulary.
     /** Any OpenGL profile — driver chooses. */
     public static final int GL_PROFILE_ANY = 0;
-    /** No OpenGL context at all (alias of {@link #GL_PROFILE_ANY}). */
+    /**
+     * No OpenGL context at all (alias of {@link #GL_PROFILE_ANY}).
+     */
     public static final int GL_PROFILE_NONE = GL_PROFILE_ANY;
     /** OpenGL core profile. */
     public static final int GL_PROFILE_CORE = 1;
     /** OpenGL compatibility profile. */
     public static final int GL_PROFILE_COMPAT = 2;
 
-    /** Logical window width/height requested at creation. */
+    /**
+     * Logical window width/height requested at creation.
+     */
     public int width = 800;
-    /** Logical window height requested at creation. */
+    /**
+     * Logical window height requested at creation.
+     */
     public int height = 600;
-    /** Initial window title. */
+    /**
+     * Initial window title.
+     */
     public String title = "Glyph-UI";
 
     // --- Window hints ------------------------------------------------------
@@ -72,7 +83,10 @@ public final class WindowConfig {
     public int glMajor = 3;
     /** Requested GL context minor version. */
     public int glMinor = 2;
-    /** GL profile: one of {@link #GL_PROFILE_CORE}, {@link #GL_PROFILE_COMPAT}, {@link #GL_PROFILE_ANY}. */
+    /**
+     * GL profile: one of
+     * {@link #GL_PROFILE_CORE}, {@link #GL_PROFILE_COMPAT}, {@link #GL_PROFILE_ANY}.
+     */
     public int glProfile = GL_PROFILE_CORE;
     /** Forward-compatible context. */
     public boolean glForwardCompat = true;
@@ -80,12 +94,19 @@ public final class WindowConfig {
     // --- Window-level behaviour -------------------------------------------
     /** Swap interval (vsync): 1 = vsync on, 0 = off, N = every Nth refresh (honoured by GL-capable backends). */
     public int swapInterval = 1;
-    /** Center the window on the primary monitor after creation. */
+    /**
+     * Center the window on the primary monitor after creation.
+     */
     public boolean center = true;
-    /** Create the window directly in fullscreen on the primary monitor. */
+    /**
+     * Create the window directly in fullscreen on the primary monitor.
+     */
     public boolean fullscreen = false;
 
-    /** Fluent factory with defaults. */
+    /**
+     * Fluent factory with defaults.
+     * @return 
+     */
     public static WindowConfig create() {
         return new WindowConfig();
     }
@@ -138,11 +159,11 @@ public final class WindowConfig {
     }
 
     /**
-     * Requests {@code samples} MSAA buffers on the default framebuffer.
-     * Beware: under a core profile many drivers silently ignore this, and
-     * Glyph-UI's Skija render target currently uses samples=0 — real MSAA
-     * requires matching {@code BackendRenderTarget} configuration (or a
-     * custom multisampled FBO + blit).
+     * Requests {@code samples} MSAA buffers on the default framebuffer. Beware:
+     * under a core profile many drivers silently ignore this, and Glyph-UI's
+     * Skija render target currently uses samples=0 — real MSAA requires
+     * matching {@code BackendRenderTarget} configuration (or a custom
+     * multisampled FBO + blit).
      */
     public WindowConfig samples(int samples) {
         this.samples = samples;
@@ -155,7 +176,10 @@ public final class WindowConfig {
         return this;
     }
 
-    /** One of {@link #GL_PROFILE_CORE}, {@link #GL_PROFILE_COMPAT} or {@link #GL_PROFILE_ANY}. */
+    /**
+     * One of {@link #GL_PROFILE_CORE}, {@link #GL_PROFILE_COMPAT} or
+     * {@link #GL_PROFILE_ANY}.
+     */
     public WindowConfig glProfile(int profile) {
         this.glProfile = profile;
         return this;

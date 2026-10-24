@@ -16,11 +16,13 @@ import io.github.yasmramos.glyphui.core.backend.WindowBackend;
  * dispatch. None of its signatures leak native-windowing types; listeners use
  * the plain functional interfaces declared in {@link WindowBackend}.</p>
  *
- * <p>{@code Window} owns the native window, so it implements
+ * <p>
+ * {@code Window} owns the native window, so it implements
  * {@link AutoCloseable}. {@link #close()} destroys the window and releases
  * backend resources; it is safe to call multiple times.</p>
  *
- * <p><strong>Headless contract:</strong> every method is safe to call before
+ * <p>
+ * <strong>Headless contract:</strong> every method is safe to call before
  * {@link #create()} succeeds (no live native window). Size/scale setters
  * ({@link #setSizes}, {@link #setContentScale}) update cached state and fire
  * the corresponding listeners without touching native code, which keeps unit
@@ -91,11 +93,11 @@ public class Window implements AutoCloseable {
     /**
      * Creates a new Window with an explicit configuration.
      *
-     * @param title  the window title
-     * @param width  the window width (logical)
+     * @param title the window title
+     * @param width the window width (logical)
      * @param height the window height (logical)
      * @param config the window configuration (a null value falls back to
-     *               defaults)
+     * defaults)
      */
     public Window(String title, int width, int height, WindowConfig config) {
         this.backend = new JwmWindowBackend(
@@ -104,8 +106,8 @@ public class Window implements AutoCloseable {
 
     /**
      * Gets the active window configuration. Mutating the returned object
-     * affects the next {@link #create()} (and, for runtime-safe fields such
-     * as fullscreen mode, the live window through the backend).
+     * affects the next {@link #create()} (and, for runtime-safe fields such as
+     * fullscreen mode, the live window through the backend).
      *
      * <p><strong>Contract after {@link #create()}:</strong> the same instance
      * originally supplied to the constructor is returned; it reflects the
@@ -153,6 +155,18 @@ public class Window implements AutoCloseable {
         destroy();
     }
 
+    /**
+     * Requests a graceful window close: the flag is picked up by the event
+     * loop, which unwinds normally so {@code Application} can release its
+     * resources in order. This is the same path ESC uses when
+     * {@code setCloseOnEscape(true)} is enabled, exposed publicly for widgets
+     * outside {@code core} that own window chrome (the close button of
+     * {@link io.github.yasmramos.glyphui.ui.TitleBar}).
+     */
+    public void requestClose() {
+        setShouldClose(true);
+    }
+
     // ------------------------------------------------------------------
     // Event loop plumbing (package-private: driven by Application only)
     // ------------------------------------------------------------------
@@ -165,12 +179,12 @@ public class Window implements AutoCloseable {
 
     /**
      * Presents the given frame through the active backend: GL backends swap
-     * buffers, raster-only backends (JWM) blit the CPU surface onto the
-     * native window layer.
+     * buffers, raster-only backends (JWM) blit the CPU surface onto the native
+     * window layer.
      *
      * @param result the surface result currently bound to the app canvas
      * @return false when the backend could not display the frame yet and the
-     *         caller should request another repaint
+     * caller should request another repaint
      */
     boolean present(io.github.yasmramos.glyphui.core.backend.SurfaceResult result) {
         checkThread();
@@ -267,31 +281,41 @@ public class Window implements AutoCloseable {
         return backend.getWidth();
     }
 
-    /** @return the logical window height */
+    /**
+     * @return the logical window height
+     */
     public int getHeight() {
         checkThread();
         return backend.getHeight();
     }
 
-    /** @return the physical framebuffer width in pixels */
+    /**
+     * @return the physical framebuffer width in pixels
+     */
     public int getFramebufferWidth() {
         checkThread();
         return backend.getFramebufferWidth();
     }
 
-    /** @return the physical framebuffer height in pixels */
+    /**
+     * @return the physical framebuffer height in pixels
+     */
     public int getFramebufferHeight() {
         checkThread();
         return backend.getFramebufferHeight();
     }
 
-    /** @return the content scale (DPI) factor along X */
+    /**
+     * @return the content scale (DPI) factor along X
+     */
     public float getContentScaleX() {
         checkThread();
         return backend.getContentScaleX();
     }
 
-    /** @return the content scale (DPI) factor along Y */
+    /**
+     * @return the content scale (DPI) factor along Y
+     */
     public float getContentScaleY() {
         checkThread();
         return backend.getContentScaleY();
@@ -303,7 +327,9 @@ public class Window implements AutoCloseable {
         return backend.getTitle();
     }
 
-    /** Updates the title immediately (live window) or caches it. */
+    /**
+     * Updates the title immediately (live window) or caches it.
+     */
     public void setTitle(String title) {
         checkThread();
         backend.setTitle(title);
@@ -456,14 +482,17 @@ public class Window implements AutoCloseable {
     // ------------------------------------------------------------------
     // Clipboard
     // ------------------------------------------------------------------
-
-    /** Places a UTF-8 string on the system clipboard. */
+    /**
+     * Places a UTF-8 string on the system clipboard.
+     */
     public void setClipboardString(String text) {
         checkThread();
         backend.setClipboardString(text);
     }
 
-    /** @return the current clipboard text, or null when unavailable */
+    /**
+     * @return the current clipboard text, or null when unavailable
+     */
     public String getClipboardString() {
         checkThread();
         return backend.getClipboardString();
@@ -472,62 +501,85 @@ public class Window implements AutoCloseable {
     // ------------------------------------------------------------------
     // Listeners (backend-agnostic functional interfaces)
     // ------------------------------------------------------------------
-
-    /** Registers the logical window-size listener (null removes). */
+    /**
+     * Registers the logical window-size listener (null removes).
+     * @param listener
+     */
     public void setWindowSizeListener(WindowBackend.WindowSizeListener listener) {
         checkThread();
         backend.setWindowSizeListener(listener);
     }
 
-    /** Registers the physical framebuffer-size listener (null removes). */
+    /**
+     * Registers the physical framebuffer-size listener (null removes).
+     * @param listener
+     */
     public void setFramebufferSizeListener(WindowBackend.FramebufferSizeListener listener) {
         checkThread();
         backend.setFramebufferSizeListener(listener);
     }
 
-    /** Registers the content-scale (DPI) listener (null removes). */
+    /**
+     * Registers the content-scale (DPI) listener (null removes).
+     * @param listener
+     */
     public void setContentScaleListener(WindowBackend.ContentScaleListener listener) {
         checkThread();
         backend.setContentScaleListener(listener);
     }
 
-    /** Registers the printable-character listener (null removes). */
+    /**
+     * Registers the printable-character listener (null removes).
+     * @param listener
+     */
     public void setCharListener(WindowBackend.CharListener listener) {
         checkThread();
         backend.setCharListener(listener);
     }
 
-    /** Registers the raw key listener (null removes). */
+    /**
+     * Registers the raw key listener (null removes).
+     */
     public void setKeyListener(WindowBackend.KeyListener listener) {
         checkThread();
         backend.setKeyListener(listener);
     }
 
-    /** Registers the IME text-input listener (null restores the default). */
+    /**
+     * Registers the IME text-input listener (null restores the default).
+     */
     public void setTextInputListener(WindowBackend.TextInputListener listener) {
         checkThread();
         backend.setTextInputListener(listener);
     }
 
-    /** Installs the IME caret-info client consulted by the native input method. */
+    /**
+     * Installs the IME caret-info client consulted by the native input method.
+     */
     public void setImeClient(WindowBackend.ImeClient client) {
         checkThread();
         backend.setImeClient(client);
     }
 
-    /** Enables/disables the native text-input (IME) connection. */
+    /**
+     * Enables/disables the native text-input (IME) connection.
+     */
     public void setTextInputEnabled(boolean enabled) {
         checkThread();
         backend.setTextInputEnabled(enabled);
     }
 
-    /** Registers the mouse-button listener (null removes). */
+    /**
+     * Registers the mouse-button listener (null removes).
+     */
     public void setMouseListener(WindowBackend.MouseListener listener) {
         checkThread();
         backend.setMouseListener(listener);
     }
 
-    /** Registers the cursor-position listener (null removes). */
+    /**
+     * Registers the cursor-position listener (null removes).
+     */
     public void setCursorPosListener(WindowBackend.CursorPosListener listener) {
         checkThread();
         backend.setCursorPosListener(listener);

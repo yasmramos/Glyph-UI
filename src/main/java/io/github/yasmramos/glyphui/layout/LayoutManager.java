@@ -1,12 +1,12 @@
 package io.github.yasmramos.glyphui.layout;
 
-import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Panel;
 
 /**
  * Abstract base class for layout managers.
  */
 public abstract class LayoutManager {
+
     /**
      * Arranges the components within the panel.
      *

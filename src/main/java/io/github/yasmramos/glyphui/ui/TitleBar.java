@@ -101,7 +101,7 @@ public class TitleBar extends Panel {
         closeButton.setAction(() -> {
             Window w = window();
             if (w != null) {
-                w.setShouldClose(true);
+                w.requestClose();
             }
         });
 
@@ -307,10 +307,11 @@ public class TitleBar extends Panel {
         if (win == null) {
             return;
         }
-        int[] pos = win.getPosition();
+        int px = win.getPositionX();
+        int py = win.getPositionY();
         win.setPosition(
-                Math.round(pos[0] + (event.getX() - grabX)),
-                Math.round(pos[1] + (event.getY() - grabY)));
+                Math.round(px + (event.getX() - grabX)),
+                Math.round(py + (event.getY() - grabY)));
     }
 
     private static float sanitizeConstraint(float value) {

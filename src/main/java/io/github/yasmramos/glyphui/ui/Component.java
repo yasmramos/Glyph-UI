@@ -1,6 +1,8 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.core.Application;
+import io.github.yasmramos.glyphui.core.FocusManager;
+import io.github.yasmramos.glyphui.core.RepaintRequester;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Property;
@@ -16,22 +18,26 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Abstract base class for all UI components.
  *
- * <p>Components implement {@link StyleNode} so the style subsystem
- * ({@code StyleSheet}/{@code StyleEngine}) can match CSS selectors against
- * the live widget tree.</p>
+ * <p>
+ * Components implement {@link StyleNode} so the style subsystem
+ * ({@code StyleSheet}/{@code StyleEngine}) can match CSS selectors against the
+ * live widget tree.</p>
  *
- * <p>Components that own native resources (paints, fonts) should release them
- * in {@link #dispose()}. {@code Component} implements {@link AutoCloseable} so
+ * <p>
+ * Components that own native resources (paints, fonts) should release them in
+ * {@link #dispose()}. {@code Component} implements {@link AutoCloseable} so
  * widgets can also be used with try-with-resources; {@link #close()} simply
  * delegates to {@link #dispose()}.</p>
  *
  * <h2>Threading</h2>
- * <p>The geometric/visibility state is exposed as observable
- * {@link Property} objects ({@link #xProperty()}, {@link #yProperty()},
+ * <p>
+ * The geometric/visibility state is exposed as observable {@link Property}
+ * objects ({@link #xProperty()}, {@link #yProperty()},
  * {@link #widthProperty()}, {@link #heightProperty()},
  * {@link #visibleProperty()}, {@link #enabledProperty()}). Calling
  * {@code Property.set(...)} from a background thread marshals the change onto
@@ -40,15 +46,19 @@ import java.util.Locale;
  */
 public abstract class Component implements StyleNode, Disposable {
 
-    /** Resources tied to this component's lifetime; created lazily. */
+    /**
+     * Monotonic counter used to generate unique component IDs.
+     */
+    private static final AtomicLong ID_COUNTER = new AtomicLong();
+
+    /**
+     * Resources tied to this component's lifetime; created lazily.
+     */
     private DisposableScope resources;
-    /** Set by the first {@link #dispose()} call. */
+    /**
+     * Set by the first {@link #dispose()} call.
+     */
     private boolean disposed;
-
-    /** Monotonic counter used to generate unique component IDs. */
-    private static final java.util.concurrent.atomic.AtomicLong ID_COUNTER =
-            new java.util.concurrent.atomic.AtomicLong();
-
 
     /**
      * Notifies the global repaint requester that this component needs
@@ -68,9 +78,15 @@ public abstract class Component implements StyleNode, Disposable {
         invalidate();
     }
 
-    /** Default width used when no explicit bounds were provided and layout is free to decide. */
+    /**
+     * Default width used when no explicit bounds were provided and layout is
+     * free to decide.
+     */
     public static final float DEFAULT_WIDTH = 150f;
-    /** Default height used when no explicit bounds were provided and layout is free to decide. */
+    /**
+     * Default height used when no explicit bounds were provided and layout is
+     * free to decide.
+     */
     public static final float DEFAULT_HEIGHT = 40f;
 
     protected float x;
@@ -84,14 +100,14 @@ public abstract class Component implements StyleNode, Disposable {
     protected ComponentState state;
     /**
      * Tracks whether the bounds (width/height) were set explicitly by the user
-     * through a bounds-carrying constructor or {@link #setWidth}/{@link #setHeight}.
-     * When false, layout managers are free to resize the component to its
-     * preferred size; when true, the user-provided size must be respected.
+     * through a bounds-carrying constructor or
+     * {@link #setWidth}/{@link #setHeight}. When false, layout managers are
+     * free to resize the component to its preferred size; when true, the
+     * user-provided size must be respected.
      */
     protected boolean sizeExplicitlySet;
 
     // --- Observable properties (lazily created, marshalled via Application.invokeLater) ---
-
     private Property<Float> xProperty;
     private Property<Float> yProperty;
     private Property<Float> widthProperty;
@@ -112,7 +128,9 @@ public abstract class Component implements StyleNode, Disposable {
         invalidate();
     }
 
-    /** Applies a user-set height: same single-repaint path as width. */
+    /**
+     * Applies a user-set height: same single-repaint path as width.
+     */
     private void applyHeightExplicit(float newHeight) {
         this.height = newHeight;
         this.sizeExplicitlySet = true;
@@ -186,8 +204,7 @@ public abstract class Component implements StyleNode, Disposable {
                 if (this.visible != v) {
                     this.visible = v;
                     // A hidden widget cannot keep the keyboard focus.
-                    io.github.yasmramos.glyphui.core.FocusManager fm =
-                            io.github.yasmramos.glyphui.core.FocusManager.getGlobalFocusManager();
+                    FocusManager fm = FocusManager.getGlobalFocusManager();
                     if (fm != null) {
                         fm.componentVisibilityChanged(this);
                     }
@@ -227,10 +244,14 @@ public abstract class Component implements StyleNode, Disposable {
         return enabledProperty;
     }
 
-    /** Whether this component participates in keyboard focus traversal. */
+    /**
+     * Whether this component participates in keyboard focus traversal.
+     */
     private boolean focusable = true;
 
-    /** Whether this component currently holds the keyboard focus. */
+    /**
+     * Whether this component currently holds the keyboard focus.
+     */
     private boolean focused;
 
     /**
@@ -239,7 +260,9 @@ public abstract class Component implements StyleNode, Disposable {
      */
     private String accessibleName;
 
-    /** Optional explicit accessibility description override. */
+    /**
+     * Optional explicit accessibility description override.
+     */
     private String accessibleDescription;
 
     /**
@@ -249,22 +272,31 @@ public abstract class Component implements StyleNode, Disposable {
      * paint-dirty. Kept as a static so plain components work even when no
      * Application is running (e.g. unit tests).
      */
-    private static io.github.yasmramos.glyphui.core.RepaintRequester globalRepaintRequester;
+    private static RepaintRequester globalRepaintRequester;
 
-    /** Number of times invalidate() has been called on this component. */
+    /**
+     * Number of times invalidate() has been called on this component.
+     */
     private int invalidateCount;
 
     // ------------------------------------------------------------------
     // Style subsystem hooks (CSS subset)
     // ------------------------------------------------------------------
-
-    /** Style class names carried by this component (like HTML {@code class}). */
+    /**
+     * Style class names carried by this component (like HTML {@code class}).
+     */
     private final List<String> styleClasses = new ArrayList<>();
 
-    /** Inline style declarations (like HTML {@code style="..."}). Highest cascade priority. */
+    /**
+     * Inline style declarations (like HTML {@code style="..."}). Highest
+     * cascade priority.
+     */
     private Style inlineStyle = Style.EMPTY;
 
-    /** The last computed style produced by the {@code StyleEngine} for this component. */
+    /**
+     * The last computed style produced by the {@code StyleEngine} for this
+     * component.
+     */
     private Style computedStyle = Style.EMPTY;
 
     /**
@@ -289,7 +321,7 @@ public abstract class Component implements StyleNode, Disposable {
      *
      * @param requester the repaint requester (may be null to clear)
      */
-    public static void setGlobalRepaintRequester(io.github.yasmramos.glyphui.core.RepaintRequester requester) {
+    public static void setGlobalRepaintRequester(RepaintRequester requester) {
         globalRepaintRequester = requester;
     }
 
@@ -305,22 +337,27 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Creates a zero-sized component to be positioned/sized by a layout
-     * manager or by {@link #setSize}. Subclasses such as {@code TextField}
-     * and {@code ImageView} use this when their size is derived from
-     * content via {@link #measure}.
+     * Creates a zero-sized component to be positioned/sized by a layout manager
+     * or by {@link #setSize}. Subclasses such as {@code TextField} and
+     * {@code ImageView} use this when their size is derived from content via
+     * {@link #measure}.
      */
     protected Component() {
         this(0, 0, 0, 0);
         this.sizeExplicitlySet = false;
     }
 
+    public Component(float width, float height) {
+        this(0, 0, width, height);
+        this.sizeExplicitlySet = false;
+    }
+
     /**
      * Creates a new Component.
      *
-     * @param x      the x-coordinate of the component
-     * @param y      the y-coordinate of the component
-     * @param width  the width of the component
+     * @param x the x-coordinate of the component
+     * @param y the y-coordinate of the component
+     * @param width the width of the component
      * @param height the height of the component
      */
     public Component(float x, float y, float width, float height) {
@@ -337,13 +374,14 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Marks this component as needing a repaint and propagates the
-     * invalidation up the parent chain. When the top of the tree is reached,
-     * the global {@link io.github.yasmramos.glyphui.core.RepaintRequester} (installed by
+     * Marks this component as needing a repaint and propagates the invalidation
+     * up the parent chain. When the top of the tree is reached, the global
+     * {@link io.github.yasmramos.glyphui.core.RepaintRequester} (installed by
      * {@code Application}) is invoked, which sets the application's
      * {@code paintDirty} flag so the next frame is rendered.
      *
-     * <p>All visual mutators ({@code setText}, {@code setWidth},
+     * <p>
+     * All visual mutators ({@code setText}, {@code setWidth},
      * {@code setVisible}, ...) call this automatically.</p>
      */
     public void invalidate() {
@@ -354,7 +392,7 @@ public abstract class Component implements StyleNode, Disposable {
             p.invalidate();
         } else {
             // Root of the tree: ask the application to repaint
-            io.github.yasmramos.glyphui.core.RepaintRequester requester = globalRepaintRequester;
+            RepaintRequester requester = globalRepaintRequester;
             if (requester != null) {
                 requester.requestRepaint();
             }
@@ -386,11 +424,10 @@ public abstract class Component implements StyleNode, Disposable {
     // ------------------------------------------------------------------
     // Style API (CSS subset integration)
     // ------------------------------------------------------------------
-
     /**
      * The default HTML-equivalent tag name for this component class, used by
-     * CSS type selectors. Subclasses override it (Button → "button",
-     * Label → "label", TextField → "input", ...). Panels return "div".
+     * CSS type selectors. Subclasses override it (Button → "button", Label →
+     * "label", TextField → "input", ...). Panels return "div".
      *
      * @return a lower-case tag name
      */
@@ -409,8 +446,8 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Overrides the HTML-equivalent tag for this instance (used by the
-     * markup loader for unknown tags and by tests).
+     * Overrides the HTML-equivalent tag for this instance (used by the markup
+     * loader for unknown tags and by tests).
      *
      * @param styleTag the tag name (null restores the class default)
      */
@@ -464,8 +501,8 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Sets the inline style (equivalent of {@code style="..."} in HTML).
-     * Inline declarations have the highest cascade priority.
+     * Sets the inline style (equivalent of {@code style="..."} in HTML). Inline
+     * declarations have the highest cascade priority.
      *
      * @param style the inline style (null clears it)
      */
@@ -527,7 +564,6 @@ public abstract class Component implements StyleNode, Disposable {
     // the computed style wins over the explicit override, which in turn wins
     // over the theme default. Order matches CSS intuition: stylesheet rule →
     // programmatic setter → inline style is highest via getComputedStyle().
-
     /**
      * Resolves an integer (color/weight) style property for the current
      * component state. Pseudo-class rules already re-cascaded by the
@@ -539,11 +575,11 @@ public abstract class Component implements StyleNode, Disposable {
      *
      * @param property       the style property
      * @param explicitOverride the per-instance setter value (may be null)
-     * @param themeDefault   fallback taken from the active theme
+     * @param themeDefault fallback taken from the active theme
      * @return the winning value
      */
     protected int resolveIntStyle(io.github.yasmramos.glyphui.style.StyleProperty property,
-                                  Integer explicitOverride, int themeDefault) {
+            Integer explicitOverride, int themeDefault) {
         io.github.yasmramos.glyphui.style.Style s = getComputedStyle();
         if (s.has(property)) {
             return s.getInt(property, themeDefault);
@@ -554,13 +590,13 @@ public abstract class Component implements StyleNode, Disposable {
     /**
      * Float variant of {@link #resolveIntStyle}.
      *
-     * @param property         the style property
+     * @param property the style property
      * @param explicitOverride per-instance setter value (may be null)
-     * @param themeDefault     fallback from the theme
+     * @param themeDefault fallback from the theme
      * @return the winning value
      */
     protected float resolveFloatStyle(io.github.yasmramos.glyphui.style.StyleProperty property,
-                                      Float explicitOverride, float themeDefault) {
+            Float explicitOverride, float themeDefault) {
         io.github.yasmramos.glyphui.style.Style s = getComputedStyle();
         if (s.has(property)) {
             return s.getFloat(property, themeDefault);
@@ -571,12 +607,13 @@ public abstract class Component implements StyleNode, Disposable {
     /**
      * Resolves the Skia font for this component: when the computed style
      * declares {@code font-family} and/or {@code font-size}, a font is built
-     * through {@link io.github.yasmramos.glyphui.graphics.FontManager}'s typeface resolution
-     * (cached per family/size); otherwise the theme font for the given role
-     * is returned.
+     * through {@link io.github.yasmramos.glyphui.graphics.FontManager}'s
+     * typeface resolution (cached per family/size); otherwise the theme font
+     * for the given role is returned.
      *
-     * <p>The returned font is owned by the caches below or by
-     * {@code FontManager} — callers must not close it.</p>
+     * <p>
+     * The returned font is owned by the caches below or by {@code FontManager}
+     * — callers must not close it.</p>
      *
      * @param role the theme font role to fall back to
      * @return the resolved font, never null
@@ -629,9 +666,12 @@ public abstract class Component implements StyleNode, Disposable {
         return font;
     }
 
-    /** Cache of fonts created from CSS font-* declarations (keyed family|size|style). */
-    private static final java.util.Map<String, io.github.humbleui.skija.Font> STYLE_FONTS =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    /**
+     * Cache of fonts created from CSS font-* declarations (keyed
+     * family|size|style).
+     */
+    private static final java.util.Map<String, io.github.humbleui.skija.Font> STYLE_FONTS
+            = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * Releases every cached style-derived font. This cache is <b>global and
@@ -655,7 +695,6 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     // ------------------------------------------------ StyleNode adapters
-
     @Override
     public String styleTag() {
         return getStyleTag();
@@ -674,10 +713,14 @@ public abstract class Component implements StyleNode, Disposable {
     @Override
     public boolean matchesPseudo(io.github.yasmramos.glyphui.style.Selector.PseudoClass pseudo) {
         return switch (pseudo) {
-            case HOVER -> state == ComponentState.HOVER;
-            case FOCUS -> isFocused();
-            case DISABLED -> !isEnabled();
-            case ACTIVE -> state == ComponentState.PRESSED;
+            case HOVER ->
+                state == ComponentState.HOVER;
+            case FOCUS ->
+                isFocused();
+            case DISABLED ->
+                !isEnabled();
+            case ACTIVE ->
+                state == ComponentState.PRESSED;
         };
     }
 
@@ -765,9 +808,10 @@ public abstract class Component implements StyleNode, Disposable {
     /**
      * Applies a size computed by a layout manager without marking the bounds as
      * explicitly user-set. This keeps {@link #isSizeExplicitlySet()} false so a
-     * subsequent layout pass can still resize the component to its preferred size.
+     * subsequent layout pass can still resize the component to its preferred
+     * size.
      *
-     * @param width  the layout-assigned width
+     * @param width the layout-assigned width
      * @param height the layout-assigned height
      */
     public void applyLayoutSize(float width, float height) {
@@ -787,8 +831,9 @@ public abstract class Component implements StyleNode, Disposable {
 
     /**
      * Checks whether the component's size was provided explicitly by the user
-     * (via a bounds-carrying constructor or {@link #setWidth}/{@link #setHeight})
-     * rather than left for layout managers to decide.
+     * (via a bounds-carrying constructor or
+     * {@link #setWidth}/{@link #setHeight}) rather than left for layout
+     * managers to decide.
      *
      * @return true if the size must be respected by layout managers
      */
@@ -842,8 +887,8 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Sets the visibility of the component. Hiding a focused component
-     * clears its focus (see {@link io.github.yasmramos.glyphui.core.FocusManager}).
+     * Sets the visibility of the component. Hiding a focused component clears
+     * its focus (see {@link io.github.yasmramos.glyphui.core.FocusManager}).
      *
      * @param visible true to make visible, false to hide
      */
@@ -862,7 +907,8 @@ public abstract class Component implements StyleNode, Disposable {
 
     /**
      * Sets whether the component is enabled. Disabling a focused component
-     * clears its focus (see {@link io.github.yasmramos.glyphui.core.FocusManager}).
+     * clears its focus (see
+     * {@link io.github.yasmramos.glyphui.core.FocusManager}).
      *
      * @param enabled true to enable, false to disable
      */
@@ -882,11 +928,12 @@ public abstract class Component implements StyleNode, Disposable {
     /**
      * Sets the parent panel of this component.
      *
-     * <p>This only rewires the back-pointer; it does not add or remove the
+     * <p>
+     * This only rewires the back-pointer; it does not add or remove the
      * component in any child list and does not trigger a relayout/repaint.
-     * Containers own tree membership — prefer {@link Panel#add(Component)}
-     * and {@link Panel#remove(Component)}, which call this method as part
-     * of a fully consistent reparenting.</p>
+     * Containers own tree membership — prefer {@link Panel#add(Component)} and
+     * {@link Panel#remove(Component)}, which call this method as part of a
+     * fully consistent reparenting.</p>
      *
      * @param parent the parent panel
      */
@@ -936,9 +983,10 @@ public abstract class Component implements StyleNode, Disposable {
     /**
      * Checks if a point is within the bounds of this component.
      *
-     * <p>Bounds are half-open: the left/top edge is inclusive, the
-     * right/bottom edge exclusive. Adjacent components therefore do not both
-     * claim a point that lies exactly on their shared border.</p>
+     * <p>
+     * Bounds are half-open: the left/top edge is inclusive, the right/bottom
+     * edge exclusive. Adjacent components therefore do not both claim a point
+     * that lies exactly on their shared border.</p>
      *
      * @param mouseX the x-coordinate to check
      * @param mouseY the y-coordinate to check
@@ -950,8 +998,8 @@ public abstract class Component implements StyleNode, Disposable {
 
     /**
      * Float-precision hit test; see {@link #contains(int, int)} for the
-     * half-open bounds semantics. Preferred when coordinates come from a
-     * HiDPI conversion or fractional layout.
+     * half-open bounds semantics. Preferred when coordinates come from a HiDPI
+     * conversion or fractional layout.
      *
      * @param px the x-coordinate to check
      * @param py the y-coordinate to check
@@ -1006,16 +1054,17 @@ public abstract class Component implements StyleNode, Disposable {
      * Measures the intrinsic size of this component under the given
      * constraints, in logical units.
      *
-     * <p>The default implementation returns the preferred size (see
-     * {@link #getPreferredWidth()} / {@link #getPreferredHeight()}) clamped
-     * to the supplied maximums. Text widgets such as {@code Button} and
+     * <p>
+     * The default implementation returns the preferred size (see
+     * {@link #getPreferredWidth()} / {@link #getPreferredHeight()}) clamped to
+     * the supplied maximums. Text widgets such as {@code Button} and
      * {@code Label} override this to measure their text with the theme font
      * plus padding.</p>
      *
-     * @param maxWidth  the maximum available width (use
-     *                  {@link Float#POSITIVE_INFINITY} for unbounded)
+     * @param maxWidth the maximum available width (use
+     * {@link Float#POSITIVE_INFINITY} for unbounded)
      * @param maxHeight the maximum available height (use
-     *                  {@link Float#POSITIVE_INFINITY} for unbounded)
+     * {@link Float#POSITIVE_INFINITY} for unbounded)
      * @return the measured dimension, never negative
      */
     public Dimension measure(float maxWidth, float maxHeight) {
@@ -1037,8 +1086,8 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Treats NaN/infinite constraints as "unbounded" so the clamp above
-     * still yields the preferred size.
+     * Treats NaN/infinite constraints as "unbounded" so the clamp above still
+     * yields the preferred size.
      *
      * @param value the raw constraint
      * @return a finite upper bound
@@ -1053,10 +1102,8 @@ public abstract class Component implements StyleNode, Disposable {
     // ------------------------------------------------------------------
     // Focus support
     // ------------------------------------------------------------------
-
     /**
-     * Checks whether this component participates in keyboard focus
-     * traversal.
+     * Checks whether this component participates in keyboard focus traversal.
      *
      * @return true if focusable
      */
@@ -1094,8 +1141,8 @@ public abstract class Component implements StyleNode, Disposable {
 
     /**
      * Requests the keyboard focus for this component through the global
-     * {@link io.github.yasmramos.glyphui.core.FocusManager}. No-op when the component is
-     * not focusable or not visible/enabled.
+     * {@link io.github.yasmramos.glyphui.core.FocusManager}. No-op when the
+     * component is not focusable or not visible/enabled.
      */
     public void requestFocus() {
         io.github.yasmramos.glyphui.core.FocusManager fm = io.github.yasmramos.glyphui.core.FocusManager.getGlobalFocusManager();
@@ -1105,9 +1152,10 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Internal focus flag setter used by {@link io.github.yasmramos.glyphui.core.FocusManager}
-     * and unit tests. Application code should use {@link #requestFocus()} or
-     * the focus manager instead.
+     * Internal focus flag setter used by
+     * {@link io.github.yasmramos.glyphui.core.FocusManager} and unit tests.
+     * Application code should use {@link #requestFocus()} or the focus manager
+     * instead.
      *
      * <p>Package-private by design: {@code FocusManager} reaches it through
      * the {@link #applyFocusChange(boolean)} bridge declared in this class.</p>
@@ -1159,10 +1207,9 @@ public abstract class Component implements StyleNode, Disposable {
     // ------------------------------------------------------------------
     // Accessibility stubs (v0.1 API only — no platform bridge yet)
     // ------------------------------------------------------------------
-
     /**
-     * Gets the accessibility role of this component. Subclasses override
-     * this to return a more specific role (e.g. {@link AccessibleRole#BUTTON}).
+     * Gets the accessibility role of this component. Subclasses override this
+     * to return a more specific role (e.g. {@link AccessibleRole#BUTTON}).
      *
      * @return the accessible role (defaults to {@link AccessibleRole#GENERIC})
      */
@@ -1207,7 +1254,8 @@ public abstract class Component implements StyleNode, Disposable {
 
     /**
      * Gets the accessibility description of this component. Defaults to the
-     * role name unless overridden via {@link #setAccessibleDescription(String)}.
+     * role name unless overridden via
+     * {@link #setAccessibleDescription(String)}.
      *
      * @return the accessible description
      */
@@ -1218,7 +1266,8 @@ public abstract class Component implements StyleNode, Disposable {
     /**
      * Overrides the accessibility description.
      *
-     * @param accessibleDescription the new description (null restores the default)
+     * @param accessibleDescription the new description (null restores the
+     * default)
      */
     public void setAccessibleDescription(String accessibleDescription) {
         this.accessibleDescription = accessibleDescription;
@@ -1227,7 +1276,6 @@ public abstract class Component implements StyleNode, Disposable {
     // ------------------------------------------------------------------
     // Theme access
     // ------------------------------------------------------------------
-
     /**
      * Gets the theme used by this component. Components read colors, fonts,
      * radii and paddings from the current theme at render/measure time.
@@ -1239,10 +1287,10 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Draws the standard focus ring for this component using the theme's
-     * accent color: a dashed rounded rectangle inset by one logical pixel.
-     * Widgets that accept focus ({@code Button}, {@code TextField}, ...)
-     * call this from {@code render} when {@link #isFocused()} is true.
+     * Draws the standard focus ring for this component using the theme's accent
+     * color: a dashed rounded rectangle inset by one logical pixel. Widgets
+     * that accept focus ({@code Button}, {@code TextField}, ...) call this from
+     * {@code render} when {@link #isFocused()} is true.
      *
      * @param canvas the canvas to draw on
      */
@@ -1265,16 +1313,19 @@ public abstract class Component implements StyleNode, Disposable {
         }
     }
 
-    /** Shared dashed path effect for focus rings (created once, never closed per-frame). */
-    private static final io.github.humbleui.skija.PathEffect FOCUS_DASH_EFFECT =
-            io.github.humbleui.skija.PathEffect.makeDash(new float[]{4.0f, 3.0f}, 0.0f);
+    /**
+     * Shared dashed path effect for focus rings (created once, never closed
+     * per-frame).
+     */
+    private static final io.github.humbleui.skija.PathEffect FOCUS_DASH_EFFECT
+            = io.github.humbleui.skija.PathEffect.makeDash(new float[]{4.0f, 3.0f}, 0.0f);
 
     /**
      * Handles mouse events.
      *
      * @param event the mouse event
      * @return {@code true} if the event was consumed and propagation to other
-     *         components should stop; {@code false} otherwise
+     * components should stop; {@code false} otherwise
      */
     public abstract boolean onMouseEvent(MouseEvent event);
 
@@ -1284,7 +1335,7 @@ public abstract class Component implements StyleNode, Disposable {
      * @param event the key event
      */
     public abstract void onKeyEvent(KeyEvent event);
-    
+
     /**
      * Registers a resource whose lifetime is tied to this component, typically
      * a {@code Binding}, a {@code Computed} or a subscription. Tracked
@@ -1293,7 +1344,7 @@ public abstract class Component implements StyleNode, Disposable {
      * resource is closed immediately, so late registration cannot leak.
      *
      * @param resource the resource to close on dispose
-     * @param <C>      the resource type
+     * @param <C> the resource type
      * @return {@code resource}, for chaining
      */
     public <C extends AutoCloseable> C track(C resource) {
@@ -1307,15 +1358,17 @@ public abstract class Component implements StyleNode, Disposable {
      * Releases everything this component owns. Idempotent: only the first call
      * does anything.
      *
-     * <p>The order is fixed: first {@link #disposeChildren()} (children are
+     * <p>
+     * The order is fixed: first {@link #disposeChildren()} (children are
      * disposed before their parent releases anything), then the resources
      * registered with {@link #track(AutoCloseable)} in registration order, and
      * finally {@link #onDispose()} for native resources. A failure in one step
      * does not skip the others; the first failure is rethrown at the end with
      * the rest attached as suppressed exceptions.</p>
      *
-     * <p>Subclasses do not override this method: they release native resources
-     * in {@link #onDispose()} and containers dispose their children in
+     * <p>
+     * Subclasses do not override this method: they release native resources in
+     * {@link #onDispose()} and containers dispose their children in
      * {@link #disposeChildren()}.</p>
      */
     @Override
@@ -1367,8 +1420,8 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Hook for subclasses that own native resources (paints, ...): release
-     * them here. Called last by {@link #dispose()}, at most once. The default
+     * Hook for subclasses that own native resources (paints, ...): release them
+     * here. Called last by {@link #dispose()}, at most once. The default
      * implementation does nothing.
      */
     protected void onDispose() {
@@ -1396,10 +1449,10 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Gets the preferred width of this component.
-     * The base implementation returns the user-provided width when bounds were
-     * set explicitly, otherwise a sensible default so layout managers can place
-     * the component without measuring content.
+     * Gets the preferred width of this component. The base implementation
+     * returns the user-provided width when bounds were set explicitly,
+     * otherwise a sensible default so layout managers can place the component
+     * without measuring content.
      *
      * @return the preferred width
      */
@@ -1408,8 +1461,8 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Gets the preferred height of this component.
-     * Subclasses can override this to provide content-based sizing.
+     * Gets the preferred height of this component. Subclasses can override this
+     * to provide content-based sizing.
      *
      * @return the preferred height
      */

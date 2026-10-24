@@ -1,5 +1,13 @@
 package io.github.yasmramos.glyphui.core;
 
+import io.github.yasmramos.glyphui.events.KeyEvent;
+import io.github.yasmramos.glyphui.events.GlyphKeys;
+import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.MouseButton;
+import io.github.yasmramos.glyphui.events.KeyModifier;
+import io.github.yasmramos.glyphui.events.KeyEventType;
+import io.github.yasmramos.glyphui.events.GlyphMods;
 import io.github.yasmramos.glyphui.core.backend.GlSurfaceFactory;
 import io.github.yasmramos.glyphui.core.backend.RasterSurfaceFactory;
 import io.github.yasmramos.glyphui.core.backend.SurfaceFactory;
@@ -9,17 +17,19 @@ import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.ComponentState;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.TextField;
-import io.github.yasmramos.glyphui.events.*;
 import io.github.humbleui.skija.*;
+import io.github.yasmramos.glyphui.graphics.Fonts;
+import io.github.yasmramos.glyphui.layout.FlexLayout;
+import io.github.yasmramos.glyphui.style.StyleEngine;
+import io.github.yasmramos.glyphui.style.StyleSheet;
+import java.lang.System.Logger;
 
-import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-
 /**
- * Main application class that manages the event loop, rendering, and window lifecycle.
+ * Main application class that manages the event loop, rendering, and window
+ * lifecycle.
  *
  * <p>{@code Application} owns every native resource created during
  * {@link #init()} (Skija surface, optional GPU context and JWM window), so
@@ -41,6 +51,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * the JWM window.</p>
  */
 public class Application implements AutoCloseable {
+
+    private static final Logger log = System.getLogger(Application.class.getName());
+
     private Window window;
     /**
      * When true, releasing the ESCAPE key closes the window. Off by default:
@@ -51,26 +64,25 @@ public class Application implements AutoCloseable {
     private boolean closeOnEscape;
     private Surface surface;
     /**
-     * Latest {@link SurfaceResult} produced by {@link #surfaceFactory}.
-     * Kept so {@link #render()} can hand it to
-     * {@link Window#present(SurfaceResult)} on raster-only backends (JWM),
-     * which blit the CPU surface onto their native layer instead of
-     * swapping GL buffers.
+     * Latest {@link SurfaceResult} produced by {@link #surfaceFactory}. Kept so
+     * {@link #render()} can hand it to {@link Window#present(SurfaceResult)} on
+     * raster-only backends (JWM), which blit the CPU surface onto their native
+     * layer instead of swapping GL buffers.
      */
     private SurfaceResult surfaceResult;
     private Canvas canvas;
-    private Panel rootPanel;
+    private final Panel rootPanel;
     /**
      * The GPU context of the active backend, or null for raster. Owned by
      * {@link #surfaceFactory} once created (the factory hands over closing
-     * responsibility to {@link #close()} through this field). Kept here only
-     * as a cached handle for per-frame flushes.
+     * responsibility to {@link #close()} through this field). Kept here only as
+     * a cached handle for per-frame flushes.
      */
     private DirectContext directContext;
     /**
      * Backend strategy that creates/recreates the Skija surface. Selected in
-     * {@link #init(String, int, int, boolean)} from the raster flag and
-     * swapped to {@link RasterSurfaceFactory} on GPU-init failure. All GL /
+     * {@link #init(String, int, int, boolean)} from the raster flag and swapped
+     * to {@link RasterSurfaceFactory} on GPU-init failure. All GL /
      * render-target ownership logic lives in the factory implementations.
      */
     private SurfaceFactory surfaceFactory;
@@ -78,11 +90,16 @@ public class Application implements AutoCloseable {
     private double lastFrameTime;
     private boolean useRasterSurface;
 
-    /** When true, the GPU backend is skipped and a raster surface is used directly. */
+    /**
+     * When true, the GPU backend is skipped and a raster surface is used
+     * directly.
+     */
     private boolean forceRasterSurface;
 
-    /** Optional CSS style engine; when set, it re-cascades every frame. */
-    private io.github.yasmramos.glyphui.style.StyleEngine styleEngine;
+    /**
+     * Optional CSS style engine; when set, it re-cascades every frame.
+     */
+    private StyleEngine styleEngine;
 
     /**
      * On-demand rendering flag: true when something changed (events, component
@@ -96,13 +113,16 @@ public class Application implements AutoCloseable {
      */
     private Runnable animationCallback;
 
-    /** Sleep interval for the raster backend idle wait (no hardware vsync there). */
+    /**
+     * Sleep interval for the raster backend idle wait (no hardware vsync
+     * there).
+     */
     private static final long RASTER_IDLE_SLEEP_MS = 16;
 
     /**
      * The UI thread: the thread that called {@link #run()}. All widget state
-     * changes, layout and rendering happen on this thread. Null before the
-     * loop starts.
+     * changes, layout and rendering happen on this thread. Null before the loop
+     * starts.
      */
     private volatile Thread uiThread;
 
@@ -119,6 +139,7 @@ public class Application implements AutoCloseable {
     // setupCallbacks()).
     private double mouseX;
     private double mouseY;
+    private final boolean[] mouseButtons = new boolean[10];
 
     /**
      * The component currently under the pointer (deepest hit). Tracking it lets
@@ -129,10 +150,14 @@ public class Application implements AutoCloseable {
      */
     private Component hovered;
 
-    /** Owns Tab / Shift+Tab focus traversal and the currently focused widget. */
+    /**
+     * Owns Tab / Shift+Tab focus traversal and the currently focused widget.
+     */
     private FocusManager focusManager;
 
-    /** Cached HiDPI content scale factors (logical -> physical pixels). */
+    /**
+     * Cached HiDPI content scale factors (logical -> physical pixels).
+     */
     private float contentScaleX = 1.0f;
     private float contentScaleY = 1.0f;
 
@@ -151,10 +176,10 @@ public class Application implements AutoCloseable {
     private boolean globalHookOwnedByThis;
 
     /**
-     * The most recently started application instance, used by widgets to
-     * obtain the UI-thread marshalling target lazily (properties are created
-     * on first access, which may happen before {@code init()} completes).
-     * Cleared when the application closes. package-private for tests.
+     * The most recently started application instance, used by widgets to obtain
+     * the UI-thread marshalling target lazily (properties are created on first
+     * access, which may happen before {@code init()} completes). Cleared when
+     * the application closes. package-private for tests.
      */
     static volatile Application current;
 
@@ -374,8 +399,8 @@ public class Application implements AutoCloseable {
                     this.surfaceFactory = new GlSurfaceFactory();
                     initSurfaceFromFactory();
                 } catch (Throwable gpuFailure) {
-                    System.err.println("Warning: GPU backend unavailable ("
-                        + gpuFailure.getMessage() + "). Falling back to raster surface.");
+                    log.log(Logger.Level.ERROR, () -> "GPU backend unavailable ("
+                            + gpuFailure.getMessage() + "). Falling back to raster surface.");
                     // The failed GL factory already released its DirectContext
                     // on every internal failure path; belt and braces here so
                     // the raster fallback never leaves an orphaned context.
@@ -401,8 +426,7 @@ public class Application implements AutoCloseable {
             // default layout is FlowLayout, which only positions children at
             // their preferred sizes; stretch the panel itself so CSS width /
             // height:100% and flex containers have a real viewport to fill.
-            rootPanel.setLayoutManager(new io.github.yasmramos.glyphui.layout.FlexLayout(
-                    io.github.yasmramos.glyphui.layout.FlexLayout.Direction.ROW));
+            rootPanel.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW));
             rootPanel.setWidth(window.getWidth());
             rootPanel.setHeight(window.getHeight());
 
@@ -425,8 +449,7 @@ public class Application implements AutoCloseable {
 
             return true;
         } catch (Exception e) {
-            System.err.println("Failed to initialize application: " + e.getMessage());
-            e.printStackTrace();
+            log.log(Logger.Level.ERROR, "Failed to initialize application: " + e.getMessage(), e);
             // A failed init() must leave no global trace behind: drop the
             // current-instance pointer (in case a re-init overwrote another
             // app's) and release both repaint hooks if we already claimed
@@ -445,13 +468,14 @@ public class Application implements AutoCloseable {
      * it. The factory owns all backend-specific native handles; this method
      * only adopts the returned {@link SurfaceResult}.
      *
-     * <p>The render target/surface is created with the <b>physical</b>
+     * <p>
+     * The render target/surface is created with the <b>physical</b>
      * framebuffer dimensions; the {@link Canvas} wrapper (and therefore the
      * component tree) uses the <b>logical</b> window dimensions.</p>
      *
      * @throws RuntimeException if the factory fails; by contract the factory
-     *         has already released any partially created native resources,
-     *         so {@link #init()} can safely fall back to raster
+     * has already released any partially created native resources, so
+     * {@link #init()} can safely fall back to raster
      */
     private void initSurfaceFromFactory() {
         SurfaceResult result = surfaceFactory.create(window);
@@ -464,7 +488,7 @@ public class Application implements AutoCloseable {
         // transform is applied per-frame in render()
         io.github.humbleui.skija.Canvas skijaCanvas = surface.getCanvas();
         canvas = new Canvas(skijaCanvas, surface,
-            result.logicalWidth(), result.logicalHeight(), this);
+                result.logicalWidth(), result.logicalHeight(), this);
     }
 
     /**
@@ -488,8 +512,8 @@ public class Application implements AutoCloseable {
 
     /**
      * Initializes the Skija surface with raster backend (for testing).
-     * Delegates to {@link RasterSurfaceFactory} and rebinds the canvas
-     * wrapper, exactly like the GPU init path.
+     * Delegates to {@link RasterSurfaceFactory} and rebinds the canvas wrapper,
+     * exactly like the GPU init path.
      */
     private void initRasterSurface() {
         this.surfaceFactory = new RasterSurfaceFactory();
@@ -524,7 +548,7 @@ public class Application implements AutoCloseable {
      * the previous render target. Only uninitialized instances (unit-test
      * shims) fall back to a fresh raster factory.</p>
      *
-     * @param width  the new width
+     * @param width the new width
      * @param height the new height
      */
     public void recreateRasterSurface(int width, int height) {
@@ -615,6 +639,12 @@ public class Application implements AutoCloseable {
             MouseButton glyphButton = convertMouseButton(button);
             MouseEventType type = pressed ? MouseEventType.PRESS : MouseEventType.RELEASE;
 
+            // Track the held-button state so the cursor-move listener below can
+            // tell a plain hover (MOVE) from a drag (DRAG).
+            if (button >= 0 && button < mouseButtons.length) {
+                mouseButtons[button] = pressed;
+            }
+
             // Dispatch at the coordinates reported BY THIS EVENT. Using the
             // cached mouseX/mouseY here was a real bug: backends deliver the
             // button event with its own position, and the cache may still
@@ -658,24 +688,24 @@ public class Application implements AutoCloseable {
         // Clipboard bridge for TextField (copy/paste through the backend-
         // agnostic clipboard API of Window).
         TextField.setClipboardHooks(
-            () -> {
-                Component focused = focusManager.getFocused();
-                if (focused instanceof TextField) {
-                    String sel = ((TextField) focused).getSelectedTextOrNull();
-                    if (sel != null) {
-                        window.setClipboardString(sel);
-                    }
-                }
-            },
-            () -> {
-                String clip = window.getClipboardString();
-                if (clip != null && !clip.isEmpty()) {
+                () -> {
                     Component focused = focusManager.getFocused();
-                    if (focused instanceof TextField) {
-                        ((TextField) focused).insertText(clip);
+                    if (focused instanceof TextField textField) {
+                        String sel = textField.getSelectedTextOrNull();
+                        if (sel != null) {
+                            window.setClipboardString(sel);
+                        }
                     }
-                }
-            });
+                },
+                () -> {
+                    String clip = window.getClipboardString();
+                    if (clip != null && !clip.isEmpty()) {
+                        Component focused = focusManager.getFocused();
+                        if (focused instanceof TextField textField) {
+                            textField.insertText(clip);
+                        }
+                    }
+                });
 
         // Key listener -- Tab / Shift+Tab are intercepted by the FocusManager;
         // every other key is dispatched down the tree (widgets only react
@@ -716,8 +746,8 @@ public class Application implements AutoCloseable {
         // flowing here as well.
         window.setCharListener(codepoint -> {
             Component focused = focusManager.getFocused();
-            if (focused instanceof TextField) {
-                ((TextField) focused).onCharTyped((char) (int) codepoint);
+            if (focused instanceof TextField textField) {
+                textField.onCharTyped((char) (int) codepoint);
             }
         });
 
@@ -763,29 +793,29 @@ public class Application implements AutoCloseable {
     }
 
     private static char mapKeyToChar(int key) {
-        switch (key) {
-            case GlyphKeys.ENTER:
-                return '\r';
-            case GlyphKeys.TAB:
-                return '\t';
-            case GlyphKeys.BACKSPACE:
-                return 8;
-            case GlyphKeys.ESCAPE:
-                return 27;
-            default:
-                return 0;
-        }
+        return switch (key) {
+            case GlyphKeys.ENTER ->
+                '\r';
+            case GlyphKeys.TAB ->
+                '\t';
+            case GlyphKeys.BACKSPACE ->
+                8;
+            case GlyphKeys.ESCAPE ->
+                27;
+            default ->
+                0;
+        };
     }
 
     /**
      * Recreates the Skija surface after window resize. Delegates entirely to
      * the active {@link SurfaceFactory}, which encapsulates the backend's
-     * native-resource ownership (raster reallocates a CPU buffer; GPU wraps
-     * the window framebuffer in a fresh render target — see
-     * {@link GlSurfaceFactory} for the issue #24 ownership rule). This
-     * method only rebinds the canvas wrapper and updates the logical sizes.
+     * native-resource ownership (raster reallocates a CPU buffer; GPU wraps the
+     * window framebuffer in a fresh render target — see
+     * {@link GlSurfaceFactory} for the issue #24 ownership rule). This method
+     * only rebinds the canvas wrapper and updates the logical sizes.
      *
-     * @param fbWidth  the new physical framebuffer width
+     * @param fbWidth the new physical framebuffer width
      * @param fbHeight the new physical framebuffer height
      */
     private void recreateSurface(int fbWidth, int fbHeight) {
@@ -810,7 +840,7 @@ public class Application implements AutoCloseable {
         // mirrors isGpuBackend()/the raster fallback flag.
         if (surfaceFactory == null) {
             surfaceFactory = isGpuBackend()
-                ? new GlSurfaceFactory() : new RasterSurfaceFactory();
+                    ? new GlSurfaceFactory() : new RasterSurfaceFactory();
         }
 
         SurfaceResult result = surfaceFactory.recreate(window, fbWidth, fbHeight);
@@ -861,14 +891,15 @@ public class Application implements AutoCloseable {
      * @return the corresponding MouseButton
      */
     private MouseButton convertMouseButton(int button) {
-        switch (button) {
-            case 1: // toolkit button id: right
-                return MouseButton.RIGHT;
-            case 2: // toolkit button id: middle
-                return MouseButton.MIDDLE;
-            default:
-                return MouseButton.LEFT;
-        }
+        return switch (button) {
+            case 1 ->
+                MouseButton.RIGHT;
+            case 2 ->
+                MouseButton.MIDDLE;
+            default ->
+                MouseButton.LEFT;
+        }; // toolkit button id: right
+        // toolkit button id: middle
     }
 
     /**
@@ -879,7 +910,7 @@ public class Application implements AutoCloseable {
      */
     private EnumSet<KeyModifier> getModifiers(int mods) {
         EnumSet<KeyModifier> modifiers = EnumSet.noneOf(KeyModifier.class);
-        
+
         if ((mods & GlyphMods.SHIFT) != 0) {
             modifiers.add(KeyModifier.SHIFT);
         }
@@ -889,7 +920,7 @@ public class Application implements AutoCloseable {
         if ((mods & GlyphMods.ALT) != 0) {
             modifiers.add(KeyModifier.ALT);
         }
-        
+
         return modifiers;
     }
 
@@ -926,13 +957,14 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Installs a CSS style engine for this application. When set, the
-     * engine re-cascades its stylesheet against the component tree at the
-     * start of every frame (so {@code :hover}/{@code :focus}/{@code
-     * :disabled}/{@code :active} rules track live component state). Pass
-     * null to disable styling.
+     * Installs a CSS style engine for this application. When set, the engine
+     * re-cascades its stylesheet against the component tree at the start of
+     * every frame (so {@code :hover}/{@code :focus}/{@code
+     * :disabled}/{@code :active} rules track live component state). Pass null
+     * to disable styling.
      *
-     * <p>Typical usage with a loaded markup document:</p>
+     * <p>
+     * Typical usage with a loaded markup document:</p>
      * <pre>{@code
      * StyleSheet sheet = StyleSheet.parse(cssText);
      * StyleEngine engine = new StyleEngine();
@@ -942,21 +974,21 @@ public class Application implements AutoCloseable {
      *
      * @param styleEngine the engine to install, or null
      */
-    public void setStyleEngine(io.github.yasmramos.glyphui.style.StyleEngine styleEngine) {
+    public void setStyleEngine(StyleEngine styleEngine) {
         this.styleEngine = styleEngine;
         requestRepaint();
     }
 
     /**
-     * Convenience: builds a {@link io.github.yasmramos.glyphui.style.StyleEngine} from the
-     * given stylesheet and installs it (see {@link #setStyleEngine}).
+     * Convenience: builds a
+     * {@link io.github.yasmramos.glyphui.style.StyleEngine} from the given
+     * stylesheet and installs it (see {@link #setStyleEngine}).
      *
      * @param styleSheet the stylesheet to apply each frame
      * @return the installed engine
      */
-    public io.github.yasmramos.glyphui.style.StyleEngine applyStyleSheet(
-            io.github.yasmramos.glyphui.style.StyleSheet styleSheet) {
-        io.github.yasmramos.glyphui.style.StyleEngine engine = new io.github.yasmramos.glyphui.style.StyleEngine(styleSheet);
+    public StyleEngine applyStyleSheet(StyleSheet styleSheet) {
+        StyleEngine engine = new StyleEngine(styleSheet);
         setStyleEngine(engine);
         return engine;
     }
@@ -989,10 +1021,11 @@ public class Application implements AutoCloseable {
      * row order, so the encoded PNG matches the on-screen orientation for
      * both backends.</p>
      *
-     * <p><strong>Threading:</strong> this method touches Skija native state
-     * and the component tree without synchronization; it must be called on
-     * the UI thread (or before {@link #run()} starts). From other threads,
-     * marshal it: {@code app.invokeLater(() -> app.captureToPng(file))}.</p>
+     * <p>
+     * <strong>Threading:</strong> this method touches Skija native state and
+     * the component tree without synchronization; it must be called on the UI
+     * thread (or before {@link #run()} starts). From other threads, marshal it:
+     * {@code app.invokeLater(() -> app.captureToPng(file))}.</p>
      *
      * @param file the output file path
      * @throws RuntimeException if capture fails
@@ -1071,15 +1104,15 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Throws {@link IllegalStateException} when called from a thread other
-     * than the UI thread. Used by native-resource-owning APIs (fonts, paints)
-     * to fail fast instead of corrupting Skija state.
+     * Throws {@link IllegalStateException} when called from a thread other than
+     * the UI thread. Used by native-resource-owning APIs (fonts, paints) to
+     * fail fast instead of corrupting Skija state.
      */
     public void checkThread() {
         if (!isUiThread()) {
             throw new IllegalStateException(
-                "Operation must run on the Glyph UI thread; use Application.invokeLater(...) "
-                + "or Property.set(...) which marshals automatically.");
+                    "Operation must run on the Glyph UI thread; use Application.invokeLater(...) "
+                    + "or Property.set(...) which marshals automatically.");
         }
     }
 
@@ -1087,10 +1120,11 @@ public class Application implements AutoCloseable {
      * Schedules a task to run on the UI thread during the next event-loop
      * iteration. If called from the UI thread the task runs immediately.
      *
-     * <p>This is the escape hatch for composite operations that cannot be
+     * <p>
+     * This is the escape hatch for composite operations that cannot be
      * expressed as a single property change. Most callers do not need it:
-     * {@link io.github.yasmramos.glyphui.graphics.Property#set(Object)} marshals through this
-     * method automatically.</p>
+     * {@link io.github.yasmramos.glyphui.graphics.Property#set(Object)}
+     * marshals through this method automatically.</p>
      *
      * <p>The posted task marks the frame dirty and wakes up a UI thread
      * blocked waiting for events via {@code postEmptyEvent()}, so it
@@ -1117,8 +1151,8 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Drains the UI task queue on the UI thread. Exceptions from user tasks
-     * are reported but do not stop the loop or the remaining tasks.
+     * Drains the UI task queue on the UI thread. Exceptions from user tasks are
+     * reported but do not stop the loop or the remaining tasks.
      */
     /**
      * Package-private test hook: drains the posted-task queue on the calling
@@ -1135,7 +1169,7 @@ public class Application implements AutoCloseable {
             try {
                 task.run();
             } catch (RuntimeException e) {
-                System.err.println("Exception in posted UI task: " + e.getMessage());
+                log.log(Logger.Level.ERROR, "Exception in posted UI task: " + e.getMessage(), e);
             }
         }
         return count;
@@ -1147,16 +1181,17 @@ public class Application implements AutoCloseable {
             try {
                 task.run();
             } catch (RuntimeException e) {
-                System.err.println("Exception in UI task: " + e.getMessage());
-                e.printStackTrace();
+                log.log(Logger.Level.ERROR, "Exception in UI task: " + e.getMessage(), e);
             }
         }
     }
+
     /**
      * Queues a task on the current application's UI-thread queue and wakes up
-     * its event loop. Used by {@link io.github.yasmramos.glyphui.graphics.Property} when the
-     * widget captured no application instance at creation time. A no-op when
-     * no application is running (headless/test contexts).
+     * its event loop. Used by
+     * {@link io.github.yasmramos.glyphui.graphics.Property} when the widget
+     * captured no application instance at creation time. A no-op when no
+     * application is running (headless/test contexts).
      *
      * @param task the runnable to execute on the UI thread
      */
@@ -1170,12 +1205,12 @@ public class Application implements AutoCloseable {
         }
     }
 
-
     /**
      * Sets an animation callback that keeps the loop repainting every frame.
      * Pass null to disable animations and return to pure on-demand rendering.
      *
-     * @param animationCallback callback advanced once per loop iteration while set
+     * @param animationCallback callback advanced once per loop iteration while
+     * set
      */
     public void setAnimationCallback(Runnable animationCallback) {
         this.animationCallback = animationCallback;
@@ -1194,7 +1229,7 @@ public class Application implements AutoCloseable {
      */
     public boolean isGpuBackend() {
         return directContext != null
-            || (surfaceFactory != null && surfaceFactory.isGpu());
+                || (surfaceFactory != null && surfaceFactory.isGpu());
     }
 
     /**
@@ -1255,8 +1290,8 @@ public class Application implements AutoCloseable {
     /**
      * One iteration of the frame loop: pump native events, drain tasks posted
      * from other threads, advance the animation callback and paint when
-     * something changed. Called by the polling loop in {@link #run()} or by
-     * an app-owned-loop backend (JWM), always on the UI thread.
+     * something changed. Called by the polling loop in {@link #run()} or by an
+     * app-owned-loop backend (JWM), always on the UI thread.
      *
      * @return true when this iteration rendered a frame
      */
@@ -1309,15 +1344,14 @@ public class Application implements AutoCloseable {
      */
     private boolean framebufferDegenerate() {
         return window != null
-            && (window.getFramebufferWidth() <= 0 || window.getFramebufferHeight() <= 0);
+                && (window.getFramebufferWidth() <= 0 || window.getFramebufferHeight() <= 0);
     }
 
     /**
-     * Renders the current frame. The paint-dirty flag is consumed by the
-     * event loop under the instance monitor (see {@link #run()}); this method
-     * also clears it defensively so direct calls from tests
-     * ({@link #renderFrame()}) and {@link #captureToPng(java.io.File)} behave
-     * consistently.
+     * Renders the current frame. The paint-dirty flag is consumed by the event
+     * loop under the instance monitor (see {@link #run()}); this method also
+     * clears it defensively so direct calls from tests ({@link #renderFrame()})
+     * and {@link #captureToPng(java.io.File)} behave consistently.
      */
     private void render() {
         synchronized (this) {
@@ -1422,7 +1456,7 @@ public class Application implements AutoCloseable {
         }
 
         // Release the shared typeface cache after every widget font is closed
-        io.github.yasmramos.glyphui.graphics.Fonts.close();
+        Fonts.close();
 
         // Close the surface before the context that owns it
         if (surface != null) {
@@ -1451,8 +1485,8 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Legacy alias for {@link #close()}, kept for backward compatibility.
-     * New code should prefer try-with-resources on {@code Application}.
+     * Legacy alias for {@link #close()}, kept for backward compatibility. New
+     * code should prefer try-with-resources on {@code Application}.
      */
     public void destroy() {
         close();

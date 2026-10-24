@@ -5,11 +5,18 @@ import java.util.List;
 import io.github.yasmramos.glyphui.layout.LayoutManager;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Paint;
+import io.github.yasmramos.glyphui.core.FocusManager;
+import io.github.yasmramos.glyphui.events.KeyEvent;
+import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.graphics.Theme;
+import io.github.yasmramos.glyphui.style.Style;
+import io.github.yasmramos.glyphui.style.StyleProperty;
 
 /**
  * A container component that can hold other components.
  */
 public class Panel extends Component {
+
     protected List<Component> children;
     protected LayoutManager layoutManager;
     protected boolean layoutDirty;
@@ -43,15 +50,17 @@ public class Panel extends Component {
         setFocusable(false);
     }
 
-    /** Panels are the generic container element, equivalent to HTML {@code div}. */
+    /**
+     * Panels are the generic container element, equivalent to HTML {@code div}.
+     */
     @Override
     protected String defaultStyleTag() {
         return "div";
     }
 
     @Override
-    public io.github.yasmramos.glyphui.ui.AccessibleRole getAccessibleRole() {
-        return io.github.yasmramos.glyphui.ui.AccessibleRole.PANEL;
+    public AccessibleRole getAccessibleRole() {
+        return AccessibleRole.PANEL;
     }
 
     /**
@@ -79,17 +88,18 @@ public class Panel extends Component {
 
     /**
      * Removes a child component from this panel. The component is detached
-     * (parent cleared) and then closed so nested widgets release their
-     * native resources; removal itself does not destroy the component, and
-     * it may be re-added to any panel afterwards. Removing a component that
-     * is not a child of this panel is a no-op.
+     * (parent cleared) and then closed so nested widgets release their native
+     * resources; removal itself does not destroy the component, and it may be
+     * re-added to any panel afterwards. Removing a component that is not a
+     * child of this panel is a no-op.
      *
      * @param component the component to remove
      */
     public void remove(Component component) {
         if (children.remove(component)) {
-            component.setParent(null);
-            component.close();
+            try (component) {
+                component.setParent(null);
+            }
         }
         // Same single-invalidation path as add(): markLayoutDirty() already
         // requests the repaint through this subtree.
@@ -136,7 +146,9 @@ public class Panel extends Component {
         }
     }
 
-    /** Releases the reusable background paint. */
+    /**
+     * Releases the reusable background paint.
+     */
     @Override
     protected void onDispose() {
         if (bgPaint != null) {
@@ -151,15 +163,15 @@ public class Panel extends Component {
      */
     private void ensureBgPaint() {
         if (bgPaint == null || bgPaint.isClosed()) {
-            bgPaint = new io.github.humbleui.skija.Paint();
+            bgPaint = new Paint();
             bgPaint.setAntiAlias(true);
         }
     }
 
     /**
-     * Marks the layout as dirty, triggering a relayout on next render.
-     * Also requests a repaint so the application re-renders when the
-     * layout result changes the visual tree (on-demand rendering).
+     * Marks the layout as dirty, triggering a relayout on next render. Also
+     * requests a repaint so the application re-renders when the layout result
+     * changes the visual tree (on-demand rendering).
      */
     protected void markLayoutDirty() {
         layoutDirty = true;
@@ -212,7 +224,8 @@ public class Panel extends Component {
     }
 
     /**
-     * Sets the layout manager for this panel and triggers an immediate relayout if there are children.
+     * Sets the layout manager for this panel and triggers an immediate relayout
+     * if there are children.
      *
      * @param layoutManager the layout manager to set
      */
@@ -271,20 +284,20 @@ public class Panel extends Component {
     }
 
     /**
-     * Gets the effective background color. Resolution order: matching CSS
-     * rule ({@code background} property) → explicit per-instance override →
-     * theme window background (when no explicit color was set, the
-     * transparent default, so panels follow light/dark switching).
+     * Gets the effective background color. Resolution order: matching CSS rule
+     * ({@code background} property) → explicit per-instance override → theme
+     * window background (when no explicit color was set, the transparent
+     * default, so panels follow light/dark switching).
      *
      * @return the effective background color (as ARGB int)
      */
     public int getBackgroundColor() {
-        io.github.yasmramos.glyphui.style.Style s = getComputedStyle();
-        if (s != null && s.has(io.github.yasmramos.glyphui.style.StyleProperty.BACKGROUND)) {
-            return s.getInt(io.github.yasmramos.glyphui.style.StyleProperty.BACKGROUND, 0xFF000000);
+        Style s = getComputedStyle();
+        if (s != null && s.has(StyleProperty.BACKGROUND)) {
+            return s.getInt(StyleProperty.BACKGROUND, 0xFF000000);
         }
         if (backgroundColor == Color.makeARGB(0, 0, 0, 0)) {
-            return io.github.yasmramos.glyphui.graphics.Theme.current().getBackgroundColor();
+            return Theme.current().getBackgroundColor();
         }
         return backgroundColor;
     }
@@ -342,22 +355,22 @@ public class Panel extends Component {
     }
 
     @Override
-    public boolean onMouseEvent(io.github.yasmramos.glyphui.events.MouseEvent event) {
+    public boolean onMouseEvent(MouseEvent event) {
         if (!visible || !enabled) {
             return false;
         }
 
         // Convert mouse coordinates to local coordinate system for children
-        int localX = event.getX() - (int)x;
-        int localY = event.getY() - (int)y;
-        
+        int localX = event.getX() - (int) x;
+        int localY = event.getY() - (int) y;
+
         // Create a new MouseEvent with local coordinates
-        io.github.yasmramos.glyphui.events.MouseEvent localEvent = new io.github.yasmramos.glyphui.events.MouseEvent(
-            event.getType(),
-            localX,
-            localY,
-            event.getButton(),
-            event.getClickCount()
+        MouseEvent localEvent = new MouseEvent(
+                event.getType(),
+                localX,
+                localY,
+                event.getButton(),
+                event.getClickCount()
         );
 
         // Propagate the event to children in reverse order (top-most first).
@@ -379,12 +392,12 @@ public class Panel extends Component {
     }
 
     @Override
-    public void onKeyEvent(io.github.yasmramos.glyphui.events.KeyEvent event) {
+    public void onKeyEvent(KeyEvent event) {
         if (!visible || !enabled) {
             return;
         }
 
-        io.github.yasmramos.glyphui.core.FocusManager fm = io.github.yasmramos.glyphui.core.FocusManager.getGlobalFocusManager();
+        FocusManager fm = FocusManager.getGlobalFocusManager();
         Component focused = (fm != null) ? fm.getFocused() : null;
 
         if (focused != null && isSelfOrDescendant(focused)) {

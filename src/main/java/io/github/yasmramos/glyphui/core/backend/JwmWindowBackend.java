@@ -26,8 +26,13 @@ import io.github.humbleui.jwm.MouseCursor;
 import io.github.humbleui.jwm.Screen;
 import io.github.humbleui.jwm.TextInputClient;
 import io.github.humbleui.jwm.Window;
+import io.github.humbleui.jwm.skija.LayerGLSkija;
+import io.github.humbleui.jwm.skija.LayerRasterSkija;
+import io.github.humbleui.skija.Image;
+import io.github.humbleui.skija.Surface;
 import io.github.humbleui.types.IRange;
 import io.github.humbleui.types.IRect;
+import java.lang.System.Logger;
 import java.lang.reflect.InvocationTargetException;
 
 import java.nio.charset.StandardCharsets;
@@ -75,6 +80,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * display-free (unit tests).</p>
  */
 public class JwmWindowBackend extends AbstractWindowBackend {
+    
+    private static final Logger log = System.getLogger(JwmWindowBackend.class.getName());
 
     /** System property to force the (experimental) GL layer over raster. */
     private static final String USE_GL_PROPERTY = "glyphui.jwm.gl";
@@ -148,7 +155,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             // exists (see isGlCapable()). Until both ends can be wired
             // together, honour the flag as "not yet supported" instead of
             // presenting nothing: the raster layer below is always used.
-            System.err.println("Glyph UI: -Dglyphui.jwm.gl=true is not supported yet; "
+            log.log(Logger.Level.WARNING, " -Dglyphui.jwm.gl=true is not supported yet; "
                 + "using the JWM raster layer.");
             useGl = false;
         }
@@ -182,9 +189,8 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             applyPendingWindowState(w);
             return true;
         } catch (Throwable t) {
-            System.err.println("Glyph UI: JWM initialization failed (" + t.getMessage()
-                + "). Running headless; window operations are no-ops.");
-            t.printStackTrace();
+            log.log(Logger.Level.ERROR, () -> "Glyph UI: JWM initialization failed (" + t.getMessage()
+                    + "). Running headless; window operations are no-ops.", t);
             this.jwmWindow = null;
             return false;
         }
@@ -274,7 +280,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             // deferred window); kept so the flag has a defined meaning once
             // the GL path is wired end to end.
             layerAttached = true;
-            w.setLayer(new io.github.humbleui.jwm.skija.LayerGLSkija());
+            w.setLayer(new LayerGLSkija());
             return;
         }
         try {
@@ -332,8 +338,8 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         try {
             w.setLayer(null); // closes and frees the old layer
         } catch (Throwable t) {
-            System.err.println("Glyph UI: could not detach the JWM layer ("
-                + t.getMessage() + ").");
+            log.log(Logger.Level.ERROR, () -> "could not detach the JWM layer ("
+                    + t.getMessage() + ").", t);
         }
     }
 
@@ -498,8 +504,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         } catch (Throwable t) {
             bootstrapFailed = true;
             shouldClose = true;
-            System.err.println("Glyph UI: JWM event loop failed (" + t.getMessage() + ").");
-            t.printStackTrace();
+            log.log(Logger.Level.ERROR, "JWM event loop failed (" + t.getMessage() + ").", t);
         } finally {
             nativeLoopActive = false;
             stopFrameDriver();
@@ -701,7 +706,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             w.requestFrame();
             return true;
         }
-        io.github.humbleui.skija.Surface dst = resolveLayerSurface();
+        Surface dst = resolveLayerSurface();
         if (dst == null) {
             // Layer pixels not allocated yet: request a native frame (that is
             // what allocates them) and ask the caller for another paint.
@@ -709,10 +714,10 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             return false;
         }
         try {
-            io.github.humbleui.skija.Surface src = result.surface();
+            Surface src = result.surface();
             int dw = dst.getWidth();
             int dh = dst.getHeight();
-            try (io.github.humbleui.skija.Image img = src.makeImageSnapshot(
+            try (Image img = src.makeImageSnapshot(
                     io.github.humbleui.types.IRect.makeXYWH(0, 0,
                             Math.min(dw, src.getWidth()), Math.min(dh, src.getHeight())))) {
                 dst.getCanvas().clear(0x00000000);
@@ -737,8 +742,8 @@ public class JwmWindowBackend extends AbstractWindowBackend {
      *
      * @return the layer surface, or null while it is not allocated yet
      */
-    private io.github.humbleui.skija.Surface resolveLayerSurface() {
-        io.github.humbleui.skija.Surface surface = layerSurface;
+    private Surface resolveLayerSurface() {
+        Surface surface = layerSurface;
         if (surface == null && rasterLayer != null) {
             surface = rasterLayer.getSurface();
             layerSurface = surface;
@@ -933,9 +938,8 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         try {
             handleJwmEvent(event);
         } catch (Throwable t) {
-            System.err.println("Glyph UI: JWM event handler failed ("
-                + t.getMessage() + ").");
-            t.printStackTrace();
+            log.log(Logger.Level.ERROR, "JWM event handler failed ("
+                + t.getMessage() + ").", t);
         }
     }
 
