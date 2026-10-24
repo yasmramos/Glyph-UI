@@ -314,6 +314,42 @@ public class TextField extends Component
         invalidate();
     }
 
+    /**
+     * Applies a committed input-method (IME) text event, honouring the
+     * backend's replacement range. Windows reports the replacement range as
+     * {@code (-1, -1)} — a sentinel meaning "replace at the caret" — so it must
+     * be read as "insert here", not clamped to position 0. Treating it as 0
+     * (the previous behaviour) inserted every typed character at the front of
+     * the buffer, turning "hola" into "aloh".
+     *
+     * <p>An explicit, non-empty range (a marked/composition region being
+     * committed, e.g. on macOS) replaces that exact region instead. An empty
+     * range ({@code start == end}) carries no information, so it is also read
+     * as "at the caret".</p>
+     *
+     * @param committed        the committed text (ignored when null/empty or
+     *                         disabled)
+     * @param replacementStart start of the range to replace, or a negative
+     *                         sentinel meaning "at the caret"
+     * @param replacementEnd   end of the range to replace (>= start when
+     *                         explicit), or a negative sentinel
+     */
+    public void applyImeText(String committed, int replacementStart, int replacementEnd) {
+        if (!isEnabled() || committed == null || committed.isEmpty()) {
+            return;
+        }
+        boolean atCaret = replacementStart < 0 || replacementEnd < 0
+                || replacementStart == replacementEnd;
+        if (atCaret) {
+            insertText(committed);
+            return;
+        }
+        int length = text.length();
+        int lo = Math.max(0, Math.min(replacementStart, length));
+        int hi = Math.max(lo, Math.min(replacementEnd, length));
+        replaceRange(lo, hi, committed, lo + committed.length());
+    }
+
     // ------------------------------------------------------------------
     // Editing primitives
     // ------------------------------------------------------------------

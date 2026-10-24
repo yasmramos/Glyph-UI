@@ -671,12 +671,12 @@ public class Application implements AutoCloseable {
         // TextField, so candidate-window commits replace the marked text.
         window.setTextInputListener((text, replacementStart, replacementEnd) -> {
             Component focused = focusManager.getFocused();
-            if (focused instanceof TextField) {
-                TextField tf = (TextField) focused;
-                int lo = Math.max(0, Math.min(replacementStart, tf.getText().length()));
-                int hi = Math.max(lo, Math.min(replacementEnd, tf.getText().length()));
-                // Place the caret right after the committed/composed text.
-                tf.imeReplaceRange(lo, hi, text, lo + text.length());
+            if (focused instanceof TextField tf) {
+                // applyImeText reads the (-1,-1) Windows sentinel as "at the
+                // caret" and honours explicit ranges (clamped to the buffer),
+                // so committed text lands after the previous input instead
+                // of at position 0.
+                tf.applyImeText(text, replacementStart, replacementEnd);
             }
             requestRepaint();
         });

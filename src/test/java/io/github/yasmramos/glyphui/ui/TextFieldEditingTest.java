@@ -139,6 +139,65 @@ public class TextFieldEditingTest extends TestBase {
         assertEquals("X", field.getText());
     }
 
+    // ------------------------------------------------------------------
+    // IME committed-text path (applyImeText)
+    // ------------------------------------------------------------------
+
+    @Test
+    public void imeSentinelMinusOneAppendsAtCaretNotPositionZero() {
+        // Windows reports the replacement range as (-1,-1). Each committed
+        // character must land at the moving caret, so "hola" types forward.
+        field.setText("");
+        for (char c : "hola".toCharArray()) {
+            field.applyImeText(String.valueOf(c), -1, -1);
+        }
+        assertEquals("hola", field.getText(), "typing must not reverse to 'aloh'");
+        assertEquals(4, field.getCaret());
+    }
+
+    @Test
+    public void imeEmptyRangeBehavesLikeCaretInsertion() {
+        // A (0,0) range carries no information; it must be read as "at the
+        // caret", not "replace the front of the buffer".
+        field.setText("");
+        for (char c : "hola".toCharArray()) {
+            field.applyImeText(String.valueOf(c), 0, 0);
+        }
+        assertEquals("hola", field.getText());
+    }
+
+    @Test
+    public void imeSentinelReplacesActiveSelection() {
+        field.setText("hello world");
+        field.selectAll();
+        field.applyImeText("X", -1, -1);
+        assertEquals("X", field.getText());
+        assertEquals(1, field.getCaret());
+    }
+
+    @Test
+    public void imeExplicitRangeReplacesThatRegion() {
+        // A real composition region (start<end) is replaced exactly, with the
+        // caret landing after the committed text.
+        field.setText("abcdef");
+        field.applyImeText("XY", 2, 4); // replace "cd"
+        assertEquals("abXYef", field.getText());
+        assertEquals(4, field.getCaret());
+    }
+
+    @Test
+    public void imeDisabledOrEmptyCommitIsIgnored() {
+        field.setText("keep");
+        field.applyImeText("", -1, -1);
+        field.applyImeText(null, -1, -1);
+        assertEquals("keep", field.getText());
+
+        field.setEnabled(false);
+        field.applyImeText("Z", -1, -1);
+        assertEquals("keep", field.getText());
+        field.setEnabled(true);
+    }
+
     @Test
     public void selectAllClearSelectionAndSelectedTextOrNull() {
         field.setText("abcd");
