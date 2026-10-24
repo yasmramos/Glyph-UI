@@ -410,6 +410,42 @@ public class TextFieldEditingTest extends TestBase {
                 new MouseEvent(MouseEventType.RELEASE, 10, 10, MouseButton.LEFT, 1)));
     }
 
+    @Test
+    public void mouseDragSelectsText() {
+        field.setText("hello world");
+        // Press at the left edge (maps to index 0) starts the gesture...
+        assertTrue(field.onMouseEvent(
+                new MouseEvent(MouseEventType.PRESS, 1, 15, MouseButton.LEFT, 1)));
+        assertFalse(field.hasSelection()); // a press alone selects nothing
+
+        // ...dragging to the right edge selects the whole content.
+        assertTrue(field.onMouseEvent(
+                new MouseEvent(MouseEventType.DRAG, 195, 15, MouseButton.LEFT, 1)));
+        assertTrue(field.hasSelection());
+        assertEquals("hello world", field.getSelectedText());
+        assertEquals("hello world".length(), field.getCaret());
+
+        // Dragging back to the start collapses the selection again.
+        field.onMouseEvent(new MouseEvent(MouseEventType.DRAG, 1, 15, MouseButton.LEFT, 1));
+        assertFalse(field.hasSelection());
+    }
+
+    @Test
+    public void mouseClickWithoutDragSelectsNothingAndHoverEndsGesture() {
+        field.setText("hello");
+        field.onMouseEvent(new MouseEvent(MouseEventType.PRESS, 1, 15, MouseButton.LEFT, 1));
+        field.onMouseEvent(new MouseEvent(MouseEventType.RELEASE, 1, 15, MouseButton.LEFT, 1));
+        assertFalse(field.hasSelection());
+
+        // A hover (MOVE, no button) ends the gesture: a later DRAG without a
+        // fresh press must not resurrect a selection from the old anchor.
+        field.onMouseEvent(new MouseEvent(MouseEventType.MOVE, 50, 15, MouseButton.LEFT, 0));
+        boolean consumed = field.onMouseEvent(
+                new MouseEvent(MouseEventType.DRAG, 195, 15, MouseButton.LEFT, 1));
+        assertFalse(consumed);
+        assertFalse(field.hasSelection());
+    }
+
     // ------------------------------------------------------------------
     // Measurement
     // ------------------------------------------------------------------

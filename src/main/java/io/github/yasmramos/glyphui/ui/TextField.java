@@ -2,7 +2,9 @@ package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
+import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.MouseEventType;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Theme;
@@ -56,6 +58,9 @@ public class TextField extends Component
 
     /** Anchor of the selection (caret..selectionAnchor is the selection). */
     private int selectionAnchor = 0;
+
+    /** True between a press that began a selection and its end (release/hover). */
+    private boolean selecting = false;
 
     private Paint backgroundPaint;
     private Paint borderPaint;
@@ -509,14 +514,35 @@ public class TextField extends Component
         if (!isEnabled()) {
             return false;
         }
-        if (event.getType() == io.github.yasmramos.glyphui.events.MouseEventType.PRESS
-                && event.getButton() == io.github.yasmramos.glyphui.events.MouseButton.LEFT
-                && contains(event.getX(), event.getY())) {
-            requestFocus();
-            setCaretTo(positionAtX(event.getX()), false);
-            return true;
+        switch (event.getType()) {
+            case PRESS:
+                if (event.getButton() == MouseButton.LEFT && contains(event.getX(), event.getY())) {
+                    requestFocus();
+                    selecting = true;
+                    setCaretTo(positionAtX(event.getX()), false); // clears any selection
+                    return true;
+                }
+                return false;
+            case DRAG:
+                // Application reports DRAG only while a button is held; extend
+                // the selection from the press anchor out to the pointer.
+                if (selecting && event.getButton() == MouseButton.LEFT) {
+                    setCaretTo(positionAtX(event.getX()), true); // keep anchor
+                    return true;
+                }
+                return false;
+            case MOVE:
+                // Hover with no button down (Application only sends MOVE then):
+                // any in-progress selection gesture has ended, even if the
+                // RELEASE happened outside this field and was never delivered.
+                selecting = false;
+                return false;
+            case RELEASE:
+                selecting = false;
+                return false;
+            default:
+                return false;
         }
-        return false;
     }
 
     /** Maps a window-space x coordinate to the nearest caret index. */

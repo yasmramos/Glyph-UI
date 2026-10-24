@@ -584,12 +584,23 @@ public class Application implements AutoCloseable {
         });
 
         // Cursor position listener — backends report LOGICAL coordinates,
-        // which match the logical-space component tree directly (HiDPI-safe)
+        // which match the logical-space component tree directly (HiDPI-safe).
+        // The event type distinguishes a plain hover (MOVE) from a drag (DRAG,
+        // any button held) so widgets can extend a selection while the button
+        // stays down; this is what makes mouse selection in a TextField work.
         window.setCursorPosListener((xpos, ypos) -> {
             mouseX = xpos;
             mouseY = ypos;
 
-            MouseEvent event = new MouseEvent(MouseEventType.MOVE, (int) mouseX, (int) mouseY, MouseButton.LEFT, 0);
+            boolean anyButtonHeld = false;
+            for (boolean down : mouseButtons) {
+                if (down) {
+                    anyButtonHeld = true;
+                    break;
+                }
+            }
+            MouseEventType type = anyButtonHeld ? MouseEventType.DRAG : MouseEventType.MOVE;
+            MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, MouseButton.LEFT, 0);
             rootPanel.onMouseEvent(event);
             requestRepaint();
         });
