@@ -2,14 +2,14 @@
 
 Standalone Maven project containing runnable example applications for the
 [Glyph UI](../README.md) toolkit. Keeping the demos out of the library jar
-means the published `com.glyphui:glyph-ui` artifact stays clean (no main
+means the published `io.github.yasmramos.glyphui:glyph-ui` artifact stays clean (no main
 class, no demo resources).
 
 ## Contents
 
 | Example | Entry point | Description |
 |---------|-------------|-------------|
-| Buttons demo | `com.glyphui.examples.DemoButtons` | Three buttons in a `FlowLayout`, click handlers |
+| Widgets tour | `io.github.yasmramos.glyphui.examples.App` | Labelled sections of controls, custom title bar, click handlers |
 | Declarative markup demo | `src/main/resources/demo/ui.glyph` + `app.css` | `.glyph` markup + CSS subset loaded by `UiLoader` |
 
 ## Requirements
@@ -30,7 +30,7 @@ Then run an example from this directory:
 
 ```bash
 cd glyph-ui-examples
-mvn exec:java            # runs com.glyphui.examples.DemoButtons
+mvn exec:java            # runs io.github.yasmramos.glyphui.examples.App
 ```
 
 On macOS add the required JVM argument:
