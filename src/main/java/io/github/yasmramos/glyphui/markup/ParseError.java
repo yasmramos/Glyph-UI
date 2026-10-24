@@ -3,14 +3,15 @@ package io.github.yasmramos.glyphui.markup;
 /**
  * A recoverable syntax diagnostic produced by {@link Parser}.
  *
- * <p>The parser keeps going after these errors (synchronising on the next
+ * <p>
+ * The parser keeps going after these errors (synchronising on the next
  * plausible token) so that one pass reports every structural problem in a
  * document. Unrecoverable lexer conditions instead throw
  * {@link MarkupException}; see that class for the full error strategy.</p>
  *
  * @param message human-readable description of the problem
- * @param line    1-based line where the problem was detected
- * @param column  1-based column where the problem was detected
+ * @param line 1-based line where the problem was detected
+ * @param column 1-based column where the problem was detected
  */
 public record ParseError(String message, int line, int column) {
 
@@ -18,8 +19,8 @@ public record ParseError(String message, int line, int column) {
      * Builds a positioned parse error.
      *
      * @param message description, must not be null
-     * @param line    1-based line
-     * @param column  1-based column
+     * @param line 1-based line
+     * @param column 1-based column
      */
     public ParseError {
         if (message == null || message.isEmpty()) {

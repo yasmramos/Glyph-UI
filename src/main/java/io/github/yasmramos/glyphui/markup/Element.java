@@ -8,20 +8,27 @@ import java.util.List;
  * A markup element: {@code <Box ...>children</Box>} or the self-closing form
  * {@code <Button/>}.
  *
- * <p>The node keeps attributes and children in source order and records the
+ * <p>
+ * The node keeps attributes and children in source order and records the
  * position of its opening {@code &lt;} character. Attribute prefixes such as
  * {@code bind:} / {@code on:} and control attributes such as {@code if} or
  * {@code for-each} are <b>not</b> interpreted here — this is the raw tree.</p>
  */
 public final class Element extends AstNode {
 
-    /** Tag name exactly as written (case preserved). */
+    /**
+     * Tag name exactly as written (case preserved).
+     */
     private final String tagName;
 
-    /** Whether the element was written in self-closing form {@code <Tag/>}. */
+    /**
+     * Whether the element was written in self-closing form {@code <Tag/>}.
+     */
     private boolean selfClosing;
 
-    /** Position of the matching end tag, or -1:-1 when absent/self-closing. */
+    /**
+     * Position of the matching end tag, or -1:-1 when absent/self-closing.
+     */
     private int closeLine = -1;
     private int closeColumn = -1;
 
@@ -31,10 +38,10 @@ public final class Element extends AstNode {
     /**
      * Creates an element.
      *
-     * @param tagName     tag name, must not be null/empty
+     * @param tagName tag name, must not be null/empty
      * @param selfClosing true for {@code <Tag/>} syntax
-     * @param line        1-based line of the opening {@code &lt;}
-     * @param column      1-based column of the opening {@code &lt;}
+     * @param line 1-based line of the opening {@code &lt;}
+     * @param column 1-based column of the opening {@code &lt;}
      */
     public Element(String tagName, boolean selfClosing, int line, int column) {
         super(line, column);
@@ -60,8 +67,8 @@ public final class Element extends AstNode {
     }
 
     /**
-     * Marks this element as self-closing (parser-internal, set when the
-     * start tag ends with {@code />}).
+     * Marks this element as self-closing (parser-internal, set when the start
+     * tag ends with {@code />}).
      *
      * @param selfClosing true for the {@code <Tag/>} form
      */
@@ -90,7 +97,7 @@ public final class Element extends AstNode {
     /**
      * Records the position of the matching end tag (parser-internal).
      *
-     * @param closeLine   1-based line of {@code &lt;/}
+     * @param closeLine 1-based line of {@code &lt;/}
      * @param closeColumn 1-based column of {@code &lt;/}
      */
     void setClosePosition(int closeLine, int closeColumn) {
@@ -122,7 +129,7 @@ public final class Element extends AstNode {
 
     /**
      * @return unmodifiable list of children (text, bindings, elements) in
-     *         source order
+     * source order
      */
     public List<AstNode> getChildren() {
         return Collections.unmodifiableList(children);

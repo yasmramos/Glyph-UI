@@ -1,31 +1,32 @@
 package io.github.yasmramos.glyphui.markup;
 
 /**
- * A raw markup attribute such as {@code id="submit"}, {@code layout=flex} or
- * a valueless flag like {@code disabled}.
+ * A raw markup attribute such as {@code id="submit"}, {@code layout=flex} or a
+ * valueless flag like {@code disabled}.
  *
- * <p>The parser deliberately stores the <em>raw</em> name and value: prefix
- * semantics ({@code bind:}, {@code on:}) and special attributes
- * ({@code if}, {@code elif}, {@code else}, {@code for-each}) are interpreted
- * by later phases (validator/binder), not here.</p>
+ * <p>
+ * The parser deliberately stores the <em>raw</em> name and value: prefix
+ * semantics ({@code bind:}, {@code on:}) and special attributes ({@code if},
+ * {@code elif}, {@code else}, {@code for-each}) are interpreted by later phases
+ * (validator/binder), not here.</p>
  *
- * @param name   raw attribute name exactly as written in the source
- * @param value  raw attribute value with surrounding quotes removed, or
- *               {@code null} when the attribute has no {@code =value} part
+ * @param name raw attribute name exactly as written in the source
+ * @param value raw attribute value with surrounding quotes removed, or
+ * {@code null} when the attribute has no {@code =value} part
  * @param quoted whether the value came from a double-quoted string token
- * @param line   1-based line where the attribute name starts
+ * @param line 1-based line where the attribute name starts
  * @param column 1-based column where the attribute name starts
  */
 public record Attribute(String name, String value, boolean quoted,
-                        int line, int column) {
+        int line, int column) {
 
     /**
      * Builds an attribute.
      *
-     * @param name   raw name, must not be null/empty
-     * @param value  raw value or null for valueless attributes
+     * @param name raw name, must not be null/empty
+     * @param value raw value or null for valueless attributes
      * @param quoted true when the value was a quoted string
-     * @param line   1-based line of the name
+     * @param line 1-based line of the name
      * @param column 1-based column of the name
      */
     public Attribute {
@@ -62,9 +63,9 @@ public record Attribute(String name, String value, boolean quoted,
     /**
      * Convenience factory used by tests and tooling.
      *
-     * @param name   attribute name
-     * @param value  attribute value
-     * @param line   1-based line
+     * @param name attribute name
+     * @param value attribute value
+     * @param line 1-based line
      * @param column 1-based column
      * @return a quoted string-valued attribute
      */

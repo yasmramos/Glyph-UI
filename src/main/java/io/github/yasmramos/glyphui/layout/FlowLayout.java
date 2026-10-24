@@ -10,13 +10,14 @@ import io.github.yasmramos.glyphui.ui.Panel;
  * A flow layout manager that arranges components in a left-to-right flow.
  */
 public class FlowLayout extends LayoutManager {
+
     private float gap;
     private float padding;
 
     /**
      * Creates a new FlowLayout.
      *
-     * @param gap     the gap between components
+     * @param gap the gap between components
      * @param padding the padding around the panel
      */
     public FlowLayout(float gap, float padding) {

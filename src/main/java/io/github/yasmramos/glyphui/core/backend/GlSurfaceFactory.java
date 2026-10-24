@@ -13,21 +13,26 @@ import io.github.humbleui.skija.SurfaceOrigin;
 // was removed together with the GLFW backend.
 
 /**
- * GPU (OpenGL) {@link SurfaceFactory}: creates a Skija
- * {@link DirectContext} over the window's current GL context and wraps the
- * default framebuffer in a {@link BackendRenderTarget}-backed surface.
+ * GPU (OpenGL) {@link SurfaceFactory}: creates a Skija {@link DirectContext}
+ * over the window's current GL context and wraps the default framebuffer in a
+ * {@link BackendRenderTarget}-backed surface.
  *
- * <p><strong>Failure-path ownership:</strong> every native handle allocated
- * here ({@code DirectContext}, {@code BackendRenderTarget}) is released via
- * try/finally before any exception propagates, so a failed GPU init never
- * leaks handles into the caller's raster fallback.</p>
+ * <p>
+ * <strong>Failure-path ownership:</strong> every native handle allocated here
+ * ({@code DirectContext}, {@code BackendRenderTarget}) is released via
+ * try/finally before any exception propagates, so a failed GPU init never leaks
+ * handles into the caller's raster fallback.</p>
  */
 public class GlSurfaceFactory implements SurfaceFactory {
 
-    /** GR_GL_RGBA8 internal format for the framebuffer render target. */
+    /**
+     * GR_GL_RGBA8 internal format for the framebuffer render target.
+     */
     private static final int GR_GL_RGBA8 = 0x8058;
 
-    /** GL id of the default window framebuffer (always bound by the backend). */
+    /**
+     * GL id of the default window framebuffer (always bound by the backend).
+     */
     private static final int DEFAULT_FRAMEBUFFER_ID = 0;
 
     private DirectContext directContext;
@@ -40,7 +45,6 @@ public class GlSurfaceFactory implements SurfaceFactory {
         int logicalHeight = window.getHeight();
 
         // Create OpenGL context is already current from Window.create()
-
         // Create Skija DirectContext for GPU backend
         this.directContext = DirectContext.makeGL();
         if (directContext == null) {
@@ -56,12 +60,12 @@ public class GlSurfaceFactory implements SurfaceFactory {
         // PHYSICAL (framebuffer) size — HiDPI: this is larger than logical
         // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
         BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
-            fbWidth,
-            fbHeight,
-            0,           // samples
-            0,           // stencil
-            fbId,
-            GR_GL_RGBA8  // GL_RGBA8 constant
+                fbWidth,
+                fbHeight,
+                0, // samples
+                0, // stencil
+                fbId,
+                GR_GL_RGBA8 // GL_RGBA8 constant
         );
 
         if (renderTarget == null) {
@@ -72,14 +76,14 @@ public class GlSurfaceFactory implements SurfaceFactory {
         Surface surface = wrapRenderTarget(renderTarget, "Failed to create Skija surface");
 
         return new SurfaceResult(surface, directContext,
-            logicalWidth, logicalHeight, fbWidth, fbHeight);
+                logicalWidth, logicalHeight, fbWidth, fbHeight);
     }
 
     @Override
     public SurfaceResult recreate(Window window, int fbWidth, int fbHeight) {
         if (directContext == null) {
             throw new IllegalStateException(
-                "Cannot recreate a GL surface: no DirectContext (call create first)");
+                    "Cannot recreate a GL surface: no DirectContext (call create first)");
         }
 
         // Logical size derived from the physical framebuffer via the DPI factor
@@ -93,12 +97,12 @@ public class GlSurfaceFactory implements SurfaceFactory {
 
         // Parameters: width, height, samples, stencil, fbId, format (GR_GL_RGBA8 = 0x8058)
         BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
-            fbWidth,
-            fbHeight,
-            0,           // samples
-            0,           // stencil
-            fbId,
-            GR_GL_RGBA8  // GL_RGBA8 constant
+                fbWidth,
+                fbHeight,
+                0, // samples
+                0, // stencil
+                fbId,
+                GR_GL_RGBA8 // GL_RGBA8 constant
         );
 
         if (renderTarget == null) {
@@ -109,10 +113,10 @@ public class GlSurfaceFactory implements SurfaceFactory {
         }
 
         Surface surface = wrapRenderTarget(renderTarget,
-            "Failed to recreate Skija surface");
+                "Failed to recreate Skija surface");
 
         return new SurfaceResult(surface, directContext,
-            logicalWidth, logicalHeight, fbWidth, fbHeight);
+                logicalWidth, logicalHeight, fbWidth, fbHeight);
     }
 
     /**
@@ -120,19 +124,21 @@ public class GlSurfaceFactory implements SurfaceFactory {
      * the ownership rules shared by the init and resize paths:
      *
      * <ul>
-     *   <li>On wrap failure — exception or null return — Skija did <b>not</b>
-     *       take ownership of the render target, so it must be closed here
-     *       before rethrowing; otherwise its native handle leaks.</li>
-     *   <li>Consistent between both call sites: do NOT close the render target
-     *       after wrapping. Skija's wrapped surface may keep referencing the
-     *       native target for its lifetime; closing it eagerly risks use of
-     *       a freed handle on the next flush/draw. The DirectContext owns
-     *       the lifecycle once wrapped (see also issue #24: both paths must
-     *       follow the same ownership rule).</li>
+     * <li>On wrap failure — exception or null return — Skija did <b>not</b>
+     * take ownership of the render target, so it must be closed here before
+     * rethrowing; otherwise its native handle leaks.</li>
+     * <li>Consistent between both call sites: do NOT close the render target
+     * after wrapping. Skija's wrapped surface may keep referencing the native
+     * target for its lifetime; closing it eagerly risks use of a freed handle
+     * on the next flush/draw. The DirectContext owns the lifecycle once wrapped
+     * (see also issue #24: both paths must follow the same ownership
+     * rule).</li>
      * </ul>
      *
-     * @param renderTarget the target to wrap (consumed on success, closed on failure)
-     * @param nullMessage message used when the wrap returns null instead of throwing
+     * @param renderTarget the target to wrap (consumed on success, closed on
+     * failure)
+     * @param nullMessage message used when the wrap returns null instead of
+     * throwing
      * @return the wrapped surface, never null
      */
     private Surface wrapRenderTarget(BackendRenderTarget renderTarget, String nullMessage) {
@@ -141,11 +147,11 @@ public class GlSurfaceFactory implements SurfaceFactory {
         boolean wrapped = false;
         try {
             Surface surface = Surface.wrapBackendRenderTarget(
-                directContext,
-                renderTarget,
-                SurfaceOrigin.BOTTOM_LEFT,
-                SurfaceColorFormat.RGBA_8888,
-                ColorSpace.getSRGB()
+                    directContext,
+                    renderTarget,
+                    SurfaceOrigin.BOTTOM_LEFT,
+                    SurfaceColorFormat.RGBA_8888,
+                    ColorSpace.getSRGB()
             );
             if (surface == null) {
                 // Wrap returned null: Skija did not take ownership of the
@@ -165,7 +171,7 @@ public class GlSurfaceFactory implements SurfaceFactory {
                 throw e;
             }
             throw new RuntimeException("Failed to wrap backend render target: "
-                + e.getMessage(), e);
+                    + e.getMessage(), e);
         }
     }
 
@@ -173,9 +179,9 @@ public class GlSurfaceFactory implements SurfaceFactory {
      * Resolves the GL id of the render-target framebuffer. Glyph-UI always
      * draws into the default window framebuffer, which the active backend
      * binds before creating the surface, so this is 0 for every supported
-     * backend (a GL-capable window makes its context current and its default FBO is
-     * id 0; JWM does the same after {@code Window.makeCurrent()}). A future
-     * offscreen-FBO pipeline would override this through the backend.
+     * backend (a GL-capable window makes its context current and its default
+     * FBO is id 0; JWM does the same after {@code Window.makeCurrent()}). A
+     * future offscreen-FBO pipeline would override this through the backend.
      *
      * @return the framebuffer id to wrap in the render target
      */
@@ -210,7 +216,9 @@ public class GlSurfaceFactory implements SurfaceFactory {
         }
     }
 
-    /** Exposed for tests that need to inject/spy the context holder. */
+    /**
+     * Exposed for tests that need to inject/spy the context holder.
+     */
     DirectContext directContextOrNull() {
         return directContext;
     }

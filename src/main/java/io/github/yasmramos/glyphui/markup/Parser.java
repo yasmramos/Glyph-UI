@@ -7,38 +7,46 @@ import java.util.List;
  * Recursive-descent parser that turns a {@code .glyph} source string into a
  * {@link Document} AST via the token stream of {@link Tokenizer}.
  *
- * <p><b>Error strategy (see also {@link MarkupException}):</b></p>
+ * <p>
+ * <b>Error strategy (see also {@link MarkupException}):</b></p>
  * <ul>
- *   <li>Recoverable structural problems — unclosed tag, closing tag without
- *       matching open tag, mismatched end-tag name, attribute without value,
- *       duplicate attribute, stray {@code &#125;} in text, illegal binding
- *       expression — are accumulated as {@link ParseError} entries and parsing
- *       continues, so one run reports every issue.</li>
- *   <li>Unrecoverable lexer conditions (unterminated comment/string, EOF
- *       inside a tag or binding) propagate as {@link MarkupException}.</li>
+ * <li>Recoverable structural problems — unclosed tag, closing tag without
+ * matching open tag, mismatched end-tag name, attribute without value,
+ * duplicate attribute, stray {@code &#125;} in text, illegal binding expression
+ * — are accumulated as {@link ParseError} entries and parsing continues, so one
+ * run reports every issue.</li>
+ * <li>Unrecoverable lexer conditions (unterminated comment/string, EOF inside a
+ * tag or binding) propagate as {@link MarkupException}.</li>
  * </ul>
  *
- * <p>The parser is intentionally "dumb": it never interprets attribute
- * prefixes ({@code bind:}, {@code on:}) or control attributes ({@code if},
+ * <p>
+ * The parser is intentionally "dumb": it never interprets attribute prefixes
+ * ({@code bind:}, {@code on:}) or control attributes ({@code if},
  * {@code for-each}); it only builds the raw tree. Text content keeps every
  * TEXT/BINDING/element child in source order, including whitespace-only text
  * runs, so later phases can decide what to trim.</p>
  */
 public final class Parser {
 
-    /** Token stream being consumed. */
+    /**
+     * Token stream being consumed.
+     */
     private List<Token> tokens;
 
-    /** Cursor into {@link #tokens}. */
+    /**
+     * Cursor into {@link #tokens}.
+     */
     private int index;
 
-    /** Accumulated recoverable diagnostics. */
+    /**
+     * Accumulated recoverable diagnostics.
+     */
     private final List<ParseError> errors = new ArrayList<>();
 
     /**
      * Tag names of the elements currently being parsed, innermost last. Used
-     * only to distinguish a stray close tag (name owned by an enclosing
-     * level) from a genuine mismatch during error recovery.
+     * only to distinguish a stray close tag (name owned by an enclosing level)
+     * from a genuine mismatch during error recovery.
      */
     private final List<String> openStack = new ArrayList<>();
 
@@ -71,17 +79,16 @@ public final class Parser {
     // ------------------------------------------------------------------
     // Content
     // ------------------------------------------------------------------
-
     /**
-     * Parses nodes until the matching close tag of {@code openName} (or EOF
-     * at document level) and feeds them to {@code sink}.
+     * Parses nodes until the matching close tag of {@code openName} (or EOF at
+     * document level) and feeds them to {@code sink}.
      *
-     * @param sink      consumer for produced nodes
-     * @param openName  element whose close tag terminates the loop, or null
-     *                  at document level
+     * @param sink consumer for produced nodes
+     * @param openName element whose close tag terminates the loop, or null at
+     * document level
      */
     private void parseContentInto(java.util.function.Consumer<AstNode> sink,
-                                  String openName) {
+            String openName) {
         while (true) {
             Token t = peek();
             switch (t.kind()) {
@@ -122,7 +129,8 @@ public final class Parser {
                     consumeCloseTagFor(openName);
                     return;
                 }
-                case OPEN_TAG -> sink.accept(parseElement());
+                case OPEN_TAG ->
+                    sink.accept(parseElement());
                 case TEXT -> {
                     // Whitespace-only runs between tags are formatting, not
                     // content: drop them so the tree keeps meaningful children
@@ -202,17 +210,21 @@ public final class Parser {
         lastCloseColumn = name.column();
     }
 
-    /** Position of the most recently consumed close tag (set by parseElement). */
+    /**
+     * Position of the most recently consumed close tag (set by parseElement).
+     */
     private int lastCloseLine = -1;
     private int lastCloseColumn = -1;
 
-    /** Position of the '}' consumed by the most recent parseBinding() call. */
+    /**
+     * Position of the '}' consumed by the most recent parseBinding() call.
+     */
     private int bindingCloseLine = -1;
     private int bindingCloseColumn = -1;
 
     /**
-     * Parses one element: start tag, attributes, children and matching end
-     * tag (or the self-closing {@code />} form).
+     * Parses one element: start tag, attributes, children and matching end tag
+     * (or the self-closing {@code />} form).
      *
      * @return the constructed element
      */
@@ -237,7 +249,8 @@ public final class Parser {
         while (true) {
             Token t = peek();
             switch (t.kind()) {
-                case CLOSE_TAG -> advance();
+                case CLOSE_TAG ->
+                    advance();
                 case CLOSE_SELF_TAG -> {
                     selfCloseLine = t.line();
                     selfCloseColumn = t.column();
@@ -337,8 +350,8 @@ public final class Parser {
     }
 
     /**
-     * Parses a {@code &#123;path&#125;} interpolation already split by the lexer.
-     * Validates the shape: IDENT (DOT IDENT)* followed by BINDING_CLOSE.
+     * Parses a {@code &#123;path&#125;} interpolation already split by the
+     * lexer. Validates the shape: IDENT (DOT IDENT)* followed by BINDING_CLOSE.
      *
      * @return the binding node
      */
@@ -391,17 +404,17 @@ public final class Parser {
     }
 
     /**
-     * Splits a TEXT token that starts before the just-parsed {@code &#123;...&#125;}
-     * and continues after its closing brace. The tokenizer folds the whole
-     * literal run (with escapes resolved) into one token anchored at the run
-     * start; this method turns the portion after '}' into its own TextNode so
-     * callers see precise positions:
+     * Splits a TEXT token that starts before the just-parsed
+     * {@code &#123;...&#125;} and continues after its closing brace. The
+     * tokenizer folds the whole literal run (with escapes resolved) into one
+     * token anchored at the run start; this method turns the portion after '}'
+     * into its own TextNode so callers see precise positions:
      * {@code <Label>Hola {user.name}!</Label>} yields Text("Hola ", col 8),
      * Binding(col 13), Text("!", col 27).
      *
-     * @param sink    consumer for produced nodes
+     * @param sink consumer for produced nodes
      * @param binding the binding just emitted (its position + raw path define
-     *                where the remainder of the text run starts)
+     * where the remainder of the text run starts)
      */
     private void splitTextAfterBinding(
             java.util.function.Consumer<AstNode> sink, BindingNode binding) {
@@ -435,7 +448,6 @@ public final class Parser {
     // ------------------------------------------------------------------
     // Token cursor helpers
     // ------------------------------------------------------------------
-
     private Token peek() {
         return tokens.get(index);
     }
@@ -460,9 +472,10 @@ public final class Parser {
     /**
      * Consumes the next token if it has the expected kind.
      *
-     * @param kind    expected kind
+     * @param kind expected kind
      * @param message diagnostic when the token differs
-     * @return the matched token, or null (error recorded) when it does not match
+     * @return the matched token, or null (error recorded) when it does not
+     * match
      */
     private Token expect(TokenKind kind, String message) {
         Token t = peek();
@@ -474,7 +487,9 @@ public final class Parser {
         return null;
     }
 
-    /** Skips tokens until the start of the next tag or EOF (panic mode). */
+    /**
+     * Skips tokens until the start of the next tag or EOF (panic mode).
+     */
     private void skipToTagBoundary() {
         while (!isAtEnd() && peek().kind() != TokenKind.OPEN_TAG
                 && peek().kind() != TokenKind.OPEN_CLOSE_TAG) {
@@ -483,8 +498,8 @@ public final class Parser {
     }
 
     /**
-     * Reads (without consuming) the tag name that follows the {@code </} at
-     * the cursor, for diagnostic messages.
+     * Reads (without consuming) the tag name that follows the {@code </} at the
+     * cursor, for diagnostic messages.
      *
      * @return the end-tag name, or "?" when no TAG_NAME token follows
      */
@@ -497,7 +512,7 @@ public final class Parser {
      * Records a recoverable diagnostic.
      *
      * @param message description
-     * @param at      token whose position anchors the diagnostic
+     * @param at token whose position anchors the diagnostic
      */
     private void error(String message, Token at) {
         errors.add(new ParseError(message, at.line(), at.column()));

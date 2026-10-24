@@ -7,22 +7,27 @@ import java.util.List;
 /**
  * Base class of every AST node produced by {@link Parser}.
  *
- * <p>Nodes keep the 1-based start position (line/column) of the construct
- * they represent so that later phases (validator, binder, diagnostics) can
- * point back into the original {@code .glyph} source.</p>
+ * <p>
+ * Nodes keep the 1-based start position (line/column) of the construct they
+ * represent so that later phases (validator, binder, diagnostics) can point
+ * back into the original {@code .glyph} source.</p>
  */
 public abstract sealed class AstNode permits Element, TextNode, BindingNode {
 
-    /** 1-based line where this node starts. */
+    /**
+     * 1-based line where this node starts.
+     */
     protected final int line;
 
-    /** 1-based column where this node starts. */
+    /**
+     * 1-based column where this node starts.
+     */
     protected final int column;
 
     /**
      * Records the start position of a node.
      *
-     * @param line   1-based line
+     * @param line 1-based line
      * @param column 1-based column
      */
     protected AstNode(int line, int column) {
@@ -69,7 +74,7 @@ public abstract sealed class AstNode permits Element, TextNode, BindingNode {
      * Unmodifiable view helper used by subclasses.
      *
      * @param list the backing list
-     * @param <T>  element type
+     * @param <T> element type
      * @return an unmodifiable view of {@code list}
      */
     static <T> List<T> frozen(List<T> list) {
@@ -80,7 +85,7 @@ public abstract sealed class AstNode permits Element, TextNode, BindingNode {
      * Mutable copy helper used by subclass constructors.
      *
      * @param list the source list (may be null → empty)
-     * @param <T>  element type
+     * @param <T> element type
      * @return a new modifiable {@link ArrayList} with the same elements
      */
     static <T> List<T> mutableCopy(List<T> list) {

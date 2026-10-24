@@ -3,21 +3,27 @@ package io.github.yasmramos.glyphui.graphics;
 /**
  * An immutable 2D size in logical units.
  *
- * <p>This is Glyph UI's own dimension type so the toolkit does not depend on
- * AWT (which would force a headless-unsafe transitive dependency and mixes
+ * <p>
+ * This is Glyph UI's own dimension type so the toolkit does not depend on AWT
+ * (which would force a headless-unsafe transitive dependency and mixes
  * integer-only fields with the float-based layout system).</p>
  */
 public final class Dimension {
-    /** Width component. */
+
+    /**
+     * Width component.
+     */
     public final float width;
 
-    /** Height component. */
+    /**
+     * Height component.
+     */
     public final float height;
 
     /**
      * Creates a new dimension.
      *
-     * @param width  the width (clamped to be non-negative)
+     * @param width the width (clamped to be non-negative)
      * @param height the height (clamped to be non-negative)
      */
     public Dimension(float width, float height) {
@@ -28,7 +34,7 @@ public final class Dimension {
     /**
      * Factory method for creating a dimension.
      *
-     * @param width  the width
+     * @param width the width
      * @param height the height
      * @return a new {@link Dimension}
      */

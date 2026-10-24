@@ -5,62 +5,80 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Hand-written, three-mode character scanner for {@code .glyph} markup.
- * No regular expressions and no reflection are used; every decision is an
- * explicit character comparison inside a plain loop.
+ * Hand-written, three-mode character scanner for {@code .glyph} markup. No
+ * regular expressions and no reflection are used; every decision is an explicit
+ * character comparison inside a plain loop.
  *
- * <p>Modes:</p>
+ * <p>
+ * Modes:</p>
  * <ul>
- *   <li><b>CONTENT</b> — free text between tags. Recognises:
- *       <ul>
- *         <li>{@code &#123;&#123;} / {@code &#125;&#125;} → literal brace escapes,
- *             folded into the surrounding TEXT token</li>
- *         <li>{@code &#123;path&#125;} → BINDING_OPEN then BINDING mode</li>
- *         <li>{@code &lt;} / {@code &lt;/} → OPEN_TAG / OPEN_CLOSE_TAG, switch to TAG mode</li>
- *         <li>{@code &lt;!---- --&gt;} comments are skipped entirely</li>
- *         <li>a stray {@code &#125;} (not doubled) → recoverable ERROR token</li>
- *       </ul></li>
- *   <li><b>TAG</b> — inside {@code <...>}. Emits TAG_NAME first, then a
- *       sequence of ATTR_NAME / EQUALS / STRING / BARE_VALUE tokens, ending
- *       with CLOSE_TAG ({@code >}) or CLOSE_SELF_TAG ({@code />}).</li>
- *   <li><b>BINDING</b> — inside {@code &#123;...&#125;} in content. Accepts only
- *       the path grammar {@code ident(.ident)*}; every other character
- *       ({@code !}, {@code &}, {@code >}, {@code ( }, digits, ...) produces an
- *       ERROR token carrying a positioned message.</li>
+ * <li><b>CONTENT</b> — free text between tags. Recognises:
+ * <ul>
+ * <li>{@code &#123;&#123;} / {@code &#125;&#125;} → literal brace escapes,
+ * folded into the surrounding TEXT token</li>
+ * <li>{@code &#123;path&#125;} → BINDING_OPEN then BINDING mode</li>
+ * <li>{@code &lt;} / {@code &lt;/} → OPEN_TAG / OPEN_CLOSE_TAG, switch to TAG
+ * mode</li>
+ * <li>{@code &lt;!---- --&gt;} comments are skipped entirely</li>
+ * <li>a stray {@code &#125;} (not doubled) → recoverable ERROR token</li>
+ * </ul></li>
+ * <li><b>TAG</b> — inside {@code <...>}. Emits TAG_NAME first, then a sequence
+ * of ATTR_NAME / EQUALS / STRING / BARE_VALUE tokens, ending with CLOSE_TAG
+ * ({@code >}) or CLOSE_SELF_TAG ({@code />}).</li>
+ * <li><b>BINDING</b> — inside {@code &#123;...&#125;} in content. Accepts only
+ * the path grammar {@code ident(.ident)*}; every other character
+ *       ({@code !}, {@code &}, {@code >}, {@code ( }, digits, ...) produces an ERROR
+ * token carrying a positioned message.</li>
  * </ul>
  *
- * <p>Identifiers match {@code [A-Za-z_][A-Za-z0-9_]*}. Attribute names may
+ * <p>
+ * Identifiers match {@code [A-Za-z_][A-Za-z0-9_]*}. Attribute names may
  * additionally contain {@code :} and {@code -} so that raw prefixes such as
  * {@code bind:text} or {@code for-each} lex as a single ATTR_NAME token —
  * interpreting them is left to the validator/binder.</p>
  *
- * <p>All positions are 1-based line/column pairs. The token stream always
- * ends with exactly one EOF token. ERROR tokens never terminate the scan:
- * callers (the parser) decide how to report or recover from them.</p>
+ * <p>
+ * All positions are 1-based line/column pairs. The token stream always ends
+ * with exactly one EOF token. ERROR tokens never terminate the scan: callers
+ * (the parser) decide how to report or recover from them.</p>
  */
 public final class Tokenizer {
 
-    /** Internal scanner modes. */
-    private enum Mode { CONTENT, TAG, BINDING }
+    /**
+     * Internal scanner modes.
+     */
+    private enum Mode {
+        CONTENT, TAG, BINDING
+    }
 
-    /** Full source text. */
+    /**
+     * Full source text.
+     */
     private final String src;
 
-    /** Current read offset into {@link #src}. */
+    /**
+     * Current read offset into {@link #src}.
+     */
     private int pos;
 
-    /** 1-based line of the current offset. */
+    /**
+     * 1-based line of the current offset.
+     */
     private int line = 1;
 
-    /** 1-based column of the current offset. */
+    /**
+     * 1-based column of the current offset.
+     */
     private int column = 1;
 
-    /** Scanner state machine mode. */
+    /**
+     * Scanner state machine mode.
+     */
     private Mode mode = Mode.CONTENT;
 
     /**
-     * Whether the next identifier in TAG mode is a tag name (true right
-     * after OPEN_TAG/OPEN_CLOSE_TAG, false afterwards).
+     * Whether the next identifier in TAG mode is a tag name (true right after
+     * OPEN_TAG/OPEN_CLOSE_TAG, false afterwards).
      */
     private boolean expectTagName = true;
 
@@ -70,19 +88,29 @@ public final class Tokenizer {
      */
     private boolean expectValue = false;
 
-    /** Tokens collected by {@link #tokenize()}. */
+    /**
+     * Tokens collected by {@link #tokenize()}.
+     */
     private final List<Token> tokens = new ArrayList<>();
 
-    /** Line of the OPEN_TAG token of the tag currently being scanned. */
+    /**
+     * Line of the OPEN_TAG token of the tag currently being scanned.
+     */
     private int tagOpenLine = 1;
 
-    /** Column of the OPEN_TAG token of the tag currently being scanned. */
+    /**
+     * Column of the OPEN_TAG token of the tag currently being scanned.
+     */
     private int tagOpenColumn = 1;
 
-    /** Line of the BINDING_OPEN token of the binding currently being scanned. */
+    /**
+     * Line of the BINDING_OPEN token of the binding currently being scanned.
+     */
     private int bindingOpenLine = 1;
 
-    /** Column of the BINDING_OPEN token of the binding currently being scanned. */
+    /**
+     * Column of the BINDING_OPEN token of the binding currently being scanned.
+     */
     private int bindingOpenColumn = 1;
 
     /**
@@ -99,15 +127,18 @@ public final class Tokenizer {
      *
      * @return unmodifiable token list, always terminated by a single EOF token
      * @throws MarkupException on unrecoverable conditions: unterminated
-     *         comment, unterminated string, unexpected end of input inside a
-     *         tag or inside a binding
+     * comment, unterminated string, unexpected end of input inside a tag or
+     * inside a binding
      */
     public List<Token> tokenize() {
         while (pos < src.length()) {
             switch (mode) {
-                case CONTENT -> scanContent();
-                case TAG -> scanTag();
-                case BINDING -> scanBinding();
+                case CONTENT ->
+                    scanContent();
+                case TAG ->
+                    scanTag();
+                case BINDING ->
+                    scanBinding();
             }
         }
         if (mode == Mode.TAG) {
@@ -127,15 +158,15 @@ public final class Tokenizer {
     // ------------------------------------------------------------------
     // CONTENT mode
     // ------------------------------------------------------------------
-
     /**
-     * Scans content until a markup construct is found. Accumulates literal
-     * text (with {@code &#123;&#123;}/{@code &#125;&#125;} folded) into a single TEXT
-     * token, then emits the structural token and switches mode.
+     * Scans content until a markup construct is found. Accumulates literal text
+     * (with {@code &#123;&#123;}/{@code &#125;&#125;} folded) into a single
+     * TEXT token, then emits the structural token and switches mode.
      *
-     * <p>Escape folding note: {@code &#123;&#123;} / {@code &#125;&#125;} fold into
-     * the surrounding text run without splitting it, so each TEXT token starts
-     * exactly at the position of its first literal character.</p>
+     * <p>
+     * Escape folding note: {@code &#123;&#123;} / {@code &#125;&#125;} fold
+     * into the surrounding text run without splitting it, so each TEXT token
+     * starts exactly at the position of its first literal character.</p>
      */
     private void scanContent() {
         StringBuilder buf = new StringBuilder();
@@ -213,12 +244,12 @@ public final class Tokenizer {
     }
 
     /**
-     * Emits the accumulated buffer as a TEXT token (when non-empty) and
-     * resets it. The caller keeps tracking the run start position locally.
+     * Emits the accumulated buffer as a TEXT token (when non-empty) and resets
+     * it. The caller keeps tracking the run start position locally.
      *
-     * @param buf      the text accumulator
+     * @param buf the text accumulator
      * @param textLine 1-based line where the run started
-     * @param textCol  1-based column where the run started
+     * @param textCol 1-based column where the run started
      */
     private void flushText(StringBuilder buf, int textLine, int textCol) {
         if (!buf.isEmpty()) {
@@ -262,7 +293,6 @@ public final class Tokenizer {
     // ------------------------------------------------------------------
     // TAG mode
     // ------------------------------------------------------------------
-
     /**
      * Scans tokens inside a tag: name, attributes, values and the closing
      * {@code >} / {@code />}. Whitespace is skipped.
@@ -305,8 +335,8 @@ public final class Tokenizer {
                 boolean noValue = probe >= src.length()
                         || src.charAt(probe) == '>'
                         || (src.charAt(probe) == '/'
-                            && probe + 1 < src.length()
-                            && src.charAt(probe + 1) == '>');
+                        && probe + 1 < src.length()
+                        && src.charAt(probe + 1) == '>');
                 if (noValue) {
                     // Emit an ERROR token anchored exactly at the '=' position
                     // (where the value should have been) instead of a plain
@@ -362,8 +392,8 @@ public final class Tokenizer {
     }
 
     /**
-     * Lexes a double-quoted string. Backslash escapes {@code \"} and
-     * {@code \\} are resolved; the token value excludes the quotes.
+     * Lexes a double-quoted string. Backslash escapes {@code \"} and {@code \\}
+     * are resolved; the token value excludes the quotes.
      *
      * @return the STRING token
      * @throws MarkupException on an unterminated string
@@ -394,7 +424,6 @@ public final class Tokenizer {
     // ------------------------------------------------------------------
     // BINDING mode
     // ------------------------------------------------------------------
-
     /**
      * Scans a {@code {ident.ident}} path. Only identifiers, dots and the
      * closing brace are legal; anything else yields an ERROR token with a
@@ -463,7 +492,6 @@ public final class Tokenizer {
     // ------------------------------------------------------------------
     // Character helpers and cursor primitives
     // ------------------------------------------------------------------
-
     private void emit(Token t) {
         tokens.add(t);
     }
@@ -490,8 +518,8 @@ public final class Tokenizer {
     }
 
     /**
-     * Advances the cursor by one character, maintaining line/column tracking
-     * (a {@code \n} starts a new line; {@code \r\n} counts as one newline).
+     * Advances the cursor by one character, maintaining line/column tracking (a
+     * {@code \n} starts a new line; {@code \r\n} counts as one newline).
      */
     private void advance() {
         char c = src.charAt(pos);
@@ -514,27 +542,37 @@ public final class Tokenizer {
         return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
     }
 
-    /** Identifier start: {@code [A-Za-z_]}. */
+    /**
+     * Identifier start: {@code [A-Za-z_]}.
+     */
     private static boolean isIdentStart(char c) {
         return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
     }
 
-    /** Identifier continuation: {@code [A-Za-z0-9_]}. */
+    /**
+     * Identifier continuation: {@code [A-Za-z0-9_]}.
+     */
     private static boolean isIdentPart(char c) {
         return isIdentStart(c) || (c >= '0' && c <= '9');
     }
 
-    /** Name part in TAG mode: identifiers plus {@code :} and {@code -}. */
+    /**
+     * Name part in TAG mode: identifiers plus {@code :} and {@code -}.
+     */
     private static boolean isNamePart(char c) {
         return isIdentPart(c) || c == ':' || c == '-';
     }
 
-    /** First character of a bare attribute value. */
+    /**
+     * First character of a bare attribute value.
+     */
     private static boolean isBareValueStart(char c) {
         return isNamePart(c) || (c >= '0' && c <= '9');
     }
 
-    /** Continuation character of a bare attribute value. */
+    /**
+     * Continuation character of a bare attribute value.
+     */
     private static boolean isBareValuePart(char c) {
         return isBareValueStart(c) || c == '.' || c == ',' || c == '#' || c == '%'
                 || c == '(' || c == ')' || isBareValueSpecialUnicode(c);
