@@ -12,6 +12,8 @@ import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.TitleBar;
 
+import java.util.Map;
+
 /**
  * Example application exercising the main widgets: labels, buttons, a text
  * field and nested panels driven by {@link FlexLayout}.
@@ -58,6 +60,10 @@ public class App {
 
             // ---- Custom title bar with menu content -------------------------
             TitleBar titleBar = new TitleBar("Glyph UI");
+            // Native-menubar look: the menus sit flush against each other, so
+            // the gap between items is zero (each button keeps only its own
+            // small padding, see menuButton below).
+            titleBar.setItemGap(0.0f);
             titleBar.addContent(menuButton("Archivo"));
             titleBar.addContent(menuButton("Editar"));
             titleBar.addContent(menuButton("Ver"));
@@ -178,6 +184,9 @@ public class App {
         button.setNormalColor(0x00000000);
         button.setBorderColor(0x00000000);
         button.setBorderRadius(0f);
+        // Tight padding (the theme default is 12px) so neighbouring menus stay
+        // close together, like a native menu bar.
+        button.setInlineStyle(Style.parseInline("padding: 6px", Map.of()));
         button.setOnClick(() -> System.out.println("menu: " + text));
         return button;
     }
