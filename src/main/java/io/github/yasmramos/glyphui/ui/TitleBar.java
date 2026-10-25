@@ -47,8 +47,8 @@ public class TitleBar extends Panel {
     /** Left inset before the title text. */
     private static final float PAD_LEFT = 12.0f;
 
-    /** Gap between adjacent title-bar items (title, content widgets). */
-    private static final float ITEM_GAP = 8.0f;
+    /** Default gap between adjacent title-bar items (title, content widgets). */
+    private static final float DEFAULT_ITEM_GAP = 8.0f;
 
     /** Two presses closer than this (nanos) count as a double-click. */
     private static final long DOUBLE_CLICK_NANOS = 300_000_000L;
@@ -61,6 +61,9 @@ public class TitleBar extends Panel {
 
     private final Label titleLabel;
     private final List<Component> content = new ArrayList<>();
+
+    /** Gap between adjacent content widgets (and after the title). */
+    private float itemGap = DEFAULT_ITEM_GAP;
     private final ControlButton minimizeButton;
     private final ControlButton maximizeButton;
     private final ControlButton closeButton;
@@ -162,6 +165,30 @@ public class TitleBar extends Panel {
         }
     }
 
+    /**
+     * Returns the horizontal gap (logical units) between adjacent content
+     * widgets, and between the title and the first widget.
+     *
+     * @return the current item gap
+     */
+    public float getItemGap() {
+        return itemGap;
+    }
+
+    /**
+     * Sets the horizontal gap between adjacent content widgets. Use {@code 0}
+     * for a native-menubar look where the items sit flush against each other;
+     * negative values are clamped to {@code 0}. Takes effect on the next
+     * layout pass.
+     *
+     * @param itemGap the gap in logical units (clamped to &ge; 0)
+     */
+    public void setItemGap(float itemGap) {
+        this.itemGap = Math.max(0.0f, itemGap);
+        markLayoutDirty();
+        invalidate();
+    }
+
     // ------------------------------------------------------------------
     // Sizing / layout
     // ------------------------------------------------------------------
@@ -169,7 +196,7 @@ public class TitleBar extends Panel {
     public float getPreferredWidth() {
         float total = PAD_LEFT + titleLabel.getPreferredWidth();
         for (Component c : content) {
-            total += c.getPreferredWidth() + ITEM_GAP;
+            total += c.getPreferredWidth() + itemGap;
         }
         total += CONTROL_WIDTH * 3;
         return Math.max(total, BAR_HEIGHT);
@@ -220,7 +247,7 @@ public class TitleBar extends Panel {
 
         // Content widgets flow after the title and fill the bar height so their
         // hover highlight spans the full strip (menubar-style).
-        float left = PAD_LEFT + titleW + ITEM_GAP;
+        float left = PAD_LEFT + titleW + itemGap;
         for (Component c : content) {
             Dimension d = c.measure(Float.MAX_VALUE, Float.MAX_VALUE);
             float cw = Math.max(0, d.width);
@@ -228,7 +255,7 @@ public class TitleBar extends Panel {
             c.setY(0);
             c.setWidth(cw);
             c.setHeight(barHeight);
-            left += cw + ITEM_GAP;
+            left += cw + itemGap;
         }
     }
 
