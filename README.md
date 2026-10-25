@@ -45,7 +45,7 @@ first, then run any example from the examples directory:
 ```bash
 mvn install -DskipTests          # from the repository root (installs glyph-ui)
 cd glyph-ui-examples
-mvn exec:java                    # runs com.glyphui.examples.DemoButtons
+mvn exec:java                    # runs io.github.yasmramos.glyphui.examples.DemoButtons
 ```
 
 On macOS:
@@ -70,7 +70,7 @@ blitted from the CPU surface onto the window layer via
 ## Project Structure
 
 ```
-src/main/java/com/glyphui/
+src/main/java/io/github/yasmramos/glyphui/
 ├── core/
 │   ├── Application.java      # Main application class with event loop
 │   └── Window.java           # Window abstraction using JWM
@@ -100,7 +100,7 @@ src/main/java/com/glyphui/
 glyph-ui-examples/            # Separate Maven project with runnable demos
 ├── pom.xml                   # Depends on the glyph-ui artifact
 └── src/main/
-    ├── java/com/glyphui/examples/DemoButtons.java
+    ├── java/io/github/yasmramos/glyphui/examples/DemoButtons.java
     └── resources/demo/       # ui.glyph + app.css declarative markup demo
 ```
 
@@ -113,8 +113,8 @@ shared font cache, the Skija surface, the GPU context and finally the JWM
 window - always in the correct dependency order:
 
 ```java
-import com.glyphui.core.Application;
-import com.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.core.Application;
+import io.github.yasmramos.glyphui.ui.Button;
 
 public class MyApp {
     public static void main(String[] args) {
@@ -319,7 +319,7 @@ Screenshot artifacts from CI builds can be downloaded from GitHub Actions workfl
 
 The supported public API of this library is defined by a package whitelist;
 everything else — including any package with an `internal` segment such as
-`com.glyphui.core.internal`, which hosts test hooks and non-public classes —
+`io.github.yasmramos.glyphui.core.internal`, which hosts test hooks and non-public classes —
 carries no stability promise. The full decision record (rationale, rejected
 alternatives, enforcement plan) lives in
 [`docs/architecture/internal-boundary.md`](docs/architecture/internal-boundary.md).

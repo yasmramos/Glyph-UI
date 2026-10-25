@@ -1,0 +1,137 @@
+package io.github.yasmramos.glyphui.style;
+
+import io.github.yasmramos.glyphui.TestBase;
+import io.github.yasmramos.glyphui.style.StyleEngine;
+import io.github.yasmramos.glyphui.style.Selector;
+import io.github.yasmramos.glyphui.style.StyleSheet;
+import io.github.yasmramos.glyphui.style.StyleProperty;
+import io.github.yasmramos.glyphui.core.FocusManager;
+import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.ComponentState;
+import io.github.yasmramos.glyphui.ui.Panel;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Tests that pseudo-class rules ({@code :hover}, {@code :focus},
+ * {@code :disabled}, {@code :active}) are re-evaluated by the cascade when
+ * the component state changes — which is exactly what {@code Application}
+ * does once per frame through its {@link StyleEngine}.
+ */
+class PseudoClassStateTest extends TestBase {
+
+    private StyleSheet sheet;
+    private Panel root;
+    private Button button;
+    private StyleEngine engine;
+    private FocusManager focusManager;
+
+    @BeforeEach
+    void setUp() {
+        // NOTE: 8-digit hex colors follow CSS Color 4 (#rrggbbaa, alpha LAST).
+        // parseColor converts them to the engine's internal ARGB int format
+        // (alpha in the most significant byte), e.g. #00000011 -> 0x11000000.
+        sheet = StyleSheet.parse("""
+                button { color: #11000000; }
+                button:hover { color: #22000000; }
+                button:focus { color: #33000000; }
+                button:active { color: #44000000; }
+                button:disabled { color: #55000000; }
+                """);
+        root = new Panel(0, 0, 400, 300);
+        button = new Button(0, 0, 100, 30, "click");
+        root.add(button);
+        engine = new StyleEngine(sheet);
+        focusManager = new FocusManager(null);
+        focusManager.setRoot(root);
+        FocusManager.setGlobalFocusManager(focusManager);
+        engine.apply(root);
+    }
+
+    @AfterEach
+    void tearDown() {
+        FocusManager.setGlobalFocusManager(null);
+    }
+
+    private int computedColor() {
+        engine.apply(root);
+        return button.getComputedStyle().getInt(StyleProperty.COLOR, 0);
+    }
+
+    @Test
+    void baseStateUsesTypeRuleOnly() {
+        button.setState(ComponentState.IDLE);
+        assertEquals(0x11000000, computedColor());
+    }
+
+    @Test
+    void hoverStatePicksHoverRule() {
+        button.setState(ComponentState.HOVER);
+        assertEquals(0x22000000, computedColor(), ":hover must win over the type rule");
+    }
+
+    @Test
+    void focusStatePicksFocusRule() {
+        button.setFocusable(true);
+        button.requestFocus();
+        assertTrue(button.isFocused());
+        assertEquals(0x33000000, computedColor(), ":focus matches via isFocused()");
+    }
+
+    @Test
+    void activeStatePicksActiveRule() {
+        button.setState(ComponentState.PRESSED);
+        assertEquals(0x44000000, computedColor(), ":active maps to ComponentState.PRESSED");
+    }
+
+    @Test
+    void disabledBeatsHoverBecauseItComesLaterAtEqualSpecificity() {
+        button.setEnabled(false);
+        button.setState(ComponentState.HOVER);
+        // Both :hover and :disabled match; :disabled has the same specificity
+        // but appears later in the sheet, so it wins (declaration order).
+        assertEquals(0x55000000, computedColor());
+    }
+
+    @Test
+    void disablingAFocusedButtonClearsFocusAndRecomputesStyle() {
+        button.setFocusable(true);
+        button.requestFocus();
+        assertEquals(0x33000000, computedColor());
+
+        button.setEnabled(false);
+        assertFalse(button.isFocused(), "FocusManager must drop focus from disabled widgets");
+        assertEquals(0x55000000, computedColor());
+    }
+
+    @Test
+    void stateChangeWithoutReapplyKeepsOldStyleUntilNextPass() {
+        int before = button.getComputedStyle().getInt(StyleProperty.COLOR, 0);
+        button.setState(ComponentState.HOVER);
+        assertEquals(before, button.getComputedStyle().getInt(StyleProperty.COLOR, 0),
+                "styles are only refreshed by an explicit cascade pass");
+        assertNotEquals(before, computedColor());
+    }
+
+    @Test
+    void pseudoSelectorRejectsUnknownName() {
+        assertThrows(IllegalArgumentException.class, () -> Selector.parse("button:checked"));
+    }
+
+    @Test
+    void componentMatchesPseudoReflectsRuntimeFlags() {
+        Component c = button;
+        c.setState(ComponentState.IDLE);
+        assertFalse(c.matchesPseudo(Selector.PseudoClass.HOVER));
+        c.setState(ComponentState.HOVER);
+        assertTrue(c.matchesPseudo(Selector.PseudoClass.HOVER));
+        assertFalse(c.matchesPseudo(Selector.PseudoClass.DISABLED));
+        c.setEnabled(false);
+        assertTrue(c.matchesPseudo(Selector.PseudoClass.DISABLED));
+    }
+}
