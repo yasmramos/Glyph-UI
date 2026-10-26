@@ -81,6 +81,56 @@ public class Panel extends Component {
     }
 
     /**
+     * Content-based preferred width for panels without an explicit size and
+     * without a layout manager (Block 4 item 4.3). Instead of falling back to
+     * {@code DEFAULT_WIDTH}, the value is derived from the children's measured
+     * widths plus declared horizontal padding, so a bare container reports the
+     * size its content needs. With a layout manager attached, measurement goes
+     * through {@link #measure(float, float)} instead and this fallback is not
+     * consulted by the layout itself.
+     *
+     * @return the content-derived preferred width
+     */
+    @Override
+    public float getPreferredWidth() {
+        if (layoutManager != null || children.isEmpty()) {
+            return super.getPreferredWidth();
+        }
+        float maxRight = 0f;
+        for (Component child : children) {
+            Dimension d = child.measure(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY);
+            float right = Math.max(0f, child.getX()) + d.getWidth();
+            if (right > maxRight) {
+                maxRight = right;
+            }
+        }
+        return maxRight > 0f ? maxRight : super.getPreferredWidth();
+    }
+
+    /**
+     * Content-based preferred height for panels without an explicit size and
+     * without a layout manager (Block 4 item 4.3). Mirrors
+     * {@link #getPreferredWidth()} using each child's measured bottom edge.
+     *
+     * @return the content-derived preferred height
+     */
+    @Override
+    public float getPreferredHeight() {
+        if (layoutManager != null || children.isEmpty()) {
+            return super.getPreferredHeight();
+        }
+        float maxBottom = 0f;
+        for (Component child : children) {
+            Dimension d = child.measure(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY);
+            float bottom = Math.max(0f, child.getY()) + d.getHeight();
+            if (bottom > maxBottom) {
+                maxBottom = bottom;
+            }
+        }
+        return maxBottom > 0f ? maxBottom : super.getPreferredHeight();
+    }
+
+    /**
      * Measures the panel. A size pinned by this panel's own constructor or by
      * a direct {@code setWidth}/{@code setHeight} call always wins (plain
      * component path), as does any explicit CSS width/height declaration;
