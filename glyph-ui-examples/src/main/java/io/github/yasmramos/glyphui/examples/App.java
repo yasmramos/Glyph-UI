@@ -2,16 +2,20 @@ package io.github.yasmramos.glyphui.examples;
 
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.core.WindowConfig;
+import io.github.yasmramos.glyphui.graphics.Image;
 import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleProperty;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Label;
+import io.github.yasmramos.glyphui.ui.Menu;
+import io.github.yasmramos.glyphui.ui.MenuItem;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.TitleBar;
 
+import java.io.IOException;
 import java.util.Map;
 
 /**
@@ -58,15 +62,15 @@ public class App {
             Panel root = app.getRootPanel();
             root.setLayoutManager(rootLayout);
 
-            // ---- Custom title bar with menu content -------------------------
+            // ---- Custom title bar with menus --------------------------------
             TitleBar titleBar = new TitleBar("Glyph UI");
             // Native-menubar look: the menus sit flush against each other, so
             // the gap between items is zero (each button keeps only its own
             // small padding, see menuButton below).
             titleBar.setItemGap(0.0f);
-            titleBar.addContent(menuButton("Archivo"));
-            titleBar.addContent(menuButton("Editar"));
-            titleBar.addContent(menuButton("Ver"));
+            titleBar.addContent(menuButton("Archivo", archivoMenu()));
+            titleBar.addContent(menuButton("Editar", editarMenu()));
+            titleBar.addContent(menuButton("Ver", verMenu()));
             root.add(titleBar);
 
             // ---- Content column (grows to fill the space below the bar) ----
@@ -176,7 +180,7 @@ public class App {
     }
 
     /** A small menu-strip button placed inside the title bar. */
-    private static Button menuButton(String text) {
+    private static Button menuButton(String text, Menu menu) {
         Button button = new Button(text);
         // Flat menubar look: no chrome in the normal state (transparent fill and
         // border, square corners) so it blends with the title bar; hovering still
@@ -187,8 +191,79 @@ public class App {
         // Tight padding (the theme default is 12px) so neighbouring menus stay
         // close together, like a native menu bar.
         button.setInlineStyle(Style.parseInline("padding: 6px", Map.of()));
-        button.setOnClick(() -> System.out.println("menu: " + text));
+        // The button toggles its drop-down; Menu.open() aligns the popup just
+        // below the button and the popup layer dismisses it afterwards.
+        menu.setTrigger(button);
+        button.setOnClick(menu::toggle);
         return button;
+    }
+
+    // ------------------------------------------------------------------
+    // Title-bar menus
+    // ------------------------------------------------------------------
+
+    /** File actions: rows with icons, shortcuts and a trailing separator. */
+    private static Menu archivoMenu() {
+        Menu menu = new Menu();
+        addItem(menu, "Nuevo", "Ctrl+N", icon("new"));
+        addItem(menu, "Abrir…", "Ctrl+O", icon("open"));
+        addItem(menu, "Guardar", "Ctrl+S", icon("save"));
+        menu.addSeparator();
+        addItem(menu, "Salir", "Alt+F4", null);
+        return menu;
+    }
+
+    /** Edit actions: includes a disabled row (nothing to paste yet). */
+    private static Menu editarMenu() {
+        Menu menu = new Menu();
+        addItem(menu, "Deshacer", "Ctrl+Z", null);
+        menu.addSeparator();
+        addItem(menu, "Cortar", "Ctrl+X", null);
+        addItem(menu, "Copiar", "Ctrl+C", null);
+        MenuItem paste = addItem(menu, "Pegar", "Ctrl+V", null);
+        // Disabled rows stay visible (so the shortcut is discoverable) but
+        // ignore the pointer entirely.
+        paste.setEnabled(false);
+        return menu;
+    }
+
+    /** View options: checkable rows toggle their own check mark on click. */
+    private static Menu verMenu() {
+        Menu menu = new Menu();
+        MenuItem toolbar = addItem(menu, "Barra de herramientas", null, null);
+        toolbar.setCheckable(true);
+        toolbar.setChecked(true);
+        toolbar.setOnClick(() -> System.out.println(
+                "menu: Barra de herramientas = " + toolbar.isChecked()));
+        MenuItem status = addItem(menu, "Barra de estado", null, null);
+        status.setCheckable(true);
+        status.setOnClick(() -> System.out.println(
+                "menu: Barra de estado = " + status.isChecked()));
+        menu.addSeparator();
+        addItem(menu, "Acercar", "Ctrl++", null);
+        addItem(menu, "Alejar", "Ctrl+−", null);
+        return menu;
+    }
+
+    /** Appends an item with an accelerator and a printer-style action. */
+    private static MenuItem addItem(Menu menu, String text, String accelerator, Image icon) {
+        MenuItem item = menu.addItem(text, icon);
+        item.setAcceleratorText(accelerator);
+        item.setOnClick(() -> System.out.println("menu: " + text));
+        return item;
+    }
+
+    /**
+     * Loads a 16px menu icon from the classpath. Icons are decoration: a
+     * missing file degrades to a plain row instead of breaking the menu.
+     */
+    private static Image icon(String name) {
+        try {
+            return Image.loadResource("/icons/" + name + ".png");
+        } catch (IOException e) {
+            System.err.println("menu icon missing: " + name + " (" + e.getMessage() + ")");
+            return null;
+        }
     }
 
     /**
