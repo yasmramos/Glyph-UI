@@ -9,6 +9,7 @@ import java.util.List;
  *
  * <pre>
  *   button              type selector (matches Component.getStyleTag())
+ *   *                   universal selector (matches any style tag)
  *   .warning            class selector (matches Component.hasStyleClass)
  *   #submit             id selector (matches Component.getId())
  *   panel button        descendant combinator (any depth)
@@ -37,6 +38,7 @@ public final class Selector {
     /** One compound selector segment, e.g. {@code button.big:hover}. */
     static final class SimpleSelector {
         String type;                    // nullable
+        boolean universal;              // "*" — matches any style tag
         final List<String> classes = new ArrayList<>();
         String id;                      // nullable
         final List<PseudoClass> pseudos = new ArrayList<>();
@@ -153,6 +155,13 @@ public final class Selector {
             root.rootMarker = true;
             return root;
         }
+        if (token.equals("*")) {
+            // Universal selector: matches any style tag, zero specificity
+            // contribution for the type part (per CSS spec).
+            SimpleSelector star = new SimpleSelector();
+            star.universal = true;
+            return star;
+        }
         SimpleSelector s = new SimpleSelector();
         int i = 0;
         // Leading type name (identifier before first '.' '#' ':')
@@ -162,7 +171,13 @@ public final class Selector {
             i++;
         }
         if (i > start) {
-            s.type = token.substring(start, i).toLowerCase();
+            String typeName = token.substring(start, i);
+            if ("*".equals(typeName)) {
+                // Universal prefix of a compound, e.g. "*.big" or "*:hover".
+                s.universal = true;
+            } else {
+                s.type = typeName.toLowerCase();
+            }
         }
         while (i < token.length()) {
             char c = token.charAt(i);
@@ -192,7 +207,8 @@ public final class Selector {
                 default -> throw new IllegalArgumentException("Malformed selector token: " + token);
             }
         }
-        if (s.type == null && s.classes.isEmpty() && s.id == null && s.pseudos.isEmpty()) {
+        if (s.type == null && !s.universal
+                && s.classes.isEmpty() && s.id == null && s.pseudos.isEmpty()) {
             throw new IllegalArgumentException("Empty simple selector: " + token);
         }
         return s;
@@ -284,6 +300,8 @@ public final class Selector {
         if (s.type != null && !s.type.equals(node.styleTag())) {
             return false;
         }
+        // Universal selector ("*") matches every style tag; contributes no
+        // type specificity (see the typ counter in parse()).
         if (s.id != null && !s.id.equals(node.id())) {
             return false;
         }
