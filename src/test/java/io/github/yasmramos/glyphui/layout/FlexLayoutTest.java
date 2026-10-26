@@ -6,10 +6,12 @@ import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleProperty;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -252,6 +254,33 @@ class FlexLayoutTest {
                 "an unpadded container must pass its full cross space through");
         assertEquals((44f - 34f) / 2.0f, tall.getY(), 0.01f,
                 "align-items: center centers the child in the now-uninset cross axis");
+    }
+
+    @Test
+    void layoutAssignedSizeDoesNotLockChildOutOfRemeasurement() {
+        // Regression for the setWidth/setHeight bug: the positioning pass must
+        // use applyLayoutSize so children stay re-measurable. A label sized by
+        // one pass can grow when its text changes and the panel is re-laid out.
+        FlexLayout flex = new FlexLayout();
+        flex.setDirection(FlexLayout.Direction.ROW);
+        Panel panel = new Panel(0, 0, 400, 60);
+        panel.setComputedStyle(Style.builder().build());
+        panel.setLayoutManager(flex);
+
+        Label shortLabel = new Label("hi");
+        panel.add(shortLabel);
+        flex.layout(panel);
+        float firstWidth = shortLabel.getWidth();
+        assertTrue(firstWidth > 0f, "first pass must size the label");
+        assertFalse(shortLabel.isSizeExplicitlySet(),
+                "layout-assigned sizes must not mark bounds as explicit");
+
+        shortLabel.setText("a much much longer caption that needs more room");
+        flex.layout(panel);
+
+        assertTrue(shortLabel.getWidth() > firstWidth,
+                "the label must be re-measured after a text change; got "
+                        + shortLabel.getWidth() + " (was " + firstWidth + ")");
     }
 
     @Test
