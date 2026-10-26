@@ -783,6 +783,26 @@ public class Application implements AutoCloseable {
                 return;
             }
 
+            // An open popup owns the keyboard: arrows and Home/End move its
+            // highlight, Enter/Space activate, and letters jump by initial.
+            // Nothing falls through to the page while a menu is up, and Tab
+            // dismisses the popup instead of traversing the hidden widgets.
+            if (popupLayer.hasOpenPopup()) {
+                if (key == GlyphKeys.TAB && pressed) {
+                    popupLayer.closeAll();
+                    requestRepaint();
+                    return;
+                }
+                KeyEventType popupType = pressed
+                        ? KeyEventType.PRESS : KeyEventType.RELEASE;
+                KeyEvent popupEvent = new KeyEvent(popupType, key,
+                        pressed ? mapKeyToChar(key) : 0, getModifiers(mods));
+                if (popupLayer.routeKeyEvent(popupEvent)) {
+                    requestRepaint();
+                    return;
+                }
+            }
+
             if (key == GlyphKeys.TAB && pressed) {
                 boolean shift = (mods & GlyphMods.SHIFT) != 0;
                 if (shift) {
@@ -811,6 +831,12 @@ public class Application implements AutoCloseable {
         // AbstractWindowBackend#notifyTextInput) keeps plain characters
         // flowing here as well.
         window.setCharListener(codepoint -> {
+            // Open menus consume plain letters for initial-letter jumps; the
+            // page must not see text typed while a popup is up.
+            if (popupLayer.routeCharTyped(codepoint)) {
+                requestRepaint();
+                return;
+            }
             Component focused = focusManager.getFocused();
             if (focused instanceof TextField textField) {
                 textField.onCharTyped((char) (int) codepoint);
@@ -822,6 +848,15 @@ public class Application implements AutoCloseable {
         // range marks the currently composing region inside the focused
         // TextField, so candidate-window commits replace the marked text.
         window.setTextInputListener((text, replacementStart, replacementEnd) -> {
+            // The IME/text pipeline is the path plain letters take on JWM
+            // (charListener only sees them when no text-input listener is
+            // installed), so an open menu must consume them here too before
+            // they reach a TextField hidden behind the popup.
+            if (popupLayer.hasOpenPopup()) {
+                text.codePoints().forEach(popupLayer::routeCharTyped);
+                requestRepaint();
+                return;
+            }
             Component focused = focusManager.getFocused();
             if (focused instanceof TextField tf) {
                 // applyImeText reads the (-1,-1) Windows sentinel as "at the

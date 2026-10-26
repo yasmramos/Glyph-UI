@@ -1,6 +1,7 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.humbleui.skija.Paint;
+import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
 import io.github.yasmramos.glyphui.graphics.Canvas;
@@ -30,6 +31,11 @@ import java.util.List;
  * hover rule — while a menu is open, moving onto a sibling trigger switches
  * to that menu, exactly like JavaFX and native menu bars. {@link
  * #closeOnEscape()} backs the ESC gesture.</p>
+ *
+ * <p>Keys behave the same way: while a popup is open, {@link
+ * #routeKeyEvent(KeyEvent)} and {@link #routeCharTyped(int)} route them to
+ * the top-most popup first, which swallows them so the page underneath
+ * cannot react to arrows or letters typed into a menu.</p>
  *
  * <p>The layer itself is transparent and never claims hover: {@link #hitTest}
  * reports {@code null} when the pointer is not over a popup, which is how
@@ -98,7 +104,73 @@ public class PopupLayer extends Panel {
         if (!consumed && event.getType() == MouseEventType.MOVE) {
             switchMenuUnderPointer(windowX, windowY);
         }
+        if (!consumed && (event.getType() == MouseEventType.MOVE
+                || event.getType() == MouseEventType.DRAG)) {
+            // The pointer is off every popup, so no row will receive the
+            // move: drop the hover paint while keeping a keyboard selection.
+            for (Component child : children) {
+                if (child instanceof Menu menu && menu.isOpen()) {
+                    menu.clearPointerHover();
+                }
+            }
+        }
         return consumed;
+    }
+
+    /**
+     * Routes a key event to the top-most open popup.
+     *
+     * @param event the key event
+     * @return true when a popup was open and swallowed the event, so the page
+     *         underneath must not receive it
+     */
+    public boolean routeKeyEvent(KeyEvent event) {
+        Component top = topVisiblePopup();
+        if (top == null) {
+            return false;
+        }
+        if (top instanceof Menu menu) {
+            menu.onKeyEvent(event);
+        }
+        return true;
+    }
+
+    /**
+     * Routes printable input to the top-most open popup, where it jumps
+     * between rows by their initial letter.
+     *
+     * @param codepoint the typed character
+     * @return true when a popup was open and swallowed the character
+     */
+    public boolean routeCharTyped(int codepoint) {
+        Component top = topVisiblePopup();
+        if (top == null) {
+            return false;
+        }
+        if (top instanceof Menu menu) {
+            menu.onCharTyped(codepoint);
+        }
+        return true;
+    }
+
+    /**
+     * Whether any popup is currently showing.
+     *
+     * @return true when the layer has a visible child
+     */
+    public boolean hasOpenPopup() {
+        return topVisiblePopup() != null;
+    }
+
+    /** The newest visible popup, i.e. the one painted on top. */
+    private Component topVisiblePopup() {
+        for (int i = children.size() - 1; i >= 0; i--) {
+            Component child = children.get(i);
+            if (child.isVisible()) {
+                return child;
+            }
+        }
+        return null;
     }
 
     /**

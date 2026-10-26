@@ -1,13 +1,21 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.TestBase;
+import io.github.yasmramos.glyphui.events.GlyphKeys;
+import io.github.yasmramos.glyphui.events.KeyEvent;
+import io.github.yasmramos.glyphui.events.KeyEventType;
+import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
 import org.junit.jupiter.api.Test;
 
+import java.util.EnumSet;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -37,6 +45,12 @@ public class PopupLayerTest extends TestBase {
         menu.open();
         menu.doLayout();
         return layer;
+    }
+
+    /** Builds a key-press event with no modifiers. */
+    private static KeyEvent key(int keyCode) {
+        return new KeyEvent(KeyEventType.PRESS, keyCode, '\0',
+                EnumSet.noneOf(KeyModifier.class));
     }
 
     /** Whether the component is, or lives inside, the given ancestor. */
@@ -277,6 +291,107 @@ public class PopupLayerTest extends TestBase {
 
         assertTrue(file.isOpen(),
                 "moving over the trigger of the open menu is a no-op");
+    }
+
+    @Test
+    public void keysReachTheTopMostOpenMenuAndAreSwallowed() {
+        Menu bottom = new Menu();
+        bottom.addItem("Uno");
+        Menu top = new Menu();
+        MenuItem topItem = top.addItem("Dos");
+
+        PopupLayer layer = new PopupLayer();
+        layer.add(bottom);
+        layer.add(top);
+        bottom.open();
+        top.open();
+
+        assertTrue(layer.routeKeyEvent(key(GlyphKeys.DOWN)),
+                "an open popup consumes the key");
+
+        assertSame(topItem, top.getHighlightedItem());
+        assertNull(bottom.getHighlightedItem(),
+                "only the menu painted on top reacts");
+    }
+
+    @Test
+    public void typedLettersReachTheOpenMenuAndAreSwallowed() {
+        Menu menu = new Menu();
+        MenuItem guardar = menu.addItem("Guardar");
+        MenuItem salir = menu.addItem("Salir");
+
+        PopupLayer layer = new PopupLayer();
+        layer.setWidth(400.0f);
+        layer.setHeight(300.0f);
+        layer.add(menu);
+        menu.open();
+
+        assertTrue(layer.routeCharTyped('s'));
+
+        assertSame(salir, menu.getHighlightedItem());
+        assertFalse(guardar.getState() == ComponentState.HOVER);
+    }
+
+    @Test
+    public void aLayerWithoutOpenPopupsSwallowsNeitherKeysNorLetters() {
+        PopupLayer layer = new PopupLayer();
+
+        assertFalse(layer.hasOpenPopup());
+        assertFalse(layer.routeKeyEvent(key(GlyphKeys.DOWN)));
+        assertFalse(layer.routeCharTyped('a'));
+    }
+
+    @Test
+    public void hasOpenPopupFollowsTheMenuVisibility() {
+        Menu menu = new Menu();
+        PopupLayer layer = layerWithOpenMenu(menu);
+
+        assertTrue(layer.hasOpenPopup());
+
+        menu.close();
+        assertFalse(layer.hasOpenPopup());
+    }
+
+    @Test
+    public void movingThePointerOffThePopupClearsTheHoveredRow() {
+        Menu menu = new Menu();
+        MenuItem item = menu.addItem("Guardar");
+
+        PopupLayer layer = new PopupLayer();
+        layer.setWidth(400.0f);
+        layer.setHeight(300.0f);
+        layer.add(menu);
+        menu.open();
+
+        int x = (int) item.getX() + 3;
+        int y = (int) item.getY() + 3;
+        layer.onMouseEvent(ev(MouseEventType.MOVE, x, y));
+        assertEquals(ComponentState.HOVER, item.getState());
+
+        layer.onMouseEvent(ev(MouseEventType.MOVE, 300, 250));
+
+        assertEquals(ComponentState.IDLE, item.getState(),
+                "leaving the popup must not leave a row painted as hovered");
+        assertTrue(menu.isOpen(), "hovering outside does not dismiss the menu");
+    }
+
+    @Test
+    public void leavingThePopupKeepsTheKeyboardSelection() {
+        Menu menu = new Menu();
+        MenuItem item = menu.addItem("Guardar");
+
+        PopupLayer layer = new PopupLayer();
+        layer.setWidth(400.0f);
+        layer.setHeight(300.0f);
+        layer.add(menu);
+        menu.open();
+        menu.onKeyEvent(key(GlyphKeys.DOWN));
+
+        layer.onMouseEvent(ev(MouseEventType.MOVE, 300, 250));
+
+        assertSame(item, menu.getHighlightedItem());
+        assertEquals(ComponentState.HOVER, item.getState(),
+                "the keyboard row keeps its highlight when the pointer leaves");
     }
 
     @Test

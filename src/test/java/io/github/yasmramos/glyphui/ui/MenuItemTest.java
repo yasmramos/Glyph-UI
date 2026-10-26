@@ -207,4 +207,30 @@ public class MenuItemTest extends TestBase {
         orphan.onMouseEvent(ev(MouseEventType.RELEASE, 4, 4));
         assertEquals(ComponentState.HOVER, orphan.getState());
     }
+
+    @Test
+    public void fireActivatesTheRowLikeAPointerPick() {
+        Menu menu = new Menu();
+        MenuItem item = menu.addItem("Guardar");
+        openRow(menu, item);
+
+        boolean[] fired = {false};
+        item.setOnClick(() -> fired[0] = true);
+
+        assertTrue(item.fire());
+
+        assertTrue(fired[0], "fire() runs the handler");
+        assertFalse(menu.isOpen(), "firing closes the owning menu");
+    }
+
+    @Test
+    public void fireIgnoresDisabledRows() {
+        MenuItem item = new MenuItem("Pegar");
+        boolean[] fired = {false};
+        item.setOnClick(() -> fired[0] = true);
+        item.setEnabled(false);
+
+        assertFalse(item.fire());
+        assertFalse(fired[0], "a disabled row must never run its handler");
+    }
 }

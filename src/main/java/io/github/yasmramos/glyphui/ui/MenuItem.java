@@ -391,6 +391,22 @@ public class MenuItem extends Component {
     }
 
     /**
+     * Activates this row the same way a pointer pick does: toggles the
+     * checked state (checkable rows only), runs the click handler and closes
+     * the owning menu. Used by keyboard navigation ({@link Menu} Enter/Space)
+     * and safe to call directly.
+     *
+     * @return true when the row was activated; false when it is disabled
+     */
+    public boolean fire() {
+        if (!enabled) {
+            return false;
+        }
+        runClick();
+        return true;
+    }
+
+    /**
      * Runs the activation sequence: toggle the checked state (checkable rows
      * only), invoke the handler, then close the owning menu. A throwing
      * handler is logged and never prevents the menu from closing, so the UI
