@@ -26,5 +26,14 @@ public enum AccessibleRole {
     TEXT_FIELD,
 
     /** An image display ({@link ImageView}). */
-    IMAGE
+    IMAGE,
+
+    /** A drop-down menu panel ({@link Menu}). */
+    MENU,
+
+    /** A selectable row inside a menu ({@link MenuItem}). */
+    MENU_ITEM,
+
+    /** A non-interactive divider between menu rows ({@link MenuSeparator}). */
+    MENU_SEPARATOR
 }
