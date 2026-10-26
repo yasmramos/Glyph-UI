@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseButton;
@@ -7,9 +8,13 @@ import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
+import io.github.yasmramos.glyphui.graphics.Property;
 import io.github.yasmramos.glyphui.graphics.Theme;
+import io.github.yasmramos.glyphui.style.StyleProperty;
 import io.github.humbleui.skija.Font;
 import io.github.humbleui.skija.Paint;
+
+import java.util.Objects;
 
 /**
  * Single-line editable text field.
@@ -51,6 +56,10 @@ public class TextField extends Component
     private static Runnable clipboardPasteHandler;  // reads the system clipboard and inserts it here
 
     private String text = "";
+
+    /** Observable text property (lazily created, marshals to the UI thread). */
+    private Property<String> textProperty;
+
     private String placeholder = "";
 
     /** Caret position (character index, 0..text.length()). */
@@ -78,7 +87,6 @@ public class TextField extends Component
      */
     public TextField(float x, float y, float width, float height) {
         super(x, y, width, height);
-        initPaints();
     }
 
     /**
@@ -86,26 +94,37 @@ public class TextField extends Component
      */
     public TextField() {
         super();
-        initPaints();
     }
 
-    private void initPaints() {
-        backgroundPaint = new Paint();
-        backgroundPaint.setAntiAlias(true);
-
-        borderPaint = new Paint();
-        borderPaint.setStroke(true);
-        borderPaint.setStrokeWidth(1.0f);
-        borderPaint.setAntiAlias(true);
-
-        textPaint = new Paint();
-        textPaint.setAntiAlias(true);
-
-        cursorPaint = new Paint();
-        cursorPaint.setAntiAlias(true);
-
-        selectionPaint = new Paint();
-        selectionPaint.setAntiAlias(true);
+    /**
+     * Lazily creates the five reusable paints on first render. Construction
+     * stays allocation-free (matching Button/Label/Panel/ImageView): tests
+     * that build a TextField without an initialised Skija backend never
+     * touch native paint objects.
+     */
+    private void ensurePaints() {
+        if (backgroundPaint == null || backgroundPaint.isClosed()) {
+            backgroundPaint = new Paint();
+            backgroundPaint.setAntiAlias(true);
+        }
+        if (borderPaint == null || borderPaint.isClosed()) {
+            borderPaint = new Paint();
+            borderPaint.setStroke(true);
+            borderPaint.setStrokeWidth(1.0f);
+            borderPaint.setAntiAlias(true);
+        }
+        if (textPaint == null || textPaint.isClosed()) {
+            textPaint = new Paint();
+            textPaint.setAntiAlias(true);
+        }
+        if (cursorPaint == null || cursorPaint.isClosed()) {
+            cursorPaint = new Paint();
+            cursorPaint.setAntiAlias(true);
+        }
+        if (selectionPaint == null || selectionPaint.isClosed()) {
+            selectionPaint = new Paint();
+            selectionPaint.setAntiAlias(true);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -142,12 +161,33 @@ public class TextField extends Component
     }
 
     /**
-     * Replaces the whole text, resetting caret and selection.
+     * Returns the observable text property. Setting it from a background
+     * thread marshals the change onto the UI thread automatically, matching
+     * the threading contract of Button/Label (previously {@code setText}
+     * mutated the buffer directly on the caller's thread).
+     *
+     * @return the text property (never null after first access)
+     */
+    public Property<String> textProperty() {
+        if (textProperty == null) {
+            textProperty = new Property<>(Application.getCurrent(), this.text, newText -> {
+                // Whole-text replacement: caret goes to the end, selection
+                // cleared; notify so listeners see programmatic changes too.
+                setTextInternal(newText, newText == null ? 0 : newText.length(), true);
+            });
+        }
+        return textProperty;
+    }
+
+    /**
+     * Replaces the whole text. Delegates to {@link #textProperty()} so the
+     * change is marshalled onto the UI thread when invoked from a background
+     * thread. Fires {@code onTextChanged} when the content actually changed.
      *
      * @param text the new text (null becomes "")
      */
     public void setText(String text) {
-        setText(text, true);
+        textProperty().set(text);
     }
 
     /**
@@ -155,6 +195,10 @@ public class TextField extends Component
      * actually changed, the {@code onTextChanged} handler fires (used by the
      * markup loader's {@code onchange} attribute). Programmatic initialisation
      * (e.g. loading a value from markup) should pass {@code false}.
+     *
+     * <p>Note: this overload applies the change immediately on the calling
+     * thread; cross-thread callers should use {@link #setText(String)} or
+     * {@link #textProperty()} instead.</p>
      *
      * @param text   the new text (null becomes "")
      * @param notify whether to fire the change handler
@@ -225,7 +269,11 @@ public class TextField extends Component
      * @param placeholder the placeholder (may be null/"")
      */
     public void setPlaceholder(String placeholder) {
-        this.placeholder = (placeholder == null) ? "" : placeholder;
+        String updated = (placeholder == null) ? "" : placeholder;
+        if (this.placeholder.equals(updated)) {
+            return;
+        }
+        this.placeholder = updated;
         invalidate();
     }
 
@@ -393,7 +441,13 @@ public class TextField extends Component
     }
 
     private void moveCaret(int delta, boolean keepSelection) {
-        caret = Math.max(0, Math.min(text.length(), caret + delta));
+        int updated = Math.max(0, Math.min(text.length(), caret + delta));
+        if (updated == caret && (keepSelection || selectionAnchor == updated)) {
+            // Nothing moved and the selection state is unchanged: skip the
+            // invalidation so no-op key repeats don't schedule repaints.
+            return;
+        }
+        caret = updated;
         if (!keepSelection) {
             selectionAnchor = caret;
         }
@@ -401,7 +455,12 @@ public class TextField extends Component
     }
 
     private void setCaretTo(int position, boolean keepSelection) {
-        caret = Math.max(0, Math.min(text.length(), position));
+        int updated = Math.max(0, Math.min(text.length(), position));
+        if (updated == caret && (keepSelection || selectionAnchor == updated)) {
+            // Same invariant as moveCaret: only invalidate on a real change.
+            return;
+        }
+        caret = updated;
         if (!keepSelection) {
             selectionAnchor = caret;
         }
@@ -419,9 +478,9 @@ public class TextField extends Component
         } else if (caret > 0) {
             setTextInternal(text.substring(0, caret - 1) + text.substring(caret),
                     caret - 1, true);
-        } else {
-            invalidate();
         }
+        // Nothing to delete and no selection: the visual state is unchanged,
+        // so skip the invalidation entirely.
     }
 
     /**
@@ -584,7 +643,7 @@ public class TextField extends Component
     /** Maps a window-space x coordinate to the nearest caret index. */
     private int positionAtX(float mouseX) {
         Font font = getFont();
-        float padding = getTheme().getPadding();
+        float padding = getFieldPadding();
         float local = mouseX - x - padding;
         int best = 0;
         float bestDist = Float.MAX_VALUE;
@@ -604,28 +663,71 @@ public class TextField extends Component
     // ------------------------------------------------------------------
 
     /**
-     * Gets the shared theme BODY font (owned by {@code FontManager}).
+     * Gets the field font: CSS {@code font-family}/{@code font-size}
+     * declarations win through {@link Component#resolveFont}; otherwise the
+     * shared theme BODY font (owned by {@code FontManager}) is returned.
      *
-     * @return the font
+     * @return the font, never null
      */
     private Font getFont() {
+        io.github.yasmramos.glyphui.style.Style s = getComputedStyle();
+        if (s.has(StyleProperty.FONT_FAMILY) || s.has(StyleProperty.FONT_SIZE)) {
+            return resolveFont(Theme.FontRole.BODY);
+        }
         return getTheme().getFont(Theme.FontRole.BODY);
+    }
+
+    /** Intrinsic minimum width for a content-less field. */
+    private static final float MIN_INTRINSIC_WIDTH = 80.0f;
+
+    /**
+     * Gets the preferred width from the content (text or placeholder) plus
+     * padding, with a modest intrinsic minimum so an empty field still has a
+     * usable click target. Used by the base measurement path when no explicit
+     * CSS size was declared.
+     *
+     * @return the preferred width in pixels
+     */
+    @Override
+    public float getPreferredWidth() {
+        if (sizeExplicitlySet) {
+            return width;
+        }
+        Font font = getFont();
+        float content = Math.max(font.measureTextWidth(text), font.measureTextWidth(placeholder));
+        return Math.max(content + 2.0f * getFieldPadding(), MIN_INTRINSIC_WIDTH);
+    }
+
+    /**
+     * Resolves the horizontal/vertical padding: a CSS {@code padding}
+     * declaration wins over the theme's control padding.
+     *
+     * @return the padding in pixels
+     */
+    private float getFieldPadding() {
+        return resolveFloatStyle(StyleProperty.PADDING, null, getTheme().getPadding());
     }
 
     @Override
     public float getPreferredHeight() {
         io.github.humbleui.skija.FontMetrics metrics = getFont().getMetrics();
-        return (metrics.getDescent() - metrics.getAscent()) + 2.0f * getTheme().getPadding();
+        return (metrics.getDescent() - metrics.getAscent()) + 2.0f * getFieldPadding();
     }
 
     @Override
     public Dimension measure(float maxWidth, float maxHeight) {
+        // An explicit CSS width/height (or bounds set through the layout /
+        // constructor path) must win over content-based sizing: delegate to
+        // the base measurement path, which honours declared sizes including
+        // percentages resolved against the parent.
+        io.github.yasmramos.glyphui.style.Style s = getComputedStyle();
+        boolean cssSized = s != null && (s.has(StyleProperty.WIDTH) || s.has(StyleProperty.HEIGHT));
+        if (sizeExplicitlySet || cssSized) {
+            return super.measure(maxWidth, maxHeight);
+        }
         // Text fields stretch horizontally: intrinsic width is a modest
         // minimum (placeholder/content based), height is one text line.
-        Font font = getFont();
-        float content = Math.max(font.measureTextWidth(text), font.measureTextWidth(placeholder));
-        float w = Math.min(Math.max(content + 2.0f * getTheme().getPadding(), 80.0f),
-                sanitize(maxWidth));
+        float w = Math.min(getPreferredWidth(), sanitize(maxWidth));
         float h = Math.min(getPreferredHeight(), sanitize(maxHeight));
         return new Dimension(w, h);
     }
@@ -639,21 +741,35 @@ public class TextField extends Component
 
     @Override
     protected void render(Canvas canvas) {
+        ensurePaints();
         Theme theme = getTheme();
 
-        // Background: the entry surface token, not the page background — a
-        // field painted with the page color shows nothing but its border.
-        backgroundPaint.setColor(theme.getInputBackgroundColor());
-        canvas.drawRRect(x, y, width, height,
-                theme.getControlCornerRadius(), theme.getControlCornerRadius(), backgroundPaint);
+        // Background: CSS `background` wins, then the entry-surface theme
+        // token (not the page background — a field painted with the page
+        // color shows nothing but its border). The disabled path consults
+        // the computed style first so `input:disabled { ... }` applies.
+        int bgColor;
+        if (enabled) {
+            bgColor = resolveIntStyle(StyleProperty.BACKGROUND, null, theme.getInputBackgroundColor());
+        } else {
+            bgColor = hasStyleValue(StyleProperty.BACKGROUND)
+                    ? resolveIntStyle(StyleProperty.BACKGROUND, null, theme.getControlDisabledColor())
+                    : theme.getControlDisabledColor();
+        }
+        float cornerRadius = resolveFloatStyle(StyleProperty.BORDER_RADIUS, null,
+                theme.getControlCornerRadius());
+        backgroundPaint.setColor(bgColor);
+        canvas.drawRRect(x, y, width, height, cornerRadius, cornerRadius, backgroundPaint);
 
-        // Border: accent when focused, theme border otherwise
-        borderPaint.setColor(isFocused() ? theme.getAccentColor() : theme.getBorderColor());
+        // Border: CSS `border-color` wins over the state-driven theme
+        // fallbacks (accent when focused, plain border otherwise).
+        int focusBorder = isFocused() ? theme.getAccentColor() : theme.getBorderColor();
+        borderPaint.setColor(resolveIntStyle(StyleProperty.BORDER_COLOR, null, focusBorder));
         canvas.drawRRect(x + 0.5f, y + 0.5f, Math.max(0.0f, width - 1.0f), Math.max(0.0f, height - 1.0f),
-                theme.getControlCornerRadius(), theme.getControlCornerRadius(), borderPaint);
+                cornerRadius, cornerRadius, borderPaint);
 
         Font font = getFont();
-        float padding = theme.getPadding();
+        float padding = getFieldPadding();
         io.github.humbleui.skija.FontMetrics metrics = font.getMetrics();
         float lineHeight = metrics.getDescent() - metrics.getAscent();
         // Vertically center the glyph box ([baseline+ascent, baseline+descent],
@@ -672,9 +788,15 @@ public class TextField extends Component
                     Math.max(0.0f, endX - startX), lineHeight + 4.0f, selectionPaint);
         }
 
-        // Text or placeholder
+        // Text or placeholder: CSS `color` wins over the theme foreground;
+        // the disabled path re-resolves through the computed style so
+        // `input:disabled { color: ... }` applies instead of jumping straight
+        // to the dimmed theme token.
         if (!text.isEmpty()) {
-            textPaint.setColor(enabled ? theme.getForegroundColor() : theme.getControlTextDisabledColor());
+            int textColor = enabled
+                    ? resolveIntStyle(StyleProperty.COLOR, null, theme.getForegroundColor())
+                    : resolveIntStyle(StyleProperty.COLOR, null, theme.getControlTextDisabledColor());
+            textPaint.setColor(textColor);
             canvas.drawString(text, x + padding, baseline, textPaint, font);
         } else if (!isFocused() && !placeholder.isEmpty()) {
             textPaint.setColor(withAlpha(theme.getForegroundColor(), 120));
@@ -684,7 +806,7 @@ public class TextField extends Component
         // Caret
         if (isFocused() && enabled) {
             float caretX = x + padding + font.measureTextWidth(text.substring(0, caret));
-            cursorPaint.setColor(theme.getAccentColor());
+            cursorPaint.setColor(resolveIntStyle(StyleProperty.ACCENT_COLOR, null, theme.getAccentColor()));
             canvas.drawRect(caretX, baseline + metrics.getAscent() - 2.0f,
                     1.5f, lineHeight + 4.0f, cursorPaint);
         }

@@ -107,7 +107,11 @@ public class Label extends Component {
      */
     private io.github.humbleui.skija.Font getFont() {
         Style s = getComputedStyle();
-        if (s.has(StyleProperty.FONT_FAMILY) || s.has(StyleProperty.FONT_SIZE)) {
+        // font-weight alone must also route through resolveFont: otherwise a
+        // lone `label { font-weight: bold }` declaration is silently ignored
+        // and the theme font (with no weight applied) wins.
+        if (s.has(StyleProperty.FONT_FAMILY) || s.has(StyleProperty.FONT_SIZE)
+                || s.has(StyleProperty.FONT_WEIGHT)) {
             return resolveFont(io.github.yasmramos.glyphui.graphics.Theme.FontRole.BODY);
         }
         if (fontSizeOverride != null) {
@@ -172,6 +176,9 @@ public class Label extends Component {
      * @param textColor the new text color (as ARGB int) or null
      */
     public void setTextColor(Integer textColor) {
+        if (java.util.Objects.equals(this.textColorOverride, textColor)) {
+            return;
+        }
         this.textColorOverride = textColor;
         invalidate();
     }
@@ -237,6 +244,14 @@ public class Label extends Component {
      */
     @Override
     public io.github.yasmramos.glyphui.graphics.Dimension measure(float maxWidth, float maxHeight) {
+        // An explicit CSS width/height must win over text-based intrinsic
+        // sizing, exactly like Button does: delegate to the base measurement
+        // path which honours declared sizes (including percentages).
+        Style s = getComputedStyle();
+        boolean cssSized = s != null && (s.has(StyleProperty.WIDTH) || s.has(StyleProperty.HEIGHT));
+        if (sizeExplicitlySet || cssSized) {
+            return super.measure(maxWidth, maxHeight);
+        }
         float w = getPreferredWidth();
         float h = getPreferredHeight();
         if (Float.isNaN(maxWidth) || maxWidth == Float.POSITIVE_INFINITY) {
@@ -288,6 +303,9 @@ public class Label extends Component {
      * @param size the new font size or null
      */
     public void setFontSize(Float size) {
+        if (java.util.Objects.equals(this.fontSizeOverride, size)) {
+            return;
+        }
         this.fontSizeOverride = size;
         invalidate();
     }
@@ -311,9 +329,17 @@ public class Label extends Component {
         float blockHeight = lineStep * lines.length;
         float firstBaseline = y + (height - blockHeight) / 2.0f - metrics.getAscent();
 
-        // Draw text using the reusable paint field (no per-frame allocations)
+        // Draw text using the reusable paint field (no per-frame allocations).
+        // The disabled path consults the computed style first so
+        // `label:disabled { color: ... }` wins over the theme fallback; only
+        // when no CSS declaration exists does the dimmed theme colour apply.
         ensureTextPaint();
-        textPaint.setColor(enabled ? getTextColor() : getTheme().getControlTextDisabledColor());
+        if (enabled) {
+            textPaint.setColor(getTextColor());
+        } else {
+            textPaint.setColor(resolveIntStyle(StyleProperty.COLOR, null,
+                    getTheme().getControlTextDisabledColor()));
+        }
 
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];

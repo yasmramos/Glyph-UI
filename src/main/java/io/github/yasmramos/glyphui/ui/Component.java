@@ -13,11 +13,13 @@ import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleNode;
+import io.github.yasmramos.glyphui.style.StyleProperty;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -655,6 +657,21 @@ public abstract class Component implements StyleNode, Disposable {
             return s.getFloat(property, themeDefault);
         }
         return explicitOverride != null ? explicitOverride : themeDefault;
+    }
+
+    /**
+     * Whether the computed style carries an explicit declaration for the
+     * given property. Used by state-dependent widgets (e.g. a disabled
+     * control) to distinguish "the author declared this value" from "the
+     * theme default is in effect": a CSS declaration must win over any
+     * per-instance override or themed fallback, while the fallback chain
+     * only applies when no rule matched.
+     *
+     * @param property the style property to probe
+     * @return true when the computed style contains the property
+     */
+    protected boolean hasStyleValue(io.github.yasmramos.glyphui.style.StyleProperty property) {
+        return getComputedStyle().has(property);
     }
 
     /**
