@@ -170,7 +170,11 @@ public class TextField extends Component
      */
     public Property<String> textProperty() {
         if (textProperty == null) {
-            textProperty = new Property<>(Application.getCurrent(), this.text, newText -> {
+            // Application is passed as null on purpose: Property resolves
+            // Application.getCurrent() dynamically at set time (Block 3.7),
+            // so widgets constructed before the application exists still
+            // marshal correctly once it starts.
+            textProperty = new Property<>(null, this.text, newText -> {
                 // Whole-text replacement: caret goes to the end, selection
                 // cleared; notify so listeners see programmatic changes too.
                 setTextInternal(newText, newText == null ? 0 : newText.length(), true);
@@ -226,7 +230,8 @@ public class TextField extends Component
         this.text = (newText == null) ? "" : newText;
         this.caret = Math.max(0, Math.min(newCaret, this.text.length()));
         this.selectionAnchor = this.caret;
-        invalidate();
+        // Buffer content drives the preferred width: relayout upward.
+        invalidateLayout();
         if (notify && !old.equals(this.text) && onTextChanged != null) {
             onTextChanged.run();
         }
@@ -274,7 +279,8 @@ public class TextField extends Component
             return;
         }
         this.placeholder = updated;
-        invalidate();
+        // Placeholder text participates in measurement too.
+        invalidateLayout();
     }
 
     /** @return the caret index (0..length) */

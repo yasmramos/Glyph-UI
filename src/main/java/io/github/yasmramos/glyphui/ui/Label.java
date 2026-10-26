@@ -1,6 +1,5 @@
 package io.github.yasmramos.glyphui.ui;
 
-import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Property;
 import io.github.yasmramos.glyphui.style.Style;
@@ -137,12 +136,11 @@ public class Label extends Component {
      */
     public Property<String> textProperty() {
         if (textProperty == null) {
-            textProperty = new Property<>(Application.getCurrent(), text, newText -> {
+            textProperty = new Property<>(null, text, newText -> {
                 this.text = newText;
-                // Single invalidation: requestRepaint() delegates to
-                // invalidate(), calling both would double-count and
-                // double-propagate up the parent chain.
-                invalidate();
+                // The caption width feeds the preferred size, so ancestors
+                // must re-run their layout managers, not just repaint.
+                invalidateLayout();
             });
         }
         return textProperty;
@@ -180,7 +178,8 @@ public class Label extends Component {
             return;
         }
         this.textColorOverride = textColor;
-        invalidate();
+        // Color is pixels-only: no geometry or cascade result changes.
+        invalidatePaint();
     }
 
     /**
@@ -282,7 +281,8 @@ public class Label extends Component {
     public void setAlignment(TextAlignment alignment) {
         if (this.alignment != alignment) {
             this.alignment = alignment;
-            invalidate();
+            // Alignment affects painted glyphs only (bounds are unchanged).
+            invalidatePaint();
         }
     }
 
@@ -307,7 +307,8 @@ public class Label extends Component {
             return;
         }
         this.fontSizeOverride = size;
-        invalidate();
+        // Font size changes the measured text: ancestors must relayout.
+        invalidateLayout();
     }
 
     @Override

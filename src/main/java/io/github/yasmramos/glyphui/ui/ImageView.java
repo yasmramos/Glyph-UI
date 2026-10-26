@@ -58,7 +58,8 @@ public class ImageView extends Component {
      */
     public void setImage(Image image) {
         this.image = image;
-        invalidate();
+        // Image intrinsic size feeds measure(): ancestors must relayout.
+        invalidateLayout();
     }
 
     @Override

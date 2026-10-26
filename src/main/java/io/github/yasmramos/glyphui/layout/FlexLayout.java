@@ -96,6 +96,9 @@ public class FlexLayout extends LayoutManager {
 
     public void setDirection(Direction direction) {
         this.direction = direction;
+        // Configuration change: ask the container to re-run its layout so
+        // the new axis is visible on the next frame (3.5).
+        notifyOwner();
     }
 
     public Justify getJustify() {
@@ -104,6 +107,7 @@ public class FlexLayout extends LayoutManager {
 
     public void setJustify(Justify justify) {
         this.justify = justify;
+        notifyOwner();
     }
 
     public Align getAlignItems() {
@@ -112,14 +116,75 @@ public class FlexLayout extends LayoutManager {
 
     public void setAlignItems(Align alignItems) {
         this.alignItems = alignItems;
+        notifyOwner();
     }
 
     public void setGap(float gap) {
         this.gapOverride = gap;
+        notifyOwner();
     }
 
     public void setPadding(float padding) {
         this.paddingOverride = padding;
+        notifyOwner();
+    }
+
+
+    /**
+     * Measures the flex content: the bounding box of the items along both
+     * axes plus padding, mirroring the first pass of {@link #layout}. The
+     * main-axis total includes gaps; the cross-axis size is the largest item
+     * (stretching does not grow the container's intrinsic size).
+     */
+    @Override // NOPMD - concrete signature required by the LayoutManager contract
+    public Dimension measure(Panel panel, float maxWidth, float maxHeight) {
+        Style style = panel.getComputedStyle();
+        Direction dir = style != null && style.has(StyleProperty.FLEX_DIRECTION)
+                ? parseDirection(style.getString(StyleProperty.FLEX_DIRECTION, null), direction)
+                : direction;
+        float gap = gapOverride != null ? gapOverride
+                : (style != null ? style.getFloat(StyleProperty.GAP, 10f) : 10f);
+        float pad = paddingOverride != null ? paddingOverride
+                : (style != null ? style.getFloat(StyleProperty.PADDING, 0f) : 0f);
+
+        boolean row = dir == Direction.ROW;
+        // Generous constraints for intrinsic sizing: measure against the
+        // declared bounds minus padding, unbounded when infinite.
+        float availMain = clampAvail(row ? maxWidth : maxHeight, row ? panel.getWidth() : panel.getHeight(), pad);
+        float availCross = clampAvail(row ? maxHeight : maxWidth, row ? panel.getHeight() : panel.getWidth(), pad);
+
+        float totalMain = 0f;
+        float maxCross = 0f;
+        int count = 0;
+        for (Component c : panel.getChildren()) {
+            if (!c.isVisible() || "none".equals(displayOf(c))) {
+                continue;
+            }
+            Style cs = c.getComputedStyle();
+            float m = cs != null ? cs.getFloat(StyleProperty.MARGIN, 0) : 0f;
+            Dimension measured = c.measure(Math.max(0, availMain), Math.max(0, availCross));
+            float mainSize = row ? measured.width : measured.height;
+            float crossSize = row ? measured.height : measured.width;
+            totalMain += mainSize + 2 * m;
+            maxCross = Math.max(maxCross, crossSize + 2 * m);
+            count++;
+        }
+        if (count > 0) {
+            totalMain += gap * (count - 1);
+        }
+        float w = row ? totalMain + 2 * pad : maxCross + 2 * pad;
+        float h = row ? maxCross + 2 * pad : totalMain + 2 * pad;
+        return new Dimension(Math.max(0f, w), Math.max(0f, h));
+    }
+
+    /**
+     * Converts a measurement constraint into available content space: uses
+     * the supplied maximum when finite, otherwise falls back to the panel's
+     * current size on that axis; always subtracts twice the padding.
+     */
+    private static float clampAvail(float max, float panelSize, float pad) {
+        float base = Float.isInfinite(max) ? panelSize : max;
+        return Math.max(0f, base - 2 * pad);
     }
 
     @Override
