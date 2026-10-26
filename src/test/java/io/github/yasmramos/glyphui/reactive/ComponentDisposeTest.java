@@ -6,6 +6,7 @@ import io.github.yasmramos.glyphui.reactive.Disposable;
 import io.github.yasmramos.glyphui.reactive.Computed;
 import io.github.yasmramos.glyphui.reactive.Signal;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -229,12 +230,22 @@ public class ComponentDisposeTest {
     }
 
     @Test
-    public void panelClearStillDisposesRemovedChildren() {
+    public void panelClearIsNonDestructiveAndClearAndDisposeDisposesChildren() {
+        // Block 1.3: clear() only detaches children so they can be re-used;
+        // the destructive semantics moved to clearAndDispose().
         Panel panel = new Panel(0, 0, 100, 100);
         LoggingLeaf child = new LoggingLeaf("child", log);
         panel.add(child);
 
         panel.clear();
+
+        assertEquals(List.of(), log);
+        assertFalse(child.isDisposed());
+        assertTrue(panel.getChildren().isEmpty());
+
+        // Re-adding after a non-destructive clear must keep the child usable.
+        panel.add(child);
+        panel.clearAndDispose();
 
         assertEquals(List.of("child:onDispose"), log);
         assertTrue(child.isDisposed());
