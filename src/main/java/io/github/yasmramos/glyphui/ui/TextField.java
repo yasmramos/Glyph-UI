@@ -160,9 +160,27 @@ public class TextField extends Component
      * @param notify whether to fire the change handler
      */
     public void setText(String text, boolean notify) {
+        // Whole-text replacement: caret goes to the end, selection cleared.
+        setTextInternal(text, text == null ? 0 : text.length(), notify);
+    }
+
+    /**
+     * Single funnel for every text mutation (programmatic {@code setText},
+     * key-driven editing, IME commits, selection deletes). Updates the
+     * buffer, clamps the caret, clears the selection, invalidates the widget
+     * and — when {@code notify} is true and the content actually changed —
+     * fires {@link #onTextChanged}. Centralising this here guarantees the
+     * change handler fires from ALL editing paths, not only
+     * {@code setText(text, true)}.
+     *
+     * @param newText  the new buffer content (null becomes "")
+     * @param newCaret caret position after the change (clamped)
+     * @param notify   whether to fire the change handler
+     */
+    private void setTextInternal(String newText, int newCaret, boolean notify) {
         String old = this.text;
-        this.text = (text == null) ? "" : text;
-        this.caret = this.text.length();
+        this.text = (newText == null) ? "" : newText;
+        this.caret = Math.max(0, Math.min(newCaret, this.text.length()));
         this.selectionAnchor = this.caret;
         invalidate();
         if (notify && !old.equals(this.text) && onTextChanged != null) {
@@ -257,10 +275,10 @@ public class TextField extends Component
         int from = Math.max(0, Math.min(lo, length));
         int to = Math.max(from, Math.min(hi, length));
         String inserted = newText == null ? "" : newText;
-        text = text.substring(0, from) + inserted + text.substring(to);
-        caret = Math.max(0, Math.min(newCaret, text.length()));
-        selectionAnchor = caret;
-        invalidate();
+        // Route through the shared mutation funnel so onTextChanged fires
+        // for IME replacements too (previously this path was silent).
+        setTextInternal(text.substring(0, from) + inserted + text.substring(to),
+                newCaret, true);
     }
 
     /** @return true if a non-empty selection exists */
@@ -312,11 +330,14 @@ public class TextField extends Component
         if (!isEnabled() || chars == null || chars.isEmpty()) {
             return;
         }
-        deleteSelectionIfNeeded();
-        text = text.substring(0, caret) + chars + text.substring(caret);
-        caret += chars.length();
-        selectionAnchor = caret;
-        invalidate();
+        // Drop any pending selection first (counted into the same final
+        // mutation below), then insert at the caret. Routing through
+        // setTextInternal makes onTextChanged fire for typed characters —
+        // previously this path mutated the buffer silently.
+        int lo = Math.min(caret, selectionAnchor);
+        int hi = Math.max(caret, selectionAnchor);
+        String updated = text.substring(0, lo) + chars + text.substring(hi);
+        setTextInternal(updated, lo + chars.length(), true);
     }
 
     /**
@@ -359,13 +380,15 @@ public class TextField extends Component
     // Editing primitives
     // ------------------------------------------------------------------
 
+    /**
+     * Deletes the current selection (if any) through the shared mutation
+     * funnel, so {@link #onTextChanged} fires for cut/delete-selection paths.
+     */
     private void deleteSelectionIfNeeded() {
         if (hasSelection()) {
             int lo = Math.min(caret, selectionAnchor);
             int hi = Math.max(caret, selectionAnchor);
-            text = text.substring(0, lo) + text.substring(hi);
-            caret = lo;
-            selectionAnchor = lo;
+            setTextInternal(text.substring(0, lo) + text.substring(hi), lo, true);
         }
     }
 
@@ -385,24 +408,36 @@ public class TextField extends Component
         invalidate();
     }
 
+    /**
+     * Handles Backspace: deletes the selection if present, otherwise the
+     * character before the caret. All mutations go through
+     * {@link #setTextInternal} so {@link #onTextChanged} fires.
+     */
     private void handleBackspace() {
         if (hasSelection()) {
             deleteSelectionIfNeeded();
         } else if (caret > 0) {
-            text = text.substring(0, caret - 1) + text.substring(caret);
-            caret--;
-            selectionAnchor = caret;
+            setTextInternal(text.substring(0, caret - 1) + text.substring(caret),
+                    caret - 1, true);
+        } else {
+            invalidate();
         }
-        invalidate();
     }
 
+    /**
+     * Handles Delete: deletes the selection if present, otherwise the
+     * character at the caret. All mutations go through
+     * {@link #setTextInternal} so {@link #onTextChanged} fires.
+     */
     private void handleDelete() {
         if (hasSelection()) {
             deleteSelectionIfNeeded();
         } else if (caret < text.length()) {
-            text = text.substring(0, caret) + text.substring(caret + 1);
+            setTextInternal(text.substring(0, caret) + text.substring(caret + 1),
+                    caret, true);
+        } else {
+            invalidate();
         }
-        invalidate();
     }
 
     // ------------------------------------------------------------------
@@ -461,8 +496,9 @@ public class TextField extends Component
                         if (clipboardCopyHandler != null) {
                             clipboardCopyHandler.run();
                         }
+                        // deleteSelectionIfNeeded now routes through
+                        // setTextInternal, so onTextChanged fires on cut.
                         deleteSelectionIfNeeded();
-                        invalidate();
                     } else if (c == 'v' && clipboardPasteHandler != null) {
                         // Application reads the clipboard and calls insertText
                         clipboardPasteHandler.run();

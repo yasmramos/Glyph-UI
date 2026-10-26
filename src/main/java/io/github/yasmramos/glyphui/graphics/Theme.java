@@ -116,6 +116,9 @@ public final class Theme {
      */
     public static void setCurrent(Theme theme) {
         current = (theme != null) ? theme : DARK;
+        // Theme-derived var() values (--bg, --accent, ...) feed the cascade;
+        // swapping the theme must trigger a re-cascade on the next frame.
+        io.github.yasmramos.glyphui.ui.Component.invalidateStyle();
     }
 
     /**

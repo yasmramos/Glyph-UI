@@ -97,9 +97,31 @@ public class Application implements AutoCloseable {
     private boolean forceRasterSurface;
 
     /**
-     * Optional CSS style engine; when set, it re-cascades every frame.
+     * Optional CSS style engine; when set, it re-cascades only on frames
+     * where something affecting selector matching changed (see the
+     * style-dirty latch in {@code Component}), not on every painted frame.
      */
     private StyleEngine styleEngine;
+
+    /**
+     * Per-application "needs cascade" flag. Seeded from the global
+     * style-dirty latch in {@code frameStep()}; also forced true while an
+     * animation is running so state changes that bypass the framework
+     * setters (direct field writes in custom widgets) still converge.
+     */
+    private boolean styleDirty = true;
+
+    /**
+     * Test hook: consumes the process-wide style-dirty latch and returns
+     * whether a cascade pass was pending. Used by tests to verify that
+     * style-affecting mutators mark the latch without running a full frame.
+     *
+     * @return true when something invalidated selector matching since the
+     *         last consumption (the latch is cleared by this call)
+     */
+    public static boolean consumePendingStyleInvalidationForTests() {
+        return Component.consumeStyleDirty();
+    }
 
     /**
      * On-demand rendering flag: true when something changed (events, component
@@ -1009,7 +1031,10 @@ public class Application implements AutoCloseable {
      */
     void renderFrame() {
         checkThread();
-        render();
+        // Test/debug entry point: always cascade so a manually rendered frame
+        // reflects the latest tree state regardless of the dirty latch.
+        Component.consumeStyleDirty();
+        render(true);
     }
 
     /**
@@ -1312,20 +1337,35 @@ public class Application implements AutoCloseable {
             animationCallback.run();
         }
 
+        // Consume the global style-dirty latch once per frame. The cascade is
+        // much more expensive than painting, so it only re-runs when a
+        // style-affecting mutator fired (setState/setVisible/setEnabled/
+        // addStyleClass/... or a stylesheet/theme swap). While an animation is
+        // running we keep re-cascading as a safety net for custom widgets that
+        // mutate state without going through the framework setters.
+        if (Component.consumeStyleDirty() || animating) {
+            styleDirty = true;
+        }
+
         // Atomically test-and-consume the dirty flag so that a concurrent
         // requestRepaint() landing between the check and render() cannot
         // be lost (volatile read + write alone has a race window).
         final boolean needPaint;
+        final boolean needCascade;
         synchronized (this) {
             needPaint = (paintDirty || animating) && !framebufferDegenerate();
+            needCascade = styleDirty && needPaint;
             if (needPaint) {
                 paintDirty = false;
+            }
+            if (needCascade) {
+                styleDirty = false;
             }
         }
 
         if (needPaint) {
             lastFrameTime = nowSeconds();
-            render();
+            render(needCascade);
             return true;
         }
         return false;
@@ -1352,16 +1392,21 @@ public class Application implements AutoCloseable {
      * loop under the instance monitor (see {@link #run()}); this method also
      * clears it defensively so direct calls from tests ({@link #renderFrame()})
      * and {@link #captureToPng(java.io.File)} behave consistently.
+     *
+     * @param cascade true when the CSS cascade must re-run before painting
+     *                (style-dirty frame); false skips the expensive pass and
+     *                paints with the last computed styles
      */
-    private void render() {
+    private void render(boolean cascade) {
         synchronized (this) {
             paintDirty = false;
         }
 
         // Re-cascade the stylesheet against the current tree state so that
-        // pseudo-classes (:hover, :focus, :disabled, :active) always reflect
-        // live component state before painting.
-        if (styleEngine != null) {
+        // pseudo-classes (:hover, :focus, :disabled, :active) reflect live
+        // component state before painting. Only done on style-dirty frames —
+        // see the styleDirty flag in frameStep().
+        if (styleEngine != null && cascade) {
             styleEngine.apply(rootPanel);
         }
 

@@ -79,6 +79,47 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
+     * Process-wide "style dirty" latch consumed by {@code Application}. The
+     * cascade re-run (stylesheet matching for the whole tree) is far more
+     * expensive than painting, so it must not happen on every frame — only
+     * when something that affects selector matching actually changed: a
+     * pseudo-class state (:hover/:focus/:disabled/:active), visibility,
+     * enabled state, style classes, id, style tag, inline style, or the
+     * stylesheet/theme itself.
+     *
+     * <p>The latch is deliberately global and sticky-true: once any component
+     * invalidates its style, the next cascade pass clears it (see
+     * {@code Application.frameStep()}). A missed reset can only cause one
+     * redundant cascade; a spurious set merely re-cascades, which is always
+     * safe.</p>
+     */
+    private static final java.util.concurrent.atomic.AtomicBoolean globalStyleDirty =
+            new java.util.concurrent.atomic.AtomicBoolean(true);
+
+    /**
+     * Marks the global style cache as dirty so the next frame re-runs the CSS
+     * cascade. Called automatically by every style-affecting mutator
+     * ({@link #setState}, {@link #setVisible}, {@link #setEnabled},
+     * {@link #addStyleClass}, {@link #removeStyleClass}, {@link #setId},
+     * {@link #setStyleTag}, {@link #setInlineStyle}); application code rarely
+     * needs to call it directly.
+     */
+    public static void invalidateStyle() {
+        globalStyleDirty.set(true);
+    }
+
+    /**
+     * Atomically tests and clears the global style-dirty latch. Internal
+     * framework hook used by {@code Application} to decide whether the frame
+     * needs a cascade pass.
+     *
+     * @return true when a cascade pass is required (and consumes the latch)
+     */
+    public static boolean consumeStyleDirty() {
+        return globalStyleDirty.getAndSet(false);
+    }
+
+    /**
      * Default width used when no explicit bounds were provided and layout is
      * free to decide.
      */
@@ -208,6 +249,8 @@ public abstract class Component implements StyleNode, Disposable {
                     if (fm != null) {
                         fm.componentVisibilityChanged(this);
                     }
+                    // Focus loss can change :focus pseudo-class matching.
+                    invalidateStyle();
                     invalidate();
                 }
             });
@@ -237,6 +280,8 @@ public abstract class Component implements StyleNode, Disposable {
                             fm.componentDisabled(this);
                         }
                     }
+                    // :disabled pseudo-class rules depend on this value.
+                    invalidateStyle();
                     invalidate();
                 }
             });
@@ -454,6 +499,8 @@ public abstract class Component implements StyleNode, Disposable {
     public void setStyleTag(String styleTag) {
         this.styleTagOverride = styleTag == null
                 ? null : styleTag.toLowerCase(Locale.ROOT);
+        // Type selectors match on the style tag: re-cascade on the next frame.
+        invalidateStyle();
     }
 
     /**
@@ -466,6 +513,8 @@ public abstract class Component implements StyleNode, Disposable {
         if (className != null && !className.isBlank()
                 && !styleClasses.contains(className)) {
             styleClasses.add(className);
+            // Class selectors depend on this set: re-cascade on the next frame.
+            invalidateStyle();
             invalidate();
         }
     }
@@ -477,6 +526,8 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public void removeStyleClass(String className) {
         if (styleClasses.remove(className)) {
+            // Class selectors depend on this set: re-cascade on the next frame.
+            invalidateStyle();
             invalidate();
         }
     }
@@ -508,6 +559,8 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public void setInlineStyle(Style style) {
         this.inlineStyle = style == null ? Style.EMPTY : style;
+        // Inline declarations sit at the top of the cascade for this node.
+        invalidateStyle();
         invalidate();
     }
 
@@ -957,6 +1010,8 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public void setId(String id) {
         this.id = id;
+        // ID selectors match on this value: re-cascade on the next frame.
+        invalidateStyle();
     }
 
     /**
@@ -976,6 +1031,9 @@ public abstract class Component implements StyleNode, Disposable {
     public void setState(ComponentState state) {
         if (this.state != state) {
             this.state = state;
+            // Pseudo-class rules (:hover, :focus, :disabled, :active) depend
+            // on this value: force a cascade pass on the next frame.
+            invalidateStyle();
             requestRepaint();
         }
     }
@@ -1071,8 +1129,15 @@ public abstract class Component implements StyleNode, Disposable {
         io.github.yasmramos.glyphui.style.Style s = getComputedStyle();
         if (s != null) {
             // Explicit CSS width/height win over the intrinsic preferred size.
-            float explicitW = s.getFloat(io.github.yasmramos.glyphui.style.StyleProperty.WIDTH, -1f);
-            float explicitH = s.getFloat(io.github.yasmramos.glyphui.style.StyleProperty.HEIGHT, -1f);
+            // Percentage declarations arrive as negative fractions (see
+            // CssValues.parseLength) and are resolved against the parent's
+            // content box; px values pass through unchanged.
+            float explicitW = resolveCssLength(s,
+                    io.github.yasmramos.glyphui.style.StyleProperty.WIDTH,
+                    parentAvailableWidth());
+            float explicitH = resolveCssLength(s,
+                    io.github.yasmramos.glyphui.style.StyleProperty.HEIGHT,
+                    parentAvailableHeight());
             if (explicitW >= 0f || explicitH >= 0f) {
                 float w = explicitW >= 0f ? explicitW : getPreferredWidth();
                 float h = explicitH >= 0f ? explicitH : getPreferredHeight();
@@ -1083,6 +1148,77 @@ public abstract class Component implements StyleNode, Disposable {
         float w = Math.min(getPreferredWidth(), sanitize(maxWidth));
         float h = Math.min(getPreferredHeight(), sanitize(maxHeight));
         return new Dimension(w, h);
+    }
+
+    /**
+     * Reads a length style property and resolves percentage-encoded values
+     * (negative fractions produced by
+     * {@link io.github.yasmramos.glyphui.style.CssValues#parseLength(String)})
+     * against the given reference size. Plain pixel values pass through
+     * unchanged; an absent property yields {@code -1f} ("not set"), matching
+     * the sentinel used by {@link #measure(float, float)}.
+     *
+     * @param s         the computed style to read from
+     * @param property  the length property (WIDTH or HEIGHT)
+     * @param available the reference size for percentages (parent content box)
+     * @return resolved pixels, or -1f when the property is not declared
+     */
+    private static float resolveCssLength(io.github.yasmramos.glyphui.style.Style s,
+            io.github.yasmramos.glyphui.style.StyleProperty property, float available) {
+        if (!s.has(property)) {
+            return -1f;
+        }
+        // CssValues is package-private; percentages use the negative-sentinel
+        // encoding documented in CssValues.parseLength, so resolve inline.
+        float parsed = s.getFloat(property, -1f);
+        if (parsed < 0f) {
+            // Percentage sentinel: magnitude is the fraction of `available`.
+            return Math.max(0f, -parsed * Math.max(0f, available));
+        }
+        return parsed;
+    }
+
+    /**
+     * Reference width for resolving percentage lengths: the parent's border-
+     * box width minus its declared horizontal padding, or unbounded when the
+     * component is detached. Mirrors the CSS containing-block rule where a
+     * percentage resolves against the parent content box.
+     *
+     * @return available content width in logical pixels, never negative
+     */
+    private float parentAvailableWidth() {
+        return parentContentSize(true);
+    }
+
+    /**
+     * Height counterpart of {@link #parentAvailableWidth()}.
+     *
+     * @return available content height in logical pixels, never negative
+     */
+    private float parentAvailableHeight() {
+        return parentContentSize(false);
+    }
+
+    /**
+     * Shared implementation for the percentage reference size helpers:
+     * subtracts twice the parent's computed {@code padding} from the requested
+     * dimension. Returns {@link Float#POSITIVE_INFINITY} when there is no
+     * parent (a detached component has no containing block).
+     *
+     * @param widthAxis true for the horizontal axis, false for vertical
+     * @return the parent content size on that axis, never negative
+     */
+    private float parentContentSize(boolean widthAxis) {
+        Panel p = getParent();
+        if (p == null) {
+            return Float.POSITIVE_INFINITY;
+        }
+        io.github.yasmramos.glyphui.style.Style ps = p.getComputedStyle();
+        float pad = ps != null
+                ? ps.getFloat(io.github.yasmramos.glyphui.style.StyleProperty.PADDING, 0f)
+                : 0f;
+        float size = widthAxis ? p.getWidth() : p.getHeight();
+        return Math.max(0f, size - 2f * pad);
     }
 
     /**

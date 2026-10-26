@@ -148,6 +148,13 @@ final class CssValues {
     /**
      * Resolves {@code var(--name, fallback)} occurrences inside a raw value.
      *
+     * <p>Resolution is iterative: a variable whose own value contains another
+     * {@code var(...)} reference (e.g. {@code --a: var(--b)}) is expanded
+     * again until no references remain. A depth cap guards against cyclic
+     * definitions ({@code --a: var(--b); --b: var(--a)}), which stop with the
+     * partially resolved text and an unresolved-variable warning instead of
+     * looping forever.</p>
+     *
      * @param value      the raw declaration text
      * @param variables  known custom properties (without {@code var()} wrapper)
      * @param unresolved collected names of unknown variables (for warnings)
@@ -158,6 +165,29 @@ final class CssValues {
         if (value == null || !value.contains("var(")) {
             return value;
         }
+        // Expand nested/cyclic references iteratively. Each pass rewrites at
+        // least one var() when progress is made; when a pass changes nothing
+        // but var() references remain (cycle), we warn and stop.
+        final int maxDepth = 10;
+        String current = value;
+        for (int pass = 0; pass < maxDepth && current.contains("var("); pass++) {
+            String next = resolveVarsOnce(current, variables, unresolved);
+            if (next.equals(current)) {
+                break; // no progress — remaining refs are cycles; stop safely
+            }
+            current = next;
+        }
+        return current.trim();
+    }
+
+    /**
+     * Single-pass {@code var()} expansion used by
+     * {@link #resolveVars(String, Map, List)}. Handles one level of
+     * substitution; nested references in the substituted values are left for
+     * subsequent passes.
+     */
+    private static String resolveVarsOnce(String value, Map<String, String> variables,
+                                          List<String> unresolved) {
         StringBuilder out = new StringBuilder();
         int i = 0;
         while (i < value.length()) {
@@ -176,7 +206,7 @@ final class CssValues {
                 if (depth > 0) j++;
             }
             String inner = value.substring(start + 4, Math.min(j, value.length()));
-            int comma = inner.indexOf(',');
+            int comma = findTopLevelComma(inner);
             String name = (comma >= 0 ? inner.substring(0, comma) : inner).trim();
             String fallback = comma >= 0 ? inner.substring(comma + 1).trim() : null;
             String resolved = variables.get(name);
@@ -191,6 +221,22 @@ final class CssValues {
             i = Math.min(j + 1, value.length());
         }
         return out.toString().trim();
+    }
+
+    /**
+     * Index of the first comma outside any parentheses — the separator
+     * between a variable name and its fallback in {@code var(--x, red)}.
+     * Returns -1 when there is no top-level comma.
+     */
+    private static int findTopLevelComma(String inner) {
+        int depth = 0;
+        for (int i = 0; i < inner.length(); i++) {
+            char c = inner.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (c == ',' && depth == 0) return i;
+        }
+        return -1;
     }
 
     /**
@@ -281,14 +327,31 @@ final class CssValues {
     }
 
     /**
-     * Parses a length into logical pixels. Only {@code px} and unitless
-     * numbers are accepted (no %, em, rem… in this subset).
+     * Parses a length into logical pixels. Supports {@code px}, unitless
+     * numbers and percentages ({@code 50%}). A percentage is encoded as a
+     * <em>negative</em> float: the magnitude carries the fraction
+     * (e.g. {@code 100% → -1.0f}, {@code 25% → -0.25f}), and the sign marks
+     * it as relative so consumers can resolve it against an available size
+     * via {@link #resolvePercent(float, float)}. Negative lengths are not a
+     * valid layout input anyway, so the sentinel cannot collide with real
+     * values. Other relative units ({@code em}, {@code rem}, {@code vw},
+     * {@code vh}) remain unsupported in this subset.
      *
      * @param value the raw length text
-     * @return float pixels or null
+     * @return float pixels (or a negative fraction for %), or null when
+     *         unparseable
      */
     static Float parseLength(String value) {
         String v = value.trim().toLowerCase(Locale.ROOT);
+        if (v.endsWith("%")) {
+            String num = v.substring(0, v.length() - 1).trim();
+            try {
+                // Encode percentages as negative fractions: 100% -> -1.0f.
+                return -Float.parseFloat(num) / 100f;
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
         if (v.endsWith("px")) {
             v = v.substring(0, v.length() - 2).trim();
         } else if (!v.isEmpty() && !Character.isDigit(v.charAt(0)) && v.charAt(0) != '.'
@@ -300,6 +363,48 @@ final class CssValues {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /**
+     * Resolves a parsed length value against an available reference size.
+     * Percentage-encoded values (negative floats produced by
+     * {@link #parseLength(String)}) become {@code fraction * available};
+     * plain pixel values pass through unchanged. Values that are neither
+     * (unparseable/null handled by callers) return {@code fallback}.
+     *
+     * @param parsed    the value returned by {@link #parseLength(String)}
+     * @param available the reference size to resolve a percentage against
+     *                  (typically the parent's width/height)
+     * @param fallback  returned when {@code parsed} is null
+     * @return the resolved length in logical pixels, never negative
+     */
+    public static float resolvePercent(Float parsed, float available, float fallback) {
+        if (parsed == null) {
+            return fallback;
+        }
+        if (parsed < 0f) {
+            // Percentage sentinel: magnitude is the fraction of `available`.
+            return Math.max(0f, -parsed * Math.max(0f, available));
+        }
+        return parsed;
+    }
+
+    /**
+     * Resolves a percentage-encoded length given as a raw float. Negative
+     * values are treated as the {@link #parseLength(String)} percentage
+     * sentinel (magnitude = fraction of {@code available}); non-negative
+     * values pass through unchanged. Used by cross-package callers that
+     * read already-parsed style properties without holding a boxed Float.
+     *
+     * @param parsed    the parsed length value (pixels or sentinel)
+     * @param available the reference size to resolve a percentage against
+     * @return resolved pixels, never negative
+     */
+    public static float resolvePercent(float parsed, float available) {
+        if (parsed < 0f) {
+            return Math.max(0f, -parsed * Math.max(0f, available));
+        }
+        return parsed;
     }
 
     private static Integer parseFontWeight(String value) {

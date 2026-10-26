@@ -231,16 +231,20 @@ public class FlexLayout extends LayoutManager {
                     crossPos = contentCross(dir, contentX, contentY) + 0;
             }
 
+            // Layout-assigned sizes must NOT mark the component as
+            // explicitly sized: setWidth/setHeight would pin sizeExplicitlySet
+            // = true and override the inline style, so the child could never
+            // be re-measured again (e.g. after Label.setText changes its
+            // preferred size). applyLayoutSize keeps the component
+            // re-measurable on subsequent layout passes.
             if (row) {
                 c.setX(mainPos);
                 c.setY(crossPos);
-                c.setWidth(mainSize);
-                c.setHeight(crossSize);
+                c.applyLayoutSize(mainSize, crossSize);
             } else {
                 c.setX(crossPos);
                 c.setY(mainPos);
-                c.setWidth(crossSize);
-                c.setHeight(mainSize);
+                c.applyLayoutSize(crossSize, mainSize);
             }
             cursor += mainSize + marginEnd[i] + gap + betweenExtra;
         }

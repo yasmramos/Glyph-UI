@@ -84,6 +84,8 @@ public final class StyleEngine {
     public void setStyleSheet(StyleSheet styleSheet) {
         this.styleSheet = styleSheet != null ? styleSheet : StyleSheet.empty();
         this.resolvedCache.clear();
+        // A new sheet changes selector matching for the whole tree.
+        io.github.yasmramos.glyphui.ui.Component.invalidateStyle();
     }
 
     /**

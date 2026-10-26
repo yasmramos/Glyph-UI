@@ -120,6 +120,41 @@ public class TextFieldEditingTest extends TestBase {
     }
 
     @Test
+    public void everyEditingPathFiresOnTextChanged() {
+        // Block-1 regression: typed characters, backspace, delete and cut all
+        // mutate through setTextInternal, so the echo binding in App.java
+        // updates while typing. Previously only setText(text, true) notified.
+        int[] fired = {0};
+        field.setOnTextChanged(() -> fired[0]++);
+        field.setText("", false);
+        fired[0] = 0;
+
+        // Typed character (what onKeyEvent delivers for printable keys).
+        field.insertText("x");
+        assertEquals(1, fired[0], "insertText must notify");
+
+        // Backspace key removes the char before the caret and notifies.
+        field.onKeyEvent(press(KEY_BACKSPACE, '\0'));
+        assertEquals("", field.getText());
+        assertEquals(2, fired[0], "backspace must notify");
+
+        // Re-populate and delete forward with the Delete key.
+        field.setText("ab", false);
+        field.onKeyEvent(press(KEY_HOME, '\0'));
+        fired[0] = 0;
+        field.onKeyEvent(press(KEY_DELETE, '\0'));
+        assertEquals("b", field.getText());
+        assertEquals(1, fired[0], "delete-forward must notify");
+
+        // Cut removes the selection and notifies exactly once.
+        field.selectAll();
+        fired[0] = 0;
+        field.onKeyEvent(press(KEY_X, 'x', KeyModifier.CTRL));
+        assertEquals("", field.getText());
+        assertEquals(1, fired[0], "cut must notify exactly once (no double fire)");
+    }
+
+    @Test
     public void placeholderRoundTripAndNullClears() {
         field.setPlaceholder("Type here");
         assertEquals("Type here", field.getPlaceholder());

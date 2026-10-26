@@ -8,9 +8,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Focused unit tests for the package-private {@link CssValues} value
@@ -63,8 +65,11 @@ class CssValuesTest {
             assertEquals(12f, (Float) CssValues.parse("width", "12", NO_VARS), 1e-6);
             assertEquals(1.5f, (Float) CssValues.parse("font-size", "1.5px", NO_VARS), 1e-6);
             assertEquals(-4f, (Float) CssValues.parse("margin", "-4px", NO_VARS), 1e-6);
+            // Percentages are supported: parseLength encodes them as a
+            // negative fraction sentinel (10% -> -0.1f), resolved later
+            // against the containing block by resolvePercent().
+            assertEquals(-0.1f, (Float) CssValues.parse("padding", "10%", NO_VARS), 1e-6);
             // Unsupported units / keywords are rejected for lengths
-            assertNull(CssValues.parse("padding", "10%", NO_VARS));
             assertNull(CssValues.parse("width", "auto", NO_VARS));
         }
 
@@ -181,6 +186,43 @@ class CssValuesTest {
             assertEquals("1px", out);
         }
 
+        @Test
+        void chainedIndirectVariablesResolveToFinalValue() {
+            // Block 1.5: --a -> var(--b) -> "#f00" must fully expand to
+            // "#f00" in one resolveVars call (multi-pass), not stop at
+            // the intermediate "var(--b)".
+            Map<String, String> vars = Map.of(
+                    "--a", "var(--b)",
+                    "--b", "#f00");
+            String out = CssValues.resolveVars("var(--a)", vars, new ArrayList<>());
+            assertEquals("#f00", out);
+        }
+
+        @Test
+        void deeplyNestedChainResolvesThroughAllLevels() {
+            Map<String, String> vars = Map.of(
+                    "--a", "var(--b)",
+                    "--b", "var(--c)",
+                    "--c", "var(--d)",
+                    "--d", "solid 2px red");
+            String out = CssValues.resolveVars("border: var(--a)", vars, new ArrayList<>())
+                    .replace("border: ", "");
+            assertEquals("solid 2px red", out);
+        }
+
+        @Test
+        void cyclicVariablesTerminateWithoutStackOverflow() {
+            // --a -> var(--b) -> var(--a): the pass limit must break the
+            // cycle and leave the unresolved reference instead of looping.
+            Map<String, String> vars = Map.of(
+                    "--a", "var(--b)",
+                    "--b", "var(--a)");
+            String out = assertDoesNotThrow(
+                    () -> CssValues.resolveVars("var(--a)", vars, new ArrayList<>()));
+            assertTrue(out.contains("var("),
+                    "cycles stop with the var() reference still present");
+        }
+
         private static void assertTrueName(boolean cond, String msg) {
             org.junit.jupiter.api.Assertions.assertTrue(cond, msg);
         }
@@ -285,6 +327,51 @@ class CssValuesTest {
         void emptyStringParsesAsZeroLikeFloatParserFailure() {
             // Float.parseFloat("") throws -> null (documented behavior)
             assertNull(CssValues.parseLength(""));
+        }
+
+        @Test
+        void percentagesParseAsNegativeFractionSentinel() {
+            // 100% -> -1.0f, 25% -> -0.25f: the negative sign marks the value
+            // as relative; consumers resolve it via resolvePercent().
+            assertEquals(-1.0f, CssValues.parseLength("100%"), 1e-6);
+            assertEquals(-0.25f, CssValues.parseLength("25%"), 1e-6);
+            assertEquals(-0.5f, CssValues.parseLength(" 50 % "), 1e-6);
+            assertEquals(0f, CssValues.parseLength("0%"), 1e-6);
+        }
+
+        @Test
+        void badPercentagesRejected() {
+            assertNull(CssValues.parseLength("abc%"));
+            assertNull(CssValues.parseLength("%"));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // resolvePercent() — percentage resolution against a reference size
+    // ------------------------------------------------------------------
+
+    @Nested
+    class ResolvePercent {
+
+        @Test
+        void pixelValuesPassThroughUnchanged() {
+            assertEquals(42f, CssValues.resolvePercent(42f, 200f, -1f), 1e-6);
+            assertEquals(0f, CssValues.resolvePercent(0f, 200f, -1f), 1e-6);
+        }
+
+        @Test
+        void percentSentinelsResolveAgainstAvailableSize() {
+            // width: 100% inside a 300px parent content box -> 300px.
+            assertEquals(300f,
+                    CssValues.resolvePercent(CssValues.parseLength("100%"), 300f, -1f), 1e-6);
+            assertEquals(75f,
+                    CssValues.resolvePercent(CssValues.parseLength("25%"), 300f, -1f), 1e-6);
+        }
+
+        @Test
+        void resultsAreClampedToNonNegativeAndNullUsesFallback() {
+            assertEquals(0f, CssValues.resolvePercent(-1f, -50f, -1f), 1e-6);
+            assertEquals(-1f, CssValues.resolvePercent(null, 300f, -1f), 1e-6);
         }
     }
 }

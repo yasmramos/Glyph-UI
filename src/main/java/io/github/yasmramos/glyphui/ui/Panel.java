@@ -87,19 +87,18 @@ public class Panel extends Component {
     }
 
     /**
-     * Removes a child component from this panel. The component is detached
-     * (parent cleared) and then closed so nested widgets release their native
-     * resources; removal itself does not destroy the component, and it may be
-     * re-added to any panel afterwards. Removing a component that is not a
-     * child of this panel is a no-op.
+     * Removes a child component from this panel. The component is only
+     * detached (parent cleared) — it is NOT closed or disposed, so it stays
+     * fully usable and may be re-added to any panel afterwards (this is what
+     * makes {@link #add(Component)} reparenting work). Removing a component
+     * that is not a child of this panel is a no-op. Use
+     * {@link #removeAndDispose(Component)} when you want destructive removal.
      *
      * @param component the component to remove
      */
     public void remove(Component component) {
         if (children.remove(component)) {
-            try (component) {
-                component.setParent(null);
-            }
+            component.setParent(null);
         }
         // Same single-invalidation path as add(): markLayoutDirty() already
         // requests the repaint through this subtree.
@@ -107,15 +106,58 @@ public class Panel extends Component {
     }
 
     /**
-     * Removes all child components from this panel, closing each one.
+     * Removes a child component from this panel AND disposes it, releasing
+     * its native resources. After this call the component must not be reused.
+     * Removing a component that is not a child of this panel is a no-op.
+     *
+     * @param component the component to remove and dispose
+     */
+    public void removeAndDispose(Component component) {
+        if (children.remove(component)) {
+            component.setParent(null);
+            component.dispose();
+        }
+        markLayoutDirty();
+    }
+
+    /**
+     * Removes all child components from this panel without disposing them;
+     * every detached child may be re-added to any panel afterwards.
      */
     public void clear() {
         for (Component child : children) {
             child.setParent(null);
-            child.close();
         }
         children.clear();
         markLayoutDirty();
+    }
+
+    /**
+     * Removes all child components from this panel and disposes each one,
+     * releasing their native resources. After this call the removed children
+     * must not be reused. Prefer {@link #clear()} when the children might be
+     * re-parented later.
+     */
+    public void clearAndDispose() {
+        List<Component> snapshot = new ArrayList<>(children);
+        children.clear();
+        RuntimeException failure = null;
+        for (Component child : snapshot) {
+            child.setParent(null);
+            try {
+                child.dispose();
+            } catch (RuntimeException e) {
+                if (failure == null) {
+                    failure = e;
+                } else {
+                    failure.addSuppressed(e);
+                }
+            }
+        }
+        markLayoutDirty();
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     /**

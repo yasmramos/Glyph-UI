@@ -126,4 +126,61 @@ class SelectorTest {
         assertTrue(Selector.parse("div.card > .primary").matches(p));
         assertFalse(Selector.parse("div.other > button#submit").matches(p));
     }
+
+    // ------------------------------------------------------------------
+    // Universal selector "*" (Block 1.7)
+    // ------------------------------------------------------------------
+
+    @Test
+    void universalSelectorParsesWithoutException() {
+        assertDoesNotThrow(() -> Selector.parse("*"));
+        assertDoesNotThrow(() -> Selector.parse("*.big"));
+        assertDoesNotThrow(() -> Selector.parse("panel > *"));
+        assertDoesNotThrow(() -> Selector.parse("*:hover"));
+    }
+
+    @Test
+    void universalSelectorMatchesAnyTag() {
+        Selector sel = Selector.parse("*");
+        assertTrue(sel.matches(path("button")),
+                "\"*\" must match any single element");
+        assertTrue(sel.matches(path("panel", "label")),
+                "\"*\" must match the last node of any path");
+        assertTrue(sel.matches(path("whatever-weird-tag", "x", "y")));
+    }
+
+    @Test
+    void universalCompoundRequiresClassOnAnyTag() {
+        List<StyleNode> p = List.of(
+                new FakeNode("anything", "", List.of("big")),
+                new FakeNode("other", "", List.of("small")));
+        assertTrue(Selector.parse("*.big").matches(List.of(p.get(0))),
+                "*.big matches any tag carrying class 'big'");
+        assertFalse(Selector.parse("*.big").matches(List.of(p.get(1))),
+                "*.big must not match without the class");
+    }
+
+    @Test
+    void universalAsDescendantOrChildTargetMatchesEveryElement() {
+        // "panel > *" targets every direct child of a panel.
+        Selector child = Selector.parse("panel > *");
+        assertTrue(child.matches(path("panel", "button")));
+        assertTrue(child.matches(path("panel", "label")));
+        assertFalse(child.matches(path("frame", "button")),
+                "ancestor constraint still applies to '*'");
+
+        // "panel *" targets every descendant of a panel.
+        Selector desc = Selector.parse("panel *");
+        assertTrue(desc.matches(path("panel", "box", "button")));
+    }
+
+    @Test
+    void universalSelectorContributesZeroTypeSpecificity() {
+        // Per CSS, "*" adds nothing to specificity; a bare type selector
+        // (0,0,1) must outrank it (0,0,0).
+        int starSpec = Selector.parse("*").getSpecificity()[2];
+        int typeSpec = Selector.parse("button").getSpecificity()[2];
+        assertEquals(0, starSpec, "\"*\" must contribute zero type specificity");
+        assertEquals(1, typeSpec, "a type selector contributes one element");
+    }
 }
