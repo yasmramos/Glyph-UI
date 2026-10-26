@@ -90,6 +90,13 @@ public class Canvas {
      * Installs (or clears, with {@code null}) the static hook consulted by
      * newly constructed wrappers to obtain their thread-affinity target.
      *
+     * <p><b>Design note (Block 4 item 4.1):</b> this process-wide hook assumes
+     * one active application per process and acts as the fallback for wrappers
+     * created without an explicit owner. Wrappers produced through an
+     * {@code Application}'s own surface APIs capture that app directly; when
+     * several apps coexist, construct canvases from the owning app rather than
+     * depending on whichever app last installed the hook.</p>
+     *
      * @param supplier returns the application to bind new wrappers to, or null
      */
     public static void setThreadCheckOwner(Supplier<Application> supplier) {

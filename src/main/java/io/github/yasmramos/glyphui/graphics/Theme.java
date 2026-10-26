@@ -103,6 +103,16 @@ public final class Theme {
     /**
      * Gets the currently installed global theme.
      *
+     * <p><b>Design note (Block 4 item 4.1):</b> this is a process-wide
+     * singleton kept as a compatibility fallback. Multi-app scenarios, theme
+     * previews and embeddings should not mutate it; instead resolve the theme
+     * from the owning context — an {@code Application} instance carries its
+     * own installed theme, and widgets reached through a component tree
+     * should read it via their app rather than calling {@code current()}.
+     * New code that needs per-context theming must thread an explicit
+     * theme/app context through the tree and use this method only when no
+     * context is available.</p>
+     *
      * @return the current theme (never null)
      */
     public static Theme current() {
@@ -110,7 +120,11 @@ public final class Theme {
     }
 
     /**
-     * Installs a theme as the process-wide current theme.
+     * Installs a theme as the process-wide current theme. Prefer installing a
+     * theme on a specific {@code Application} when multiple apps or preview
+     * surfaces coexist in one JVM (see {@link #current()} for the Block 4
+     * design note); this global setter exists so single-app processes keep a
+     * simple entry point.
      *
      * @param theme the theme to install (null restores the dark default)
      */
