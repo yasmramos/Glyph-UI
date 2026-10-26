@@ -47,9 +47,16 @@ public final class Property<T> {
     /**
      * Creates a property with an initial value.
      *
+     * <p>The application reference is resolved <em>dynamically</em>: when
+     * {@code application} is {@code null} (headless tests, widgets built
+     * before any {@link Application} exists), every {@link #set(Object)}
+     * consults {@link Application#getCurrent()} at call time instead of
+     * freezing a capture made here. Marshalling therefore works even for
+     * properties constructed outside the UI lifecycle.</p>
+     *
      * @param application the owning application (used for thread marshalling);
-     *                    may be {@code null} in headless/test contexts, in
-     *                    which case cross-thread sets apply directly
+     *                    may be {@code null} to fall back to the current
+     *                    application on each set
      * @param initialValue the starting value
      * @param onChange     hook invoked with the new value on the UI thread
      *                     whenever it actually changes; may be {@code null}

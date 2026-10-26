@@ -106,7 +106,7 @@ public abstract class Component implements StyleNode, Disposable {
      * {@link #setStyleTag}, {@link #setInlineStyle}); application code rarely
      * needs to call it directly.
      */
-    public static void invalidateStyle() {
+    public static void invalidateStyle() { // NOPMD - static latch kept for API compatibility; see invalidateStyleAndRelayout()
         globalStyleDirty.set(true);
     }
 
@@ -161,6 +161,17 @@ public abstract class Component implements StyleNode, Disposable {
      */
     protected boolean sizeExplicitlySet;
 
+    /**
+     * Whether <em>this component instance</em> was constructed with explicit
+     * bounds. Unlike {@link #sizeExplicitlySet} (which flips to true whenever
+     * {@code setWidth}/{@code setHeight} runs), this flag is final-by-
+     * construction and lets subclasses distinguish "the user pinned my size"
+     * from "my container's layout manager assigned me these bounds". Panels
+     * use it in {@code measure()} to decide whether content-based sizing via
+     * the layout manager still applies.
+     */
+    private final boolean ctorSizeExplicit;
+
     // --- Observable properties (lazily created, marshalled via Application.invokeLater) ---
     private Property<Float> xProperty;
     private Property<Float> yProperty;
@@ -170,26 +181,27 @@ public abstract class Component implements StyleNode, Disposable {
     private Property<Boolean> enabledProperty;
 
     /**
-     * Applies a user-set width: marks bounds as explicit, syncs the inline
-     * style and triggers a single invalidation. The repaint is requested
-     * exactly once through {@link #invalidate()}, which propagates up the
-     * parent chain and reaches the application requester at the root.
+     * Property hook: applies a user-set width, marks bounds as explicit and
+     * requests a relayout. Package-private so {@code Panel} can install the
+     * same property without re-marking the bounds flag (it only needs to add
+     * the layout-dirty step on top).
      */
-    private void applyWidthExplicit(float newWidth) {
+    void applyWidthExplicit(float newWidth) {
         this.width = newWidth;
         this.sizeExplicitlySet = true;
         applyExplicitSize();
-        invalidate();
+        invalidateLayout();
     }
 
     /**
-     * Applies a user-set height: same single-repaint path as width.
+     * Property hook: applies a user-set height; same single-repaint path as
+     * {@link #applyWidthExplicit(float)}.
      */
-    private void applyHeightExplicit(float newHeight) {
+    void applyHeightExplicit(float newHeight) {
         this.height = newHeight;
         this.sizeExplicitlySet = true;
         applyExplicitSize();
-        invalidate();
+        invalidateLayout();
     }
 
     /**
@@ -200,7 +212,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> xProperty() {
         if (xProperty == null) {
-            xProperty = new Property<>(Application.getCurrent(), x, v -> { this.x = v; invalidate(); });
+            xProperty = new Property<>(null, x, v -> { this.x = v; invalidate(); });
         }
         return xProperty;
     }
@@ -212,7 +224,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> yProperty() {
         if (yProperty == null) {
-            yProperty = new Property<>(Application.getCurrent(), y, v -> { this.y = v; invalidate(); });
+            yProperty = new Property<>(null, y, v -> { this.y = v; invalidate(); });
         }
         return yProperty;
     }
@@ -228,7 +240,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> widthProperty() {
         if (widthProperty == null) {
-            widthProperty = new Property<>(Application.getCurrent(), width, this::applyWidthExplicit);
+            widthProperty = new Property<>(null, width, this::applyWidthExplicit);
         }
         return widthProperty;
     }
@@ -242,7 +254,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> heightProperty() {
         if (heightProperty == null) {
-            heightProperty = new Property<>(Application.getCurrent(), height, this::applyHeightExplicit);
+            heightProperty = new Property<>(null, height, this::applyHeightExplicit);
         }
         return heightProperty;
     }
@@ -254,7 +266,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Boolean> visibleProperty() {
         if (visibleProperty == null) {
-            visibleProperty = new Property<>(Application.getCurrent(), visible, v -> {
+            visibleProperty = new Property<>(null, visible, v -> {
                 if (this.visible != v) {
                     this.visible = v;
                     // A hidden widget cannot keep the keyboard focus.
@@ -263,8 +275,7 @@ public abstract class Component implements StyleNode, Disposable {
                         fm.componentVisibilityChanged(this);
                     }
                     // Focus loss can change :focus pseudo-class matching.
-                    invalidateStyle();
-                    invalidate();
+                    invalidateStyleAndRelayout();
                 }
             });
         }
@@ -278,7 +289,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Boolean> enabledProperty() {
         if (enabledProperty == null) {
-            enabledProperty = new Property<>(Application.getCurrent(), enabled, v -> {
+            enabledProperty = new Property<>(null, enabled, v -> {
                 if (this.enabled != v) {
                     this.enabled = v;
                     if (!v) {
@@ -294,8 +305,7 @@ public abstract class Component implements StyleNode, Disposable {
                         }
                     }
                     // :disabled pseudo-class rules depend on this value.
-                    invalidateStyle();
-                    invalidate();
+                    invalidateStyleAndRelayout();
                 }
             });
         }
@@ -336,6 +346,21 @@ public abstract class Component implements StyleNode, Disposable {
      * Number of times invalidate() has been called on this component.
      */
     private int invalidateCount;
+
+    /**
+     * Set by {@link #invalidateLayout()} / {@link #invalidateStyle()}: the
+     * nearest ancestor panel must re-run its layout manager before the next
+     * paint, because something that affects geometry changed (a preferred
+     * size, the layout configuration, or a cascaded length property).
+     */
+    private boolean layoutDirty;
+
+    /**
+     * Set by {@link #invalidateStyle()}: the CSS cascade must re-run for this
+     * subtree before it is painted again (in addition to the global latch
+     * consumed by {@code Application}).
+     */
+    private boolean styleDirty;
 
     // ------------------------------------------------------------------
     // Style subsystem hooks (CSS subset)
@@ -403,6 +428,8 @@ public abstract class Component implements StyleNode, Disposable {
     protected Component() {
         this(0, 0, 0, 0);
         this.sizeExplicitlySet = false;
+        // The delegating constructor above sets the flag to true; a no-bounds
+        // construction is by definition content-sized.
     }
 
     public Component(float width, float height) {
@@ -429,6 +456,7 @@ public abstract class Component implements StyleNode, Disposable {
         this.id = "component_" + ID_COUNTER.incrementAndGet();
         this.state = ComponentState.IDLE;
         this.sizeExplicitlySet = true;
+        this.ctorSizeExplicit = true;
     }
 
     /**
@@ -441,20 +469,113 @@ public abstract class Component implements StyleNode, Disposable {
      * <p>
      * All visual mutators ({@code setText}, {@code setWidth},
      * {@code setVisible}, ...) call this automatically.</p>
+     *
+     * <p><strong>Invalidation kinds.</strong> This method is the full-power
+     * invalidation: it schedules a repaint and flushes any pending layout /
+     * style requests accumulated along the propagation path. Mutators that
+     * know <em>what</em> they changed should express that intent through the
+     * narrower entry points instead:</p>
+     * <ul>
+     * <li>{@link #invalidatePaint()} — only pixels changed (same geometry,
+     * same styles); cheapest request.</li>
+     * <li>{@link #invalidateLayout()} — the preferred size changed; the
+     * nearest ancestor panels re-run their layout managers before painting.</li>
+     * <li>{@link #invalidateStyle()} — selector-relevant state changed
+     * (pseudo-classes, classes, id, tag, inline style); forces a cascade pass
+     * plus a relayout, because cascaded length properties can move pixels.</li>
+     * </ul>
+     * <p>All three currently converge on this method for the actual repaint
+     * bookkeeping; keeping them as distinct entry points preserves the
+     * caller's intent so finer-grained dirty tracking can be added later
+     * without touching widget code again.</p>
      */
     public void invalidate() {
         invalidateCount++;
+        // Flush per-component requests at every node of the propagation path,
+        // including the component itself when it is a Panel: an attached child
+        // must be able to dirty its direct parent's layout flag, not only the
+        // grandparent chain. Doing this before walking up keeps the flags set
+        // even when no repaint requester is installed (headless tests).
+        flushInvalidationRequests();
         Panel p = parent;
         if (p != null) {
             // Propagate upward through the tree until the root is reached
             p.invalidate();
         } else {
-            // Root of the tree: ask the application to repaint
+            // Ask the application to repaint
             RepaintRequester requester = globalRepaintRequester;
             if (requester != null) {
                 requester.requestRepaint();
             }
         }
+    }
+
+    /**
+     * Drains this component's pending layout/style invalidation flags into the
+     * appropriate sinks: the style request goes to the global cascade latch,
+     * and a layout request marks the nearest ancestor panel (or this component
+     * itself when it is a panel) as needing a relayout. Called from
+     * {@link #invalidate()} at each node along the propagation path.
+     */
+    private void flushInvalidationRequests() {
+        if (styleDirty) {
+            styleDirty = false;
+            Component.invalidateStyle();
+        }
+        if (layoutDirty && !(this instanceof Panel)) {
+            // Children propagate their relayout request to the direct parent.
+            // A Panel's own flag is consumed by doLayout(), so flushing it
+            // here would clear a freshly-set structural request before the
+            // paint pass ever sees it; panels keep and drain the flag locally.
+            // A detached component has no panel to dirty: the flag stays set
+            // until the next propagation after it is added to a tree.
+            Panel p = parent;
+            if (p != null) {
+                p.markLayoutDirty();
+            }
+        }
+    }
+
+    /**
+     * Requests a repaint only. Use for mutations that change how the component
+     * looks without affecting its size or the CSS cascade result (e.g. a
+     * layout-assigned bounds change, an internal animation frame).
+     */
+    protected void invalidatePaint() {
+        invalidate();
+    }
+
+    /**
+     * Requests a relayout of the containing panels plus a repaint. Use for
+     * mutations that change the component's preferred size (text content,
+     * image source) so ancestors get a chance to resize siblings around it.
+     */
+    protected void invalidateLayout() {
+        // Set the flag first: invalidate() flushes pending requests at every
+        // node of the propagation path (including this component). Flushing
+        // before setting would drain the fresh flag on a leaf component that
+        // has no parent to receive it, losing the relayout request entirely.
+        layoutDirty = true;
+        invalidate();
+    }
+
+    /**
+     * Requests a CSS re-cascade plus a relayout and repaint. Use for
+     * mutations that change selector-relevant state (pseudo-class state,
+     * style classes, id, style tag, inline style): cascaded values may
+     * include lengths, so a style change must also re-measure the subtree.
+     *
+     * <p>Instance variant of the static {@link #invalidateStyle()} latch:
+     * besides setting the global "cascade needed" flag, it marks the ancestor
+     * chain layout-dirty so geometry reacts to the new computed values.</p>
+     */
+    protected void invalidateStyleAndRelayout() {
+        // Same flag-before-flush ordering as invalidateLayout(): the style
+        // latch and the layout request must survive the drain performed by
+        // invalidate() at this node.
+        styleDirty = true;
+        layoutDirty = true;
+        invalidate();
     }
 
     /**
@@ -513,7 +634,7 @@ public abstract class Component implements StyleNode, Disposable {
         this.styleTagOverride = styleTag == null
                 ? null : styleTag.toLowerCase(Locale.ROOT);
         // Type selectors match on the style tag: re-cascade on the next frame.
-        invalidateStyle();
+        invalidateStyleAndRelayout();
     }
 
     /**
@@ -527,8 +648,7 @@ public abstract class Component implements StyleNode, Disposable {
                 && !styleClasses.contains(className)) {
             styleClasses.add(className);
             // Class selectors depend on this set: re-cascade on the next frame.
-            invalidateStyle();
-            invalidate();
+            invalidateStyleAndRelayout();
         }
     }
 
@@ -540,8 +660,7 @@ public abstract class Component implements StyleNode, Disposable {
     public void removeStyleClass(String className) {
         if (styleClasses.remove(className)) {
             // Class selectors depend on this set: re-cascade on the next frame.
-            invalidateStyle();
-            invalidate();
+            invalidateStyleAndRelayout();
         }
     }
 
@@ -573,8 +692,7 @@ public abstract class Component implements StyleNode, Disposable {
     public void setInlineStyle(Style style) {
         this.inlineStyle = style == null ? Style.EMPTY : style;
         // Inline declarations sit at the top of the cascade for this node.
-        invalidateStyle();
-        invalidate();
+        invalidateStyleAndRelayout();
     }
 
     /**
@@ -906,7 +1024,9 @@ public abstract class Component implements StyleNode, Disposable {
             changed = true;
         }
         if (changed) {
-            requestRepaint();
+            // Layout-assigned bounds: repaint only. Requesting a relayout
+            // here would make the layout pass dirty its own input and loop.
+            invalidatePaint();
         }
     }
 
@@ -920,6 +1040,19 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public boolean isSizeExplicitlySet() {
         return sizeExplicitlySet;
+    }
+
+    /**
+     * Whether this component instance was <em>constructed</em> with explicit
+     * bounds (as opposed to having its size assigned later by a layout
+     * manager or by {@code setWidth}/{@code setHeight}). Package-private
+     * instrumentation used by {@code Panel.measure} to keep content-based
+     * sizing working for panels that an outer layout resizes.
+     *
+     * @return true when the bounds-carrying constructor pinned this size
+     */
+    boolean isCtorSizeExplicit() {
+        return ctorSizeExplicit;
     }
 
     /**
@@ -1039,7 +1172,7 @@ public abstract class Component implements StyleNode, Disposable {
     public void setId(String id) {
         this.id = id;
         // ID selectors match on this value: re-cascade on the next frame.
-        invalidateStyle();
+        invalidateStyleAndRelayout();
     }
 
     /**
@@ -1060,9 +1193,9 @@ public abstract class Component implements StyleNode, Disposable {
         if (this.state != state) {
             this.state = state;
             // Pseudo-class rules (:hover, :focus, :disabled, :active) depend
-            // on this value: force a cascade pass on the next frame.
-            invalidateStyle();
-            requestRepaint();
+            // on this value: force a cascade pass plus relayout on the next
+            // frame, since :hover/:active rules may carry lengths.
+            invalidateStyleAndRelayout();
         }
     }
 
@@ -1154,6 +1287,22 @@ public abstract class Component implements StyleNode, Disposable {
      * @return the measured dimension, never negative
      */
     public Dimension measure(float maxWidth, float maxHeight) {
+        return measureBase(maxWidth, maxHeight);
+    }
+
+    /**
+     * Base measurement logic shared by every component: explicit CSS bounds
+     * (with percentage resolution against the parent content box) win over
+     * the intrinsic preferred size, which is clamped to the constraints.
+     * Subclasses that customize measurement override {@link #measure} and can
+     * call this through {@code super.measure(...)}; layout managers reach it
+     * via {@link #measureContent}.
+     *
+     * @param maxWidth the maximum available width
+     * @param maxHeight the maximum available height
+     * @return the measured dimension
+     */
+    final Dimension measureBase(float maxWidth, float maxHeight) {
         io.github.yasmramos.glyphui.style.Style s = getComputedStyle();
         if (s != null) {
             // Explicit CSS width/height win over the intrinsic preferred size.
@@ -1204,6 +1353,41 @@ public abstract class Component implements StyleNode, Disposable {
             return Math.max(0f, -parsed * Math.max(0f, available));
         }
         return parsed;
+    }
+
+    /**
+     * Plain component measurement path, bypassing any layout manager. Used by
+     * {@link io.github.yasmramos.glyphui.layout.LayoutManager#measure} default
+     * implementations so a panel can be sized exactly like a leaf component
+     * (explicit CSS bounds or the preferred-size defaults) even when
+     * {@code Panel.measure} delegates to its layout manager.
+     *
+     * @param maxWidth  maximum available width
+     * @param maxHeight maximum available height
+     * @return the measured dimension
+     */
+    public final Dimension measureContent(float maxWidth, float maxHeight) {
+        // Virtual dispatch: when this component is a Panel whose measure()
+        // delegates to its layout manager, children must see the content
+        // size (not the raw 150x40 defaults). When invoked on a plain
+        // Component (or a panel with an explicit/CSS size, where
+        // Panel.measure already takes the super path) this is identical to
+        // the base measurement.
+        return measure(maxWidth, maxHeight);
+    }
+
+    /**
+     * Bridge to the base {@link Component#measure(float, float)} for subclasses
+     * that override {@code measure} and still need the plain behavior (e.g.
+     * {@code Panel} delegating to its layout manager). Package-private on
+     * purpose: application code should call {@code measure}.
+     *
+     * @param maxWidth  maximum available width
+     * @param maxHeight maximum available height
+     * @return the measured dimension
+     */
+    Dimension superMeasure(float maxWidth, float maxHeight) {
+        return measureBase(maxWidth, maxHeight);
     }
 
     /**

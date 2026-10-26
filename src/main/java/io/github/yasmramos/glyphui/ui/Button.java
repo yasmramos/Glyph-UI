@@ -189,10 +189,11 @@ public class Button extends Component {
      */
     public Property<String> textProperty() {
         if (textProperty == null) {
-            textProperty = new Property<>(Application.getCurrent(), text, newText -> {
+            textProperty = new Property<>(null, text, newText -> {
                 this.text = newText;
                 invalidateMeasureCache();
-                requestRepaint();
+                // Caption metrics feed getPreferredWidth(): relayout upward.
+                invalidateLayout();
             });
         }
         return textProperty;

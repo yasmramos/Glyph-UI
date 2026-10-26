@@ -8,6 +8,7 @@ import io.github.humbleui.skija.Paint;
 import io.github.yasmramos.glyphui.core.FocusManager;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleProperty;
@@ -21,6 +22,15 @@ public class Panel extends Component {
     protected LayoutManager layoutManager;
     protected boolean layoutDirty;
     protected int backgroundColor;
+
+    /**
+     * Set once the user calls {@code setWidth}/{@code setHeight} on this
+     * panel. Combined with the constructor flag (see
+     * {@code Component.isCtorSizeExplicit}) it defines "user-pinned size" for
+     * {@code Panel.measure}, distinguishing direct user mutations from bounds
+     * assigned by an outer layout manager through {@code applyLayoutSize}.
+     */
+    private boolean userSetSize;
 
     /**
      * Reusable background paint, created lazily on first render and closed in
@@ -51,6 +61,38 @@ public class Panel extends Component {
     }
 
     /**
+     * Measures the panel. A size pinned by this panel's own constructor or by
+     * a direct {@code setWidth}/{@code setHeight} call always wins (plain
+     * component path), as does any explicit CSS width/height declaration;
+     * otherwise, when a layout manager is attached, the layout decides the
+     * preferred size from the arranged content. Bounds assigned by an outer
+     * layout manager (via {@code applyLayoutSize}) do <em>not</em> count as
+     * user-explicit, so nested panels keep reporting their content size.
+     */
+    @Override
+    public Dimension measure(float maxWidth, float maxHeight) {
+        Style s = getComputedStyle();
+        boolean cssSize = s != null
+                && (s.has(StyleProperty.WIDTH) || s.has(StyleProperty.HEIGHT));
+        if (layoutManager == null || cssSize || isUserSizeExplicit()) {
+            return super.measure(maxWidth, maxHeight);
+        }
+        return layoutManager.measure(this, maxWidth, maxHeight);
+    }
+
+    /**
+     * Whether the user pinned this panel's size: either through a bounds-
+     * carrying constructor or through a later {@code setWidth}/{@code
+     * setHeight} call. Layout-assigned bounds are excluded on purpose — they
+     * must not disable content-based measurement (Block 3 item 3.2).
+     *
+     * @return true when {@code measure} must take the plain component path
+     */
+    private boolean isUserSizeExplicit() {
+        return isCtorSizeExplicit() || userSetSize;
+    }
+
+    /**
      * Panels are the generic container element, equivalent to HTML {@code div}.
      */
     @Override
@@ -78,12 +120,11 @@ public class Panel extends Component {
         }
         children.add(component);
         component.setParent(this);
-        // Single invalidation for the whole mutation: markLayoutDirty()
-        // already routes requestRepaint() -> invalidate() through this
-        // subtree. Calling invalidate() again here double-counted every
-        // structural change (and would have been copied into the next 45
-        // widgets).
-        markLayoutDirty();
+        // Structural mutation on THIS panel: flag the layout dirty and run
+        // one full invalidation (repaint + ancestor propagation). The local
+        // flag is set before invalidate() so the generic upward flush does
+        // not double-request; see markLayoutDirtyAndInvalidate().
+        markLayoutDirtyAndInvalidate();
     }
 
     /**
@@ -100,9 +141,8 @@ public class Panel extends Component {
         if (children.remove(component)) {
             component.setParent(null);
         }
-        // Same single-invalidation path as add(): markLayoutDirty() already
-        // requests the repaint through this subtree.
-        markLayoutDirty();
+        // Same single-invalidation path as add().
+        markLayoutDirtyAndInvalidate();
     }
 
     /**
@@ -117,7 +157,7 @@ public class Panel extends Component {
             component.setParent(null);
             component.dispose();
         }
-        markLayoutDirty();
+        markLayoutDirtyAndInvalidate();
     }
 
     /**
@@ -129,7 +169,7 @@ public class Panel extends Component {
             child.setParent(null);
         }
         children.clear();
-        markLayoutDirty();
+        markLayoutDirtyAndInvalidate();
     }
 
     /**
@@ -154,7 +194,7 @@ public class Panel extends Component {
                 }
             }
         }
-        markLayoutDirty();
+        markLayoutDirtyAndInvalidate();
         if (failure != null) {
             throw failure;
         }
@@ -212,12 +252,59 @@ public class Panel extends Component {
 
     /**
      * Marks the layout as dirty, triggering a relayout on next render. Also
-     * requests a repaint so the application re-renders when the layout result
-     * changes the visual tree (on-demand rendering).
+     * flushes any pending invalidation intent accumulated on this panel (see
+     * {@code Component.invalidate()}): without the flush, a flag set by an
+     * upward propagation could linger forever when nothing else repaints the
+     * tree under on-demand rendering.
      */
-    protected void markLayoutDirty() {
+    public void markLayoutDirty() {
+        // Pure flag-setter by design: layout managers reach this from inside
+        // the paint pass (doLayout), where requesting a repaint would recurse
+        // into the invalidation chain. The current frame continues normally;
+        // the flag guarantees the layout runs before the next paint. External
+        // mutators that also need a repaint go through invalidateLayout().
         layoutDirty = true;
-        requestRepaint();
+    }
+
+    /**
+     * Marks this panel's layout dirty AND requests a repaint for the whole
+     * tree, without running the generic upward flush in
+     * {@link Component#invalidate()} first.
+     *
+     * <p>This is the correct entry point for structural mutations made
+     * directly on a panel ({@code add}/{@code remove}/{@code clear}): there
+     * is no child component whose per-instance dirty flags need flushing, so
+     * setting the local flag and calling {@code invalidate()} keeps exactly
+     * one repaint request while still propagating to ancestors.</p>
+     */
+    private void markLayoutDirtyAndInvalidate() {
+        layoutDirty = true;
+        invalidate();
+    }
+
+    /**
+     * Marks the layout dirty and requests a repaint through the full
+     * invalidation chain (ancestors up to the root plus the application
+     * repaint hook). Public counterpart of the protected
+     * {@code Component.invalidateLayout()} for callers outside the
+     * {@code ui} package — notably {@link LayoutManager#notifyOwner()},
+     * which must make a layout-configuration change visible immediately
+     * instead of only flagging the panel locally.
+     */
+    public void invalidateLayoutTree() {
+        layoutDirty = true;
+        invalidate();
+    }
+
+    /**
+     * Whether the next paint of this panel requires running its layout
+     * manager. Internal instrumentation hook for tests (see
+     * {@code Component.getInvalidateCount()} for the boundary policy).
+     *
+     * @return true when a relayout is pending
+     */
+    boolean isLayoutDirty() {
+        return layoutDirty;
     }
 
     /**
@@ -272,9 +359,22 @@ public class Panel extends Component {
      * @param layoutManager the layout manager to set
      */
     public void setLayoutManager(LayoutManager layoutManager) {
+        // Detach the previous manager first so its config setters stop
+        // notifying this panel, then attach the new one.
+        if (this.layoutManager != null && this.layoutManager != layoutManager) {
+            this.layoutManager.attach(null);
+        }
         this.layoutManager = layoutManager;
+        if (layoutManager != null) {
+            layoutManager.attach(this);
+        }
         if (layoutManager != null && !children.isEmpty()) {
-            doLayout();
+            // Explicit eager pass: callers expect positions to be updated
+            // right after wiring a layout manager (historical contract).
+            // The flag is cleared because doLayout() only runs when dirty,
+            // and an upcoming add()/render() would otherwise re-run it.
+            layoutManager.layout(this);
+            layoutDirty = false;
         }
     }
 
@@ -297,6 +397,7 @@ public class Panel extends Component {
         boolean changed = this.width != width;
         if (changed) {
             layoutDirty = true;
+            userSetSize = true;
         }
         super.setWidth(width);
     }
@@ -308,6 +409,7 @@ public class Panel extends Component {
         boolean changed = this.height != height;
         if (changed) {
             layoutDirty = true;
+            userSetSize = true;
         }
         super.setHeight(height);
     }
