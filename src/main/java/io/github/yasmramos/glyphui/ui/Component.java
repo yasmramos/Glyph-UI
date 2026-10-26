@@ -746,6 +746,13 @@ public abstract class Component implements StyleNode, Disposable {
                 height = inlineH;
             }
         }
+        // Single-writer rule for WIDTH/HEIGHT in the inline layer (Block 4
+        // item 4.10): after adopting any inline size declarations above, fold
+        // the authoritative explicit size back on top so the fields and the
+        // computed inline WIDTH/HEIGHT never disagree (a replacement inline
+        // style without a width used to leave getComputedStyle(WIDTH) at NaN
+        // while getWidth() still reported the programmatic value).
+        applyExplicitSize();
         // Inline declarations sit at the top of the cascade for this node.
         invalidateStyleAndRelayout();
     }

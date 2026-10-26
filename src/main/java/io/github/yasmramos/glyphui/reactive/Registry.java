@@ -13,15 +13,14 @@ import java.util.function.Consumer;
  *
  * <p>Notification iterates over a snapshot: targets added during a
  * notification are first called on the next one, and targets removed during
- * a notification are skipped. A failing target does not prevent the others
- * from being notified; the first failure is rethrown afterwards with the rest
- * attached as suppressed exceptions.</p>
+ * a notification still receive the in-flight pass but never a later one.
+ * A failing target does not prevent the others from being notified; the
+ * first failure is rethrown afterwards with the rest attached as suppressed
+ * exceptions.</p>
  *
  * <p>Entries live in a {@link LinkedHashMap} so unsubscribing is O(1) —
  * disposing N subscriptions costs O(N), not O(N²) — and iteration keeps
- * insertion order. The snapshot for a notification is copied lazily: when no
- * structural change happens while iterating (the common case), the copy is
- * avoided entirely via an internal cursor over the live map.</p>
+ * insertion order.</p>
  */
 final class Registry<E> {
 
@@ -40,15 +39,33 @@ final class Registry<E> {
     /** Bumped whenever the entry set changes structurally. */
     private int mutationCount;
 
+    /**
+     * Number of in-flight {@link #forEach} passes. While it is non-zero,
+     * structural additions are appended to a pending list instead of the
+     * live map, so an iteration never visits a target registered during
+     * the same notification (snapshot semantics).
+     */
+    private int activeIterations;
+
+    /** Entries added while a notification pass is running. */
+    private final List<Entry<E>> pending = new ArrayList<>();
+
     Trackable.Subscription add(E target) {
         Objects.requireNonNull(target, "target");
         Entry<E> entry = new Entry<>(target);
-        entries.put(entry, Boolean.TRUE);
+        if (activeIterations > 0) {
+            // Defer the insertion: the running pass must not see it, and
+            // later passes must see it after the pre-existing entries.
+            pending.add(entry);
+        } else {
+            entries.put(entry, Boolean.TRUE);
+        }
         mutationCount++;
         return () -> {
             if (entry.active) {
                 entry.active = false;
                 entries.remove(entry);
+                pending.remove(entry);
                 mutationCount++;
             }
         };
@@ -63,6 +80,10 @@ final class Registry<E> {
             entry.active = false;
         }
         entries.clear();
+        for (Entry<E> entry : pending) {
+            entry.active = false;
+        }
+        pending.clear();
         mutationCount++;
     }
 
@@ -70,57 +91,37 @@ final class Registry<E> {
         if (entries.isEmpty()) {
             return;
         }
-        // Fast path: iterate the live map with an index cursor. If any
-        // callback mutates the registry (subscribe/unsubscribe during
-        // notification), fall back to a snapshot copy for the remaining
-        // items. This avoids copying the whole list on every notification
-        // (60 fps x 100 signals used to mean 6000 copies per second).
+        // Snapshot semantics (item 4.6): targets added during this pass are
+        // first called on the next one, and targets removed during the pass
+        // still receive it (their "active" flag is cleared but the snapshot
+        // already references them). The copy is taken once per notification —
+        // unavoidable when callbacks may mutate the registry, since any
+        // live-map iteration would otherwise risk ConcurrentModification or
+        // reordering bugs. Deferred additions are merged back only after
+        // every nested pass has finished (see add()).
         RuntimeException failure = null;
-        List<Entry<E>> snapshot = null;
-        int cursor = 0;
-        int seenMutations = mutationCount;
-        while (true) {
-            Entry<E> entry;
-            if (snapshot != null) {
-                if (cursor >= snapshot.size()) {
-                    break;
+        List<Entry<E>> snapshot = new ArrayList<>(entries.keySet());
+        activeIterations++;
+        try {
+            for (Entry<E> entry : snapshot) {
+                try {
+                    action.accept(entry.target);
+                } catch (RuntimeException e) {
+                    failure = Reactor.merge(failure, e);
                 }
-                entry = snapshot.get(cursor++);
-            } else {
-                if (cursor >= entries.size()) {
-                    break;
+            }
+        } finally {
+            activeIterations--;
+            if (activeIterations == 0 && !pending.isEmpty()) {
+                for (Entry<E> entry : pending) {
+                    entries.put(entry, Boolean.TRUE);
                 }
-                entry = nthEntry(cursor++);
-            }
-            if (!entry.active) {
-                continue;
-            }
-            try {
-                action.accept(entry.target);
-            } catch (RuntimeException e) {
-                failure = Reactor.merge(failure, e);
-            }
-            if (snapshot == null && mutationCount != seenMutations) {
-                // Structure changed mid-iteration: take a snapshot from the
-                // current position onward so ordering stays well-defined.
-                snapshot = new ArrayList<>(entries.keySet());
-                cursor = Math.min(cursor, snapshot.size());
-                seenMutations = mutationCount;
+                pending.clear();
+                mutationCount++;
             }
         }
         if (failure != null) {
             throw failure;
         }
-    }
-
-    /** Returns the i-th entry of the insertion-ordered map in O(i). */
-    private Entry<E> nthEntry(int index) {
-        int i = 0;
-        for (Entry<E> entry : entries.keySet()) {
-            if (i++ == index) {
-                return entry;
-            }
-        }
-        throw new IndexOutOfBoundsException(index);
     }
 }
