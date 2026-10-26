@@ -43,6 +43,13 @@ public class FocusManager {
     /**
      * Gets the process-wide focus manager.
      *
+     * <p><b>Design note (Block 4 item 4.1):</b> this global instance assumes a
+     * single application per process and is kept as a compatibility fallback so
+     * {@code Component.requestFocus()} works from anywhere in the tree. In
+     * multi-app, preview or embedded scenarios each {@link Application} owns
+     * its own {@code FocusManager}; resolve focus through that per-app context
+     * and treat the global accessor as the no-context fallback only.</p>
+     *
      * @return the manager, or null when none is installed
      */
     public static FocusManager getGlobalFocusManager() {

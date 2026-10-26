@@ -72,15 +72,38 @@ public final class DynamicBinding<R, T> implements Disposable {
         this.binding = created;
     }
 
+    /**
+     * Releases the three owned resources. Every stage runs even if an earlier
+     * one throws, so a failure cannot leak the remaining disposables; the
+     * first exception is rethrown with the others attached as suppressed
+     * (same accumulation policy as {@code Component.dispose()} and
+     * {@code DisposableScope.dispose()}).
+     */
     @Override
     public void dispose() {
         if (disposed) {
             return;
         }
         disposed = true;
-        binding.dispose();
-        value.dispose();
-        member.dispose();
+        RuntimeException failure = null;
+        try {
+            binding.dispose();
+        } catch (RuntimeException e) {
+            failure = Reactor.merge(failure, e);
+        }
+        try {
+            value.dispose();
+        } catch (RuntimeException e) {
+            failure = Reactor.merge(failure, e);
+        }
+        try {
+            member.dispose();
+        } catch (RuntimeException e) {
+            failure = Reactor.merge(failure, e);
+        }
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     @Override

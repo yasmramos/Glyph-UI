@@ -728,6 +728,24 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public void setInlineStyle(Style style) {
         this.inlineStyle = style == null ? Style.EMPTY : style;
+        // Keep the explicit-size fields in sync with the inline declarations:
+        // applyExplicitSize() is the only writer of WIDTH/HEIGHT in the inline
+        // style, so an externally supplied inline style that declares them
+        // must update the fields too. Without this, getWidth() and
+        // getComputedStyle().getFloat(WIDTH) could disagree after a programmatic
+        // setWidth() followed by setInlineStyle().
+        if (sizeExplicitlySet) {
+            float inlineW = inlineStyle.getFloat(
+                    io.github.yasmramos.glyphui.style.StyleProperty.WIDTH, Float.NaN);
+            float inlineH = inlineStyle.getFloat(
+                    io.github.yasmramos.glyphui.style.StyleProperty.HEIGHT, Float.NaN);
+            if (!Float.isNaN(inlineW)) {
+                width = inlineW;
+            }
+            if (!Float.isNaN(inlineH)) {
+                height = inlineH;
+            }
+        }
         // Inline declarations sit at the top of the cascade for this node.
         invalidateStyleAndRelayout();
     }
@@ -1503,14 +1521,21 @@ public abstract class Component implements StyleNode, Disposable {
      * @param focusable true to allow focus
      */
     public void setFocusable(boolean focusable) {
+        if (this.focusable == focusable) {
+            // No-op: avoid the double invalidation that would otherwise run
+            // through clearFocus() plus the trailing invalidate().
+            return;
+        }
         this.focusable = focusable;
         if (!focusable && focused) {
             io.github.yasmramos.glyphui.core.FocusManager fm = io.github.yasmramos.glyphui.core.FocusManager.getGlobalFocusManager();
             if (fm != null) {
+                // clearFocus already invalidates the component.
                 fm.clearFocus(this);
-            } else {
-                setFocusedInternal(false);
+                return;
             }
+            setFocusedInternal(false); // also invalidates
+            return;
         }
         invalidate();
     }

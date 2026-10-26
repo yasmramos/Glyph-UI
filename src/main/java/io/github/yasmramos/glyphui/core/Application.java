@@ -210,6 +210,13 @@ public class Application implements AutoCloseable {
      * headless/test contexts where no application has been started. Widget
      * properties use this to marshal cross-thread sets automatically.
      *
+     * <p><b>Design note (Block 4 item 4.1):</b> "most recently started" means
+     * this static pointer models one app per process; it is a fallback for
+     * code without an explicit context reference. Multi-app processes and
+     * embeddings should pass their {@code Application} instance down the tree
+     * (an AppContext propagated by ownership) instead of relying on this
+     * getter, which always points at the last-started app.</p>
+     *
      * @return the current application, or null
      */
     public static Application getCurrent() {
