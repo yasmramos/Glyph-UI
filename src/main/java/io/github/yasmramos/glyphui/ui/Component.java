@@ -1874,6 +1874,14 @@ public abstract class Component implements StyleNode, Disposable {
      * @return the preferred width
      */
     public float getPreferredWidth() {
+        // Block 5 item 4.3 follow-up: an inline `width` declaration (fed by a
+        // CSS rule or by setWidth through applyExplicitSize) counts as an
+        // explicit size too, so getPreferredWidth and
+        // getComputedStyle().getFloat(WIDTH) never disagree.
+        Style s = getComputedStyle();
+        if (s != null && s.has(StyleProperty.WIDTH)) {
+            return s.getFloat(StyleProperty.WIDTH, width);
+        }
         return sizeExplicitlySet ? width : DEFAULT_WIDTH;
     }
 
@@ -1884,6 +1892,12 @@ public abstract class Component implements StyleNode, Disposable {
      * @return the preferred height
      */
     public float getPreferredHeight() {
+        // Block 5 item 4.3 follow-up: mirrors getPreferredWidth for the
+        // inline `height` declaration.
+        Style s = getComputedStyle();
+        if (s != null && s.has(StyleProperty.HEIGHT)) {
+            return s.getFloat(StyleProperty.HEIGHT, height);
+        }
         return sizeExplicitlySet ? height : DEFAULT_HEIGHT;
     }
 }

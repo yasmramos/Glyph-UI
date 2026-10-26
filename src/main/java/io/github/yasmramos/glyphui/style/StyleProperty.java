@@ -95,7 +95,16 @@ public enum StyleProperty {
     GAP(false),
 
     /** Flex grow factor (Float). */
-    FLEX_GROW(false);
+    FLEX_GROW(false),
+
+    /** Flex wrap mode: "nowrap" (default) or "wrap" (String). Block 5 item 5.9. */
+    FLEX_WRAP(false),
+
+    /** Flex shrink factor (Float, default 1). Block 5 item 5.9. */
+    FLEX_SHRINK(false),
+
+    /** Per-item cross-axis override of align-items: flex-start|center|flex-end|stretch|baseline (String). Block 5 item 5.10. */
+    ALIGN_SELF(false);
 
     private final boolean inherited;
 
@@ -117,9 +126,9 @@ public enum StyleProperty {
         return switch (this) {
             case COLOR, BACKGROUND, ACCENT_COLOR, BORDER_COLOR, FONT_WEIGHT -> Integer.class;
             case BORDER_WIDTH, BORDER_RADIUS, PADDING, MARGIN, WIDTH, HEIGHT,
-                 OPACITY, FONT_SIZE, GAP, FLEX_GROW -> Float.class;
+                 OPACITY, FONT_SIZE, GAP, FLEX_GROW, FLEX_SHRINK -> Float.class;
             case FONT_FAMILY, DISPLAY, FLEX_DIRECTION, JUSTIFY_CONTENT,
-                 ALIGN_ITEMS -> String.class;
+                 ALIGN_ITEMS, FLEX_WRAP, ALIGN_SELF -> String.class;
             case RAW_VALUES -> null; // synthetic carrier, exempt from validation
         };
     }

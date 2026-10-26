@@ -325,8 +325,11 @@ public final class StyleSheet {
             case "flex-direction" -> StyleProperty.FLEX_DIRECTION;
             case "justify-content" -> StyleProperty.JUSTIFY_CONTENT;
             case "align-items" -> StyleProperty.ALIGN_ITEMS;
+            case "align-self" -> StyleProperty.ALIGN_SELF;
+            case "flex-wrap" -> StyleProperty.FLEX_WRAP;
             case "gap" -> StyleProperty.GAP;
             case "flex-grow", "flex" -> StyleProperty.FLEX_GROW;
+            case "flex-shrink" -> StyleProperty.FLEX_SHRINK;
             default -> null; // unknown property: caller decides (warn/skip)
         };
     }

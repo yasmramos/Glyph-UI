@@ -31,6 +31,7 @@ public final class Computed<T> extends AbstractObserver implements Trackable<T> 
     private Supplier<? extends T> function;
     private T value;
     private boolean dirty = true;
+    private boolean initialised;
     private boolean evaluating;
 
     /**
@@ -60,16 +61,45 @@ public final class Computed<T> extends AbstractObserver implements Trackable<T> 
 
     /**
      * Reads the current value without registering a dependency on this
-     * computed. The underlying function still re-evaluates when dirty, so the
-     * result is always up to date; only the observer subscription is skipped.
+     * computed.
+     *
+     * <p><b>Lazy semantics:</b> when the value is dirty (a source changed
+     * since the last evaluation, or it was never evaluated), {@code peek()}
+     * returns the previously cached value without running the function —
+     * exactly like reading a snapshot. This keeps peek side-effect free: it
+     * never mutates the dependency graph, never re-subscribes and never runs
+     * user code with observable consequences beyond the pure computation.
+     * Call {@link #get()} when an up-to-date value is required.</p>
      *
      * <p>Useful inside effects and {@code Computed} bodies that must inspect a
      * derived value without adding it as a source.</p>
      *
-     * @return the current (possibly recomputed) value
+     * @return the cached value (recomputes only if never evaluated before)
      */
     public T peek() {
-        return Reactor.untracked(this::get);
+        if (isDisposed()) {
+            throw new IllegalStateException("Computed has been disposed");
+        }
+        // First read initialises the cache so peek() and get() agree from the
+        // start; afterwards peek() never re-evaluates while dirty.
+        if (dirty && !initialised) {
+            evaluateFresh();
+        }
+        return value;
+    }
+
+    /** Runs the function outside any tracked context and caches its result. */
+    private void evaluateFresh() {
+        Observer previous = Reactor.swapCurrent(null);
+        evaluating = true;
+        try {
+            value = tracked(function);
+            dirty = false;
+            initialised = true;
+        } finally {
+            evaluating = false;
+            Reactor.swapCurrent(previous);
+        }
     }
 
     private void recompute() {
@@ -77,6 +107,7 @@ public final class Computed<T> extends AbstractObserver implements Trackable<T> 
         try {
             value = tracked(function);
             dirty = false;
+            initialised = true;
         } finally {
             evaluating = false;
         }
