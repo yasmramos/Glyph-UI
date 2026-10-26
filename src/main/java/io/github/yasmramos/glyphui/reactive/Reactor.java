@@ -146,8 +146,21 @@ public final class Reactor {
     /**
      * Runs {@code fanOut} as a notification, then the effects it queued.
      * Failures never leave the reactor stuck in the notifying state.
+     *
+     * <p>The UI-thread contract is enforced here as well as at the public
+     * write entry points ({@link Signal#set(Object)} and friends), so any
+     * path that fans out a change — including package-internal ones — must
+     * run on the UI thread.</p>
      */
     static void notifyChange(Runnable fanOut) {
+        // Enforce the single-writer UI-thread contract for every notification
+        // fan-out, not only for the public signal setters. When no explicit
+        // UI thread has been declared there is nothing to check against.
+        Thread expected = uiThread;
+        if (expected != null && expected != Thread.currentThread()) {
+            throw new IllegalStateException("Change notification must be fired on the UI thread \""
+                    + expected.getName() + "\" but was fired on \"" + Thread.currentThread().getName() + "\"");
+        }
         if (notifying) {
             throw new IllegalStateException("Nested change notification");
         }

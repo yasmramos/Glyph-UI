@@ -708,7 +708,9 @@ public class Button extends Component {
         }
         try {
             handler.onClick();
-        } catch (RuntimeException | Error e) {
+        } catch (RuntimeException e) {
+            // Only runtime exceptions are swallowed; Errors (OOM, StackOverflow)
+            // must propagate, matching the Reactor's exception policy.
             LOG.log(Level.WARNING, "Button click handler threw; state kept consistent", e);
         }
         return true;

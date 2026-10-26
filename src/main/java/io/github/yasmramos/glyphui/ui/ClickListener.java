@@ -26,10 +26,13 @@ package io.github.yasmramos.glyphui.ui;
  *   <li>Handlers always run on the UI thread, inside the backend event
  *       dispatch ({@code Application.run()}); widget mutations need no
  *       synchronization.</li>
- *   <li>The widget catches any exception thrown from {@link #onClick()}, so a
- *       failing handler can never leave internal state (for example a stuck
- *       pressed visual state) inconsistent. Exceptions are reported through
- *       {@link java.util.logging.Logger} rather than swallowed silently.</li>
+ *   <li>The widget catches runtime exceptions thrown from {@link #onClick()},
+ *       so a failing handler can never leave internal state (for example a
+ *       stuck pressed visual state) inconsistent. Errors (such as
+ *       {@code OutOfMemoryError}) are not swallowed and propagate, matching
+ *       the toolkit's general exception policy. Exceptions are reported
+ *       through {@link java.util.logging.Logger} rather than swallowed
+ *       silently.</li>
  * </ul>
  */
 @FunctionalInterface

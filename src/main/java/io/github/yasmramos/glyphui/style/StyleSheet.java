@@ -52,7 +52,12 @@ public final class StyleSheet {
      * @param order    source-order position within the sheet
      * @param id       stable cache key assigned at parse time; unique among
      *                 the rules of the owning stylesheet (the record's
-     *                 equality deliberately ignores it)
+     *                 equality deliberately ignores it). Currently equal to
+     *                 {@code order}: ids are scoped per sheet, which is safe
+     *                 because each engine holds exactly one sheet. If a
+     *                 future version merges rules from multiple sheets into
+     *                 one engine, ids must be re-assigned globally at that
+     *                 boundary to stay collision-free
      */
     public record Rule(Selector selector, Style style, int order, int id) {
     }
@@ -116,7 +121,10 @@ public final class StyleSheet {
                 }
                 if (":root".equals(selText.trim())) {
                     // :root contributes only custom properties (collected in
-                    // pass 1); it produces no cascade rule of its own.
+                    // pass 1); it produces no cascade rule of its own. This is
+                    // a documented design choice: regular declarations inside
+                    // :root (e.g. "color: red") are ignored — style the root
+                    // component with the "panel" tag selector instead.
                     continue;
                 }
                 Style.Builder builder = Style.builder();

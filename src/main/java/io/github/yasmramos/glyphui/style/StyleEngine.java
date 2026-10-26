@@ -26,7 +26,14 @@ import java.util.Map;
  * <p>{@code :root} custom properties are resolved at parse time; in addition,
  * theme-derived variables ({@code --bg}, {@code --fg}, {@code --accent},
  * {@code --border}) are injected so stylesheets can reference the active
- * {@link Theme} through {@code var(--accent)} and friends.</p>
+ * {@link Theme} through {@code var(--accent)} and friends. CSS wins: a
+ * stylesheet that declares one of these names (typically under {@code :root})
+ * overrides the theme-provided default.</p>
+ *
+ * <p>Note: {@code :root} is a variable-scope only — it contributes custom
+ * properties to the sheet-wide map but produces no cascade rule, so regular
+ * declarations like {@code :root { color: red }} are intentionally ignored.
+ * Style the root component with the {@code panel} tag selector instead.</p>
  *
  * <h2>State re-evaluation</h2>
  * Pseudo-class rules ({@code :hover}, {@code :focus}, {@code :disabled},
@@ -233,12 +240,13 @@ public final class StyleEngine {
     }
 
     /**
-     * Variable map used for {@code var()} resolution: stylesheet custom
-     * properties first, then theme-derived values (which override, mirroring
-     * "theme wins" for the well-known names).
+     * Variable map used for {@code var()} resolution: theme-derived defaults
+     * first, then stylesheet custom properties (which override). CSS wins:
+     * a user's {@code :root { --accent: ... }} declaration takes precedence
+     * over the theme-provided default for the well-known names.
      */
     private Map<String, String> buildVariables() {
-        Map<String, String> vars = new HashMap<>(styleSheet.getRootVariables());
+        Map<String, String> vars = new HashMap<>();
         Theme t = theme != null ? theme : Theme.current();
         // Cached resolutions depend on the theme-derived variables; if the
         // active theme instance changed since the last pass, drop the cache
@@ -256,6 +264,10 @@ public final class StyleEngine {
             vars.put("--accent", String.format("#%06X", t.getAccentColor() & 0xFFFFFF));
             vars.put("--border", String.format("#%06X", t.getBorderColor() & 0xFFFFFF));
         }
+        // Stylesheet custom properties override the theme defaults, so users
+        // can re-define --bg/--fg/--accent/--border from CSS (:root or any
+        // other block — custom properties are collected sheet-wide).
+        vars.putAll(styleSheet.getRootVariables());
         return vars;
     }
 }

@@ -82,12 +82,34 @@ import java.util.logging.Logger;
  *
  * <p><b>Stylesheets:</b> link an external sheet with
  * {@code <link rel="stylesheet" href="app.css"/>}; the resolved sheet is
- * exposed through {@link #getLastStyleSheet()}. Inline {@code <style>} blocks
- * are <b>not</b> supported because {@code &#123;} is the interpolation
- * delimiter in {@code .glyph}.</p>
+ * exposed through {@link #getLastStyleSheet()} or, more conveniently, through
+ * {@link #loadWithStylesheet(Path)} / {@link #loadWithStylesheet(String, Object)}
+ * which return a {@link LoadResult} bundling root + sheet. The loader does
+ * <b>not</b> apply the sheet to the running {@code Application} automatically:
+ * styling lives on the application's {@link io.github.yasmramos.glyphui.style.StyleEngine},
+ * so the documented flow is:
+ * {@code UiLoader.LoadResult r = loader.loadWithStylesheet(file); app.applyStyleSheet(r.styleSheet());}.
+ * Forgetting the {@code applyStyleSheet} call means CSS classes in the markup
+ * have no effect. Inline {@code <style>} blocks are <b>not</b> supported
+ * because {@code &#123;} is the interpolation delimiter in {@code .glyph}.</p>
+ *
+ * <p><b>Layout attributes:</b> containers accept {@code layout="flex|flow"},
+ * plus {@code direction}, {@code justify}, {@code align} (flex only) and
+ * {@code gap}/{@code padding} (both), which are mapped onto
+ * {@link FlexLayout}/{@link FlowLayout}. Unknown values log a warning and keep
+ * the manager default. Equivalent CSS properties via style classes also work
+ * once the sheet is applied.</p>
+ *
+ * <p><b>Bindings and control flow:</b> there is no Binder or Validator yet.
+ * Markup supports {@code {path}} interpolations in element content only —
+ * they are parsed into {@link BindingNode}s but this loader records a warning
+ * (once per distinct path per load) and ignores them. Interpolations inside
+ * attribute values, {@code bind:} prefixes and {@code if}/{@code for-each}
+ * control-flow attributes are not part of the current feature set.</p>
  *
  * <p><b>Not a browser:</b> there is no JavaScript engine and no DOM — this
- * is a structural loader for a fixed tag subset.</p>
+ * is a structural loader for a fixed tag subset; custom widgets can be added
+ * through {@link #registerTag(String, TagFactory)}.</p>
  */
 public final class UiLoader {
 
@@ -112,12 +134,34 @@ public final class UiLoader {
         Image load(String src);
     }
 
+    /**
+     * Factory that turns an element into a widget for a custom tag. Register
+     * one through {@link UiLoader#registerTag(String, TagFactory)} to support
+     * markup such as {@code <Chart/>} without modifying this class.
+     */
+    @FunctionalInterface
+    public interface TagFactory {
+        /**
+         * Creates the component for the given element. The loader will still
+         * apply common attributes (id/class/style/x/y/width/height), layout
+         * and event handlers on top of whatever this factory returns.
+         *
+         * @param element the AST element to materialize
+         * @return the new component (must not be null)
+         */
+        Component create(Element element);
+    }
+
     private Object controller;
     private ImageProvider imageProvider;
     private StyleSheet lastStyleSheet;
     private Document lastDocument;
     private final List<String> warnings = new ArrayList<>();
     private final Map<String, Component> componentsById = new HashMap<>();
+    /** User-registered custom tag factories (lower-cased tag name -> factory). */
+    private final Map<String, TagFactory> tagFactories = new HashMap<>();
+    /** Binding paths already warned about during the current load (dedupe). */
+    private final Set<String> warnedBindings = new java.util.HashSet<>();
 
     /**
      * Creates a loader without a controller.
@@ -152,6 +196,35 @@ public final class UiLoader {
      */
     public void setImageProvider(ImageProvider imageProvider) {
         this.imageProvider = imageProvider;
+    }
+
+    /**
+     * Registers a factory for a custom tag, e.g.
+     * {@code loader.registerTag("chart", el -> new ChartWidget())} so that
+     * {@code <Chart/>} elements build user widgets instead of falling back to
+     * a generic panel. Registered factories take precedence over the built-in
+     * tag mapping and suppress the "unknown tag" warning. Tag names are
+     * matched case-insensitively.
+     *
+     * @param tag    the element tag name (without angle brackets)
+     * @param factory the widget factory (must not be null)
+     */
+    public void registerTag(String tag, TagFactory factory) {
+        if (tag == null || tag.isEmpty() || factory == null) {
+            throw new IllegalArgumentException("tag and factory must not be empty/null");
+        }
+        tagFactories.put(tag.toLowerCase(Locale.ROOT), factory);
+    }
+
+    /**
+     * Removes a previously registered custom tag factory.
+     *
+     * @param tag the tag name to unregister
+     */
+    public void unregisterTag(String tag) {
+        if (tag != null) {
+            tagFactories.remove(tag.toLowerCase(Locale.ROOT));
+        }
     }
 
     /**
@@ -242,6 +315,11 @@ public final class UiLoader {
      * @return the root component
      */
     private Component loadSource(String source, Path baseDir) {
+        // Reset last-load state up front: a failed parse must not leave the
+        // previous document/sheet visible to tests or tooling.
+        lastDocument = null;
+        lastStyleSheet = null;
+        warnedBindings.clear();
         warnings.clear();
         componentsById.clear();
         ParseResult result = new Parser().parse(source);
@@ -318,14 +396,21 @@ public final class UiLoader {
     }
 
     private Component createForTag(Element element, String tag) {
+        // User-registered custom tags win over the built-in mapping (4.17).
+        TagFactory custom = tagFactories.get(tag);
+        if (custom != null) {
+            return custom.create(element);
+        }
         switch (tag) {
             case "button" -> {
-                Button b = new Button(0, 0, 120, 32, textOf(element));
-                return b;
+                // No hardcoded 120x32: content-sized widget; an explicit
+                // width/height attribute (or inline style) is applied later by
+                // applyCommonAttributes (4.16).
+                return new Button(textOf(element));
             }
             case "label", "p", "h1", "h2", "h3", "h4", "h5", "h6" -> {
                 String sizeAttr = attr(element, "font-size");
-                Label l = new Label(0, 0, 200, 24, textOf(element));
+                Label l = new Label(textOf(element));
                 if (!sizeAttr.isEmpty()) {
                     try {
                         l.setFontSize(Float.valueOf(sizeAttr.replaceAll("[^0-9.]", "")));
@@ -424,10 +509,85 @@ public final class UiLoader {
             return;
         }
         switch (layout) {
-            case "flex" -> panel.setLayoutManager(new FlexLayout());
-            case "flow" -> panel.setLayoutManager(new FlowLayout());
+            case "flex" -> {
+                FlexLayout flex = new FlexLayout();
+                String direction = attr(element, "direction").trim().toLowerCase(Locale.ROOT);
+                if (!direction.isEmpty()) {
+                    FlexLayout.Direction parsed = parseEnum(FlexLayout.Direction.class,
+                            direction.replace('-', '_'));
+                    if (parsed != null) {
+                        flex.setDirection(parsed);
+                    } else {
+                        warn("Unknown direction '" + direction + "' on <"
+                                + element.getTagName() + ">");
+                    }
+                }
+                applyFlexKeyword(element, "justify", flex::setJustify,
+                        FlexLayout.Justify.class);
+                applyFlexKeyword(element, "align", flex::setAlignItems,
+                        FlexLayout.Align.class);
+                applySpacing(element, value -> flex.setGap(value),
+                        value -> flex.setPadding(value));
+                panel.setLayoutManager(flex);
+            }
+            case "flow" -> {
+                FlowLayout flow = new FlowLayout();
+                applySpacing(element, value -> flow.setGap(value),
+                        value -> flow.setPadding(value));
+                panel.setLayoutManager(flow);
+            }
             default -> warn("Unknown layout '" + layout + "' on <" + element.getTagName() + ">");
         }
+    }
+
+    /**
+     * Maps a markup attribute to an enum keyword on a layout manager, warning
+     * on unknown values instead of throwing.
+     */
+    private <E extends Enum<E>> void applyFlexKeyword(Element element, String attrName,
+            java.util.function.Consumer<E> setter, Class<E> type) {
+        String raw = attr(element, attrName).trim().toLowerCase(Locale.ROOT);
+        if (raw.isEmpty()) {
+            return;
+        }
+        E value = parseEnum(type, raw.replace('-', '_').replace(':', '_'));
+        if (value != null) {
+            setter.accept(value);
+        } else {
+            warn("Unknown " + attrName + "='" + raw + "' on <" + element.getTagName() + ">");
+        }
+    }
+
+    /** Reads the optional {@code gap} and {@code padding} numeric attributes. */
+    private void applySpacing(Element element,
+            java.util.function.Consumer<Float> gapSetter,
+            java.util.function.Consumer<Float> paddingSetter) {
+        String gap = attr(element, "gap").trim();
+        if (!gap.isEmpty()) {
+            try {
+                gapSetter.accept(Float.valueOf(gap.replaceAll("[^0-9.]", "")));
+            } catch (NumberFormatException e) {
+                warn("Bad gap='" + gap + "' on <" + element.getTagName() + ">");
+            }
+        }
+        String padding = attr(element, "padding").trim();
+        if (!padding.isEmpty()) {
+            try {
+                paddingSetter.accept(Float.valueOf(padding.replaceAll("[^0-9.]", "")));
+            } catch (NumberFormatException e) {
+                warn("Bad padding='" + padding + "' on <" + element.getTagName() + ">");
+            }
+        }
+    }
+
+    /** Case-insensitive enum lookup tolerant of hyphens/underscores. */
+    private static <E extends Enum<E>> E parseEnum(Class<E> type, String raw) {
+        for (E constant : type.getEnumConstants()) {
+            if (constant.name().equalsIgnoreCase(raw)) {
+                return constant;
+            }
+        }
+        return null;
     }
 
     private void bindHandlers(Element element, Component component) {
@@ -530,8 +690,7 @@ public final class UiLoader {
     // AST helpers
     // ------------------------------------------------------------------
 
-    /**
-     * Reads an attribute value from the raw AST.
+    /** Reads an attribute value from the raw AST.
      *
      * @param element the element to query
      * @param name    the raw attribute name
@@ -543,10 +702,56 @@ public final class UiLoader {
         return attribute == null || attribute.value() == null ? "" : attribute.value();
     }
 
+    // ------------------------------------------------------------------
+    // Load-and-apply convenience (stylesheets are NOT auto-applied; see
+    // the class Javadoc "Styling flow" for why).
+    // ------------------------------------------------------------------
+
     /**
-     * Concatenates the direct text children of an element; an explicit
-     * {@code text} attribute takes precedence. Binding interpolations are not
-     * resolved here — a warning is emitted instead.
+     * Result of a load: the built component tree plus the stylesheet the
+     * document linked, if any.
+     *
+     * @param root      the root component
+     * @param styleSheet the discovered sheet, or null when the document has none
+     */
+    public record LoadResult(Component root, StyleSheet styleSheet) {
+    }
+
+    /**
+     * Loads a {@code .glyph} file and returns both the widget tree and the
+     * linked stylesheet, so callers can apply styling without going through
+     * {@link #getLastStyleSheet()}.
+     *
+     * @param file the {@code .glyph} path
+     * @return the load result
+     * @throws IOException when the file cannot be read
+     */
+    public LoadResult loadWithStylesheet(Path file) throws IOException {
+        Component root = load(file);
+        return new LoadResult(root, lastStyleSheet);
+    }
+
+    /**
+     * Loads a {@code .glyph} resource from the classpath and returns both the
+     * widget tree and the linked stylesheet.
+     *
+     * @param resource   the classpath resource name
+     * @param controller object for {@code onclick}/{@code onchange} resolution
+     * @return the load result
+     * @throws IOException when the resource is missing or unreadable
+     */
+    public LoadResult loadWithStylesheet(String resource, Object controller) throws IOException {
+        Component root = load(resource, controller);
+        return new LoadResult(root, lastStyleSheet);
+    }
+
+    /**
+     * Concatenates the text of an element, recursively including the text of
+     * child elements (like DOM {@code textContent}); an explicit {@code text}
+     * attribute takes precedence. The result is trimmed so markup such as
+     * {@code <Label>\n  Hola\n</Label>} does not render stray whitespace.
+     * Binding interpolations are not resolved here — a warning is emitted
+     * once per distinct path per load.
      *
      * @param element the element whose text is requested
      * @return the element text (may be empty)
@@ -554,19 +759,31 @@ public final class UiLoader {
     private String textOf(Element element) {
         String explicit = attr(element, "text");
         if (!explicit.isEmpty()) {
-            return explicit;
+            return explicit.trim();
         }
         StringBuilder sb = new StringBuilder();
+        collectText(element, sb);
+        return sb.toString().trim();
+    }
+
+    /** Depth-first text collection: TextNodes plus nested Element children. */
+    private void collectText(Element element, StringBuilder sb) {
         for (AstNode child : element.getChildren()) {
             if (child instanceof TextNode textNode) {
                 sb.append(textNode.getText());
+            } else if (child instanceof Element nested) {
+                // Inline children (<Label>Hola <b>mundo</b></Label>) contribute
+                // their own text, matching textContent semantics.
+                collectText(nested, sb);
             } else if (child instanceof BindingNode binding) {
-                warn("Binding {" + binding.getRawPath() + "} in <"
-                        + element.getTagName()
-                        + "> ignored: reactive bindings are not wired yet");
+                String path = binding.getRawPath();
+                if (warnedBindings.add(path)) {
+                    warn("Binding {" + path + "} in <"
+                            + element.getTagName()
+                            + "> ignored: reactive bindings are not wired yet");
+                }
             }
         }
-        return sb.toString();
     }
 
     /** @return child elements that map to widgets (metadata tags excluded). */
