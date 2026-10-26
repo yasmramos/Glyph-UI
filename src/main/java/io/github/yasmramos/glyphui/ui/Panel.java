@@ -38,6 +38,26 @@ public class Panel extends Component {
      */
     private Paint bgPaint;
 
+    /**
+     * Creates a zero-sized panel to be sized by {@code setWidth}/{@code
+     * setHeight} or measured from content by an attached layout manager. This
+     * mirrors the protected no-bounds constructor in {@link Component}: a
+     * panel built without bounds is not considered user-size-explicit until a
+     * direct size mutation occurs (Block 3 item 3.2).
+     */
+    public Panel() {
+        super();
+        // The delegating Component constructor does not initialize the
+        // container state, so mirror the bounds-carrying constructor here.
+        this.children = new ArrayList<>();
+        this.layoutManager = null;
+        this.layoutDirty = false;
+        this.backgroundColor = Color.makeARGB(0, 0, 0, 0); // Transparent by default
+        this.userSetSize = false;
+        // Containers do not take keyboard focus unless a subclass opts in
+        setFocusable(false);
+    }
+
     public Panel(float width, float height) {
         this(0, 0, width, height);
     }
@@ -74,7 +94,18 @@ public class Panel extends Component {
         Style s = getComputedStyle();
         boolean cssSize = s != null
                 && (s.has(StyleProperty.WIDTH) || s.has(StyleProperty.HEIGHT));
-        if (layoutManager == null || cssSize || isUserSizeExplicit()) {
+        // A size pinned by this panel's own bounds-carrying constructor wins
+        // through the plain component path, as does any explicit CSS
+        // width/height declaration; otherwise, when a layout manager is
+        // attached, the layout decides the preferred size from the arranged
+        // content. Later {@code setWidth}/{@code setHeight} calls do NOT pin
+        // the container: they only mark the current bounds as explicit so an
+        // inner layout keeps each child's declared geometry, while the panel
+        // itself stays content-sized and keeps delegating to its layout
+        // manager (Block 3 item 3.2). Layout-assigned bounds (via
+        // {@code applyLayoutSize}) never count as explicit either, so nested
+        // panels keep reporting their content size.
+        if (layoutManager == null || cssSize || isCtorSizeExplicit()) {
             return super.measure(maxWidth, maxHeight);
         }
         return layoutManager.measure(this, maxWidth, maxHeight);
@@ -86,10 +117,26 @@ public class Panel extends Component {
      * setHeight} call. Layout-assigned bounds are excluded on purpose — they
      * must not disable content-based measurement (Block 3 item 3.2).
      *
-     * @return true when {@code measure} must take the plain component path
+     * @return true when an explicit user size exists on this panel
      */
+    @SuppressWarnings("unused")
     private boolean isUserSizeExplicit() {
         return isCtorSizeExplicit() || userSetSize;
+    }
+
+    /**
+     * Assigns the panel's drawing bounds without marking them as user-explicit.
+     * Test-support hook mirroring what a root frame does when it sizes its
+     * content panel through {@code applyLayoutSize}: the panel keeps a concrete
+     * rendering surface while {@link #measure(float, float)} still delegates to
+     * the attached layout manager (Block 3 item 3.2). Never part of the frozen
+     * public API surface; cross-package tests invoke it via reflection.
+     *
+     * @param width the layout-assigned width
+     * @param height the layout-assigned height
+     */
+    void setSizeForTests(float width, float height) {
+        applyLayoutSize(width, height);
     }
 
     /**
@@ -292,8 +339,26 @@ public class Panel extends Component {
      * instead of only flagging the panel locally.
      */
     public void invalidateLayoutTree() {
-        layoutDirty = true;
+        // Deferred request pattern (same ordering as Component's protected
+        // invalidate* helpers): set the per-node layout flag BEFORE running
+        // the upward invalidation chain, because invalidate() flushes pending
+        // requests at every node it visits — flushing first would drain this
+        // panel's freshly-set flag before any paint pass could see it.
+        markLayoutDirtyRequested();
         invalidate();
+    }
+
+    /**
+     * Records a pending relayout request on this panel's own component-level
+     * flag. Package-private counterpart of {@code markLayoutDirty()} for the
+     * deferred invalidation path used by {@link #invalidateLayoutTree()};
+     * keeps the two flags (component-level and panel-level) in sync so both
+     * the aggregated and local dirty views report the request consistently.
+     */
+    @Override
+    void markLayoutDirtyRequested() {
+        super.markLayoutDirtyRequested();
+        layoutDirty = true;
     }
 
     /**
@@ -301,10 +366,52 @@ public class Panel extends Component {
      * manager. Internal instrumentation hook for tests (see
      * {@code Component.getInvalidateCount()} for the boundary policy).
      *
-     * @return true when a relayout is pending
+     * <p>Aggregated view: true when this panel holds a pending relayout
+     * request <em>or</em> any descendant component still has an unconsumed
+     * one. Descendants intentionally keep their own flag set until a layout
+     * pass actually runs (lazy drain, see {@link #doLayout()}), so callers
+     * must not inspect raw child flags to decide whether work is pending.</p>
+     *
+     * @return true when a relayout is pending anywhere in this subtree
      */
     boolean isLayoutDirty() {
-        return layoutDirty;
+        return isLayoutDirtyFlag() || hasDirtyDescendant();
+    }
+
+    /**
+     * Raw local relayout request on this panel only, excluding deferred
+     * descendant flags. Test-support hook: assertions that check whether a
+     * specific mutation dirtied THIS panel must use this view, because leaf
+     * components keep their own flag until an ancestor layout pass consumes
+     * it (see {@code Component.flushInvalidationRequests}).
+     *
+     * @return true when this panel itself has a pending relayout request
+     */
+    boolean isLocalLayoutDirty() {
+        return isLayoutDirtyFlag();
+    }
+
+    /**
+     * Walks the subtree rooted at this panel looking for a component with a
+     * pending relayout request on its own node. Panels drain their local
+     * flag eagerly inside {@link #doLayout()}, but leaf components keep
+     * theirs until the ancestor panel's next layout pass consumes it; this
+     * scan reports those deferred requests.
+     *
+     * @return true when some descendant requested a relayout not yet consumed
+     */
+    private boolean hasDirtyDescendant() {
+        List<Component> stack = new ArrayList<>(children);
+        while (!stack.isEmpty()) {
+            Component c = stack.remove(stack.size() - 1);
+            if (c.isLayoutDirtyFlag()) {
+                return true;
+            }
+            if (c instanceof Panel) {
+                stack.addAll(((Panel) c).children);
+            }
+        }
+        return false;
     }
 
     /**
@@ -370,10 +477,18 @@ public class Panel extends Component {
         }
         if (layoutManager != null && !children.isEmpty()) {
             // Explicit eager pass: callers expect positions to be updated
-            // right after wiring a layout manager (historical contract).
-            // The flag is cleared because doLayout() only runs when dirty,
-            // and an upcoming add()/render() would otherwise re-run it.
+            // right after wiring a layout manager over existing children
+            // (historical contract). The pass consumes the request — the
+            // work is done; a later add() will dirty it again. An empty
+            // panel skips the run and keeps the deferred request below,
+            // so no layout pass is performed for zero children.
             layoutManager.layout(this);
+            layoutDirty = false;
+        } else if (layoutManager != null) {
+            // Wiring a layout manager over an empty panel is not itself a
+            // relayout request: there is nothing to position yet, and add()
+            // will dirty the panel when the first child arrives. Keep the
+            // flag clean so doLayout() on a still-empty panel stays a no-op.
             layoutDirty = false;
         }
     }
@@ -385,6 +500,11 @@ public class Panel extends Component {
         if (layoutManager != null && layoutDirty) {
             layoutManager.layout(this);
             layoutDirty = false;
+            // The relayout ran, so this panel's own deferred request (set by
+            // invalidateLayoutTree via markLayoutDirtyRequested) is consumed
+            // too — otherwise the aggregated dirty view would keep reporting
+            // work that has already been done.
+            clearLayoutRequest();
         }
     }
 

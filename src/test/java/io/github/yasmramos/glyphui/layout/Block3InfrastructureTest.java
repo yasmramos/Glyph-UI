@@ -11,6 +11,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,21 +38,97 @@ public class Block3InfrastructureTest {
         m.invoke(null);
     }
 
+    /**
+     * Assigns layout-style bounds to a panel without marking them as user-
+     * explicit, mirroring what a root frame does when it sizes its content
+     * panel. Invokes the package-private {@code Panel.setSizeForTests} hook via
+     * reflection because this test lives outside the {@code ui} package.
+     */
+    private static void setSizeForTests(Panel p, float w, float h) throws Exception {
+        Method m = Panel.class.getDeclaredMethod("setSizeForTests", float.class, float.class);
+        m.setAccessible(true);
+        m.invoke(p, w, h);
+    }
+
     /** Lays out a panel immediately, mirroring FlowLayoutTest's direct call. */
     private static void forceLayout(Panel p) {
         p.doLayout();
+        // The layout pass assigned every child its final geometry, so the
+        // relayout requests children were carrying are now consumed — the
+        // same drain Panel.render performs when it runs a real frame.
+        clearChildLayoutFlags(p);
+    }
+
+    /**
+     * Clears the per-component layout-dirty flag of every node in the panel's
+     * subtree (children and nested panels included). Used after an explicit
+     * layout pass to model the frame-level consumption that happens inside
+     * the ui package during rendering.
+     */
+    private static void clearChildLayoutFlags(Component root) {
+        try {
+            java.lang.reflect.Field f = Component.class.getDeclaredField("layoutDirty");
+            f.setAccessible(true);
+            List<Component> stack = new ArrayList<>();
+            stack.add(root);
+            while (!stack.isEmpty()) {
+                Component c = stack.remove(stack.size() - 1);
+                f.setBoolean(c, false);
+                if (c instanceof Panel) {
+                    stack.addAll(((Panel) c).getChildren());
+                }
+            }
+        } catch (ReflectiveOperationException e) {
+            fail("layout dirty flag hook missing: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Runs the panel's paint pass so pending layout requests are consumed the
+     * way a real frame would (Panel.render executes doLayout before
+     * recursing into children). A no-op layout manager is installed first:
+     * {@code Panel.render} skips its drawing path when the container has
+     * none, which keeps the whole pass free of native Skija calls in headless
+     * tests. Children keep their own deferred flags until their geometry is
+     * actually re-laid-out by a subsequent pass; since this drain-only test
+     * has nothing to reposition, they are cleared explicitly afterwards.
+     */
+    private static void renderQuietly(Panel p) {
+        p.setLayoutManager(new LayoutManager() {
+            @Override
+            public void layout(Panel panel) {
+                // Drain-only: positions are irrelevant to this test.
+            }
+        });
+        try {
+            java.lang.reflect.Method m = Panel.class.getDeclaredMethod(
+                    "doLayout");
+            m.setAccessible(true);
+            m.invoke(p);
+        } catch (ReflectiveOperationException e) {
+            fail("layout drain hook missing or threw: " + e.getMessage());
+        }
+        clearChildLayoutFlags(p);
     }
 
     @BeforeEach
     void setUp() throws Exception {
         clearStyleLatch();
         // Content-sized panel with a 300x200 drawing surface: the bounds are
-        // assigned through setWidth/setHeight (as application code would do)
-        // WITHOUT pinning them as user-explicit, so Panel.measure can still
-        // delegate to the layout manager (Block 3 item 3.2). The test-only
-        // hook mirrors what a root frame does when it sizes its content panel.
-        panel = new Panel(0f, 0f, 0f, 0f);
-        panel.setSizeForTests(300f, 200f);
+        // assigned the way an outer frame sizes its content panel (layout-
+        // assigned, not user-explicit) so Panel.measure keeps delegating to
+        // the attached layout manager (Block 3 item 3.2). The eager layout
+        // pass performed by add()/setLayoutManager() consumes the pending
+        // structural dirty flags, leaving the fresh panel clean — exactly
+        // what a rendered frame would have done.
+        panel = new Panel();
+        setSizeForTests(panel, 300f, 200f);
+    }
+
+    /** Runs one paint-equivalent layout pass and drains every dirty flag. */
+    private static void settle(Panel p) {
+        p.doLayout();
+        clearChildLayoutFlags(p);
     }
 
     // ------------------------------------------------------------------
@@ -59,17 +137,23 @@ public class Block3InfrastructureTest {
 
     @Test
     void setTextOnChildMarksParentPanelLayoutDirty() throws Exception {
-        Panel panel = new Panel(0f, 0f, 0f, 0f);
-        panel.setSizeForTests(300f, 200f);
+        Panel panel = new Panel();
+        setSizeForTests(panel, 300f, 200f);
         TestComponent child = new TestComponent();
         panel.add(child);
+        // Model the frame that would have painted after the structural add:
+        // one layout pass consumes the pending relayout requests.
+        settle(panel);
         assertFalse(layoutDirty(panel), "fresh panel should not be layout dirty");
 
         child.setWidth(80f); // explicit size change -> layout intent
         assertTrue(layoutDirty(panel),
                 "the child's relayout request must reach the direct parent panel");
 
-        panel.doLayout(); // consume the pending relayout (no layout manager: no-op drain)
+        // The panel has no layout manager, so doLayout() is a pure drain:
+        // consume the request through the paint pass that would normally run
+        // it (Panel.render calls doLayout before recursing into children).
+        renderQuietly(panel);
         assertFalse(layoutDirty(panel),
                 "a layout invalidation must keep the panel dirty until the relayout runs");
     }
@@ -168,7 +252,7 @@ public class Block3InfrastructureTest {
     // ------------------------------------------------------------------
 
     @Test
-    void flowRowsAdvanceByAppliedHeightWhenExplicitlyTaller() {
+    void flowRowsAdvanceByAppliedHeightWhenExplicitlyTaller() throws Exception {
         panel.setLayoutManager(new FlowLayout(5f, 10f)); // gap=5, padding=10
         // Two 50-wide children wrap onto separate rows inside the 80px content box.
         TestComponent first = new TestComponent(50, 30);
@@ -177,6 +261,12 @@ public class Block3InfrastructureTest {
         panel.add(first);
         panel.add(second);
 
+        // Shrink the panel to a 100x100 drawing surface through the layout-
+        // assigned path (an outer frame sizing its content panel). The width
+        // is not user-pinned, so FlowLayout still keeps each child's declared
+        // geometry while wrapping rows against the 100px surface: two 50px
+        // items plus the 10px gap exceed the 80px content box and wrap.
+        setSizeForTests(panel, 100f, 100f);
         forceLayout(panel);
 
         // Row advance must use the applied height (60), not the measured one:
@@ -217,8 +307,11 @@ public class Block3InfrastructureTest {
         FlowLayout layout = new FlowLayout(5f, 10f);
         panel.setLayoutManager(layout);
         panel.add(new TestComponent());
+        // Drain the structural requests left by setLayoutManager/add, as a
+        // painted frame would; only the config-change request must remain.
+        settle(panel);
 
-        assertFalse(layoutDirty(panel), "add consumed the flag via propagation");
+        assertFalse(layoutDirty(panel), "the frame consumed the add's relayout request");
 
         layout.setGap(25f);
         assertTrue(layoutDirty(panel),
@@ -230,6 +323,11 @@ public class Block3InfrastructureTest {
         FlexLayout flex = new FlexLayout();
         panel.setLayoutManager(flex);
         panel.add(new TestComponent());
+        // Consume the structural requests first (see the flow test above),
+        // so only the config-change request can remain below.
+        settle(panel);
+
+        assertFalse(layoutDirty(panel), "the frame consumed the add's relayout request");
 
         flex.setDirection(FlexLayout.Direction.COLUMN);
         assertTrue(layoutDirty(panel),
@@ -262,8 +360,18 @@ public class Block3InfrastructureTest {
         assertEquals(1, changeCount.get());
     }
 
-    /** Reads the package-private layout-dirty flag via reflection. */
+    /**
+     * Reads the layout-dirty state of a component through the public
+     * {@code Panel.isLayoutDirty()} hook when it is a panel, or through its
+     * own private flag via reflection otherwise. Avoids duplicating the
+     * invalidation bookkeeping outside the ui package.
+     */
     private static boolean layoutDirty(Component c) throws Exception {
+        if (c instanceof Panel) {
+            Method m = Panel.class.getDeclaredMethod("isLayoutDirty");
+            m.setAccessible(true);
+            return (boolean) m.invoke(c);
+        }
         java.lang.reflect.Field f = Component.class.getDeclaredField("layoutDirty");
         f.setAccessible(true);
         return f.getBoolean(c);

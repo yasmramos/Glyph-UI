@@ -170,7 +170,7 @@ public abstract class Component implements StyleNode, Disposable {
      * use it in {@code measure()} to decide whether content-based sizing via
      * the layout manager still applies.
      */
-    private final boolean ctorSizeExplicit;
+    private boolean ctorSizeExplicit;
 
     // --- Observable properties (lazily created, marshalled via Application.invokeLater) ---
     private Property<Float> xProperty;
@@ -428,13 +428,15 @@ public abstract class Component implements StyleNode, Disposable {
     protected Component() {
         this(0, 0, 0, 0);
         this.sizeExplicitlySet = false;
-        // The delegating constructor above sets the flag to true; a no-bounds
+        this.ctorSizeExplicit = false;
+        // The delegating constructor above sets the flags to true; a no-bounds
         // construction is by definition content-sized.
     }
 
     public Component(float width, float height) {
         this(0, 0, width, height);
         this.sizeExplicitlySet = false;
+        this.ctorSizeExplicit = false;
     }
 
     /**
@@ -576,6 +578,41 @@ public abstract class Component implements StyleNode, Disposable {
         styleDirty = true;
         layoutDirty = true;
         invalidate();
+    }
+
+    /**
+     * Whether a relayout request is pending on this node (its own flag or,
+     * for containers, the aggregated flag of the subtree rooted here).
+     * Protected so {@code Panel} can expose the aggregated state while the
+     * raw per-node flag stays private to {@code Component}.
+     *
+     * @return true when a relayout has been requested but not yet consumed
+     */
+    protected boolean isLayoutDirtyFlag() {
+        return layoutDirty;
+    }
+
+    /**
+     * Records a pending relayout request on this node's own flag without
+     * running the upward invalidation chain. Package-private counterpart of
+     * the private {@code flushInvalidationRequests} sink for callers that
+     * must keep the request deferred — notably {@link Panel}, whose panel-
+     * level drain ({@code doLayout}) and component-level flush otherwise
+     * track different flags. Overridden by {@code Panel} to keep both views
+     * in sync.
+     */
+    void markLayoutDirtyRequested() {
+        layoutDirty = true;
+    }
+
+    /**
+     * Clears this node's own pending relayout request without touching the
+     * upward invalidation chain. Package-private drain counterpart of
+     * {@link #markLayoutDirtyRequested()} used by {@code Panel.doLayout()}
+     * once a relayout pass has actually run.
+     */
+    void clearLayoutRequest() {
+        layoutDirty = false;
     }
 
     /**
