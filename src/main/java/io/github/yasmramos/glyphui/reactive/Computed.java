@@ -58,6 +58,20 @@ public final class Computed<T> extends AbstractObserver implements Trackable<T> 
         return value;
     }
 
+    /**
+     * Reads the current value without registering a dependency on this
+     * computed. The underlying function still re-evaluates when dirty, so the
+     * result is always up to date; only the observer subscription is skipped.
+     *
+     * <p>Useful inside effects and {@code Computed} bodies that must inspect a
+     * derived value without adding it as a source.</p>
+     *
+     * @return the current (possibly recomputed) value
+     */
+    public T peek() {
+        return Reactor.untracked(this::get);
+    }
+
     private void recompute() {
         evaluating = true;
         try {

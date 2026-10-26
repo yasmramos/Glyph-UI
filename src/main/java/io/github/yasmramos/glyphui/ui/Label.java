@@ -320,7 +320,10 @@ public class Label extends Component {
         io.github.humbleui.skija.Font f = getFont();
         io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
         String[] lines = textLines();
-        float lineStep = metrics.getDescent() - metrics.getAscent();
+        // Full line pitch: ascent-to-ascent distance includes the font's
+        // leading gap, so multi-line text is not visually cramped with fonts
+        // that declare extra interline spacing.
+        float lineStep = metrics.getDescent() - metrics.getAscent() + metrics.getLeading();
 
         // The whole block is centered vertically, so with a single line this
         // reduces exactly to the single-line baseline below. drawString takes

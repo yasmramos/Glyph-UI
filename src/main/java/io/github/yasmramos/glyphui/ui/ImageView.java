@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.humbleui.skija.Color;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Image;
@@ -22,6 +23,8 @@ public class ImageView extends Component {
     }
 
     private Image image;
+    private ObjectFit objectFit = ObjectFit.FILL;
+    private int placeholderColor = Color.makeARGB(255, 128, 128, 128);
 
     /**
      * Creates an image view bound to an image.
@@ -40,6 +43,52 @@ public class ImageView extends Component {
      */
     public ImageView() {
         this(null);
+    }
+
+    /**
+     * Gets how the image is scaled into the view bounds.
+     *
+     * @return the fit mode (never null)
+     */
+    public ObjectFit getObjectFit() {
+        return objectFit;
+    }
+
+    /**
+     * Sets how the image is scaled into the view bounds. The default is
+     * {@link ObjectFit#FILL}, which stretches the image and may distort it;
+     * {@link ObjectFit#CONTAIN} and {@link ObjectFit#COVER} preserve the
+     * intrinsic aspect ratio.
+     *
+     * @param objectFit the fit mode (null keeps the current value)
+     */
+    public void setObjectFit(ObjectFit objectFit) {
+        if (objectFit != null && this.objectFit != objectFit) {
+            this.objectFit = objectFit;
+            invalidate();
+        }
+    }
+
+    /**
+     * Gets the colour painted when no image is loaded (placeholder).
+     *
+     * @return an ARGB colour
+     */
+    public int getPlaceholderColor() {
+        return placeholderColor;
+    }
+
+    /**
+     * Sets the colour painted while the view has no loaded image, so empty or
+     * still-loading views do not render as blank areas.
+     *
+     * @param argb the placeholder colour in ARGB format
+     */
+    public void setPlaceholderColor(int argb) {
+        if (this.placeholderColor != argb) {
+            this.placeholderColor = argb;
+            invalidate();
+        }
     }
 
     /**
@@ -93,9 +142,45 @@ public class ImageView extends Component {
 
     @Override
     protected void render(Canvas canvas) {
-        if (image != null && image.isLoaded()) {
-            canvas.drawImage(image, x, y, width, height);
+        if (image == null || !image.isLoaded()) {
+            // Placeholder: empty or still-loading views paint a solid block
+            // instead of leaving a blank hole in the layout.
+            io.github.humbleui.skija.Paint paint = scratchPaint();
+            paint.setColor(placeholderColor);
+            canvas.drawRect(x, y, width, height, paint);
+            return;
         }
+        float iw = image.getWidth();
+        float ih = image.getHeight();
+        float dx = x, dy = y, dw = width, dh = height;
+        if (objectFit != ObjectFit.FILL && iw > 0.0f && ih > 0.0f && width > 0.0f && height > 0.0f) {
+            float scale = (objectFit == ObjectFit.CONTAIN)
+                    ? Math.min(width / iw, height / ih)
+                    : Math.max(width / iw, height / ih);
+            dw = iw * scale;
+            dh = ih * scale;
+            dx = x + (width - dw) / 2.0f;
+            dy = y + (height - dh) / 2.0f;
+            if (objectFit == ObjectFit.COVER) {
+                // Clip the overflow so COVER never paints outside the bounds.
+                int saved = canvas.save();
+                canvas.clipRect(x, y, width, height);
+                canvas.drawImage(image, dx, dy, dw, dh);
+                canvas.restoreToCount(saved);
+                return;
+            }
+        }
+        canvas.drawImage(image, dx, dy, dw, dh);
+    }
+
+    /** Reusable paint for placeholder rendering (no per-frame allocation). */
+    private io.github.humbleui.skija.Paint placeholderPaint;
+
+    private io.github.humbleui.skija.Paint scratchPaint() {
+        if (placeholderPaint == null) {
+            placeholderPaint = new io.github.humbleui.skija.Paint();
+        }
+        return placeholderPaint;
     }
 
     @Override
