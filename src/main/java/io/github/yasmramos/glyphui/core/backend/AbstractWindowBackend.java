@@ -33,6 +33,7 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     protected KeyListener keyListener;
     protected MouseListener mouseListener;
     protected CursorPosListener cursorPosListener;
+    protected WindowFocusListener windowFocusListener;
     protected TextInputListener textInputListener;
     protected ImeClient imeClient;
 
@@ -205,6 +206,11 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     }
 
     @Override
+    public void setWindowFocusListener(WindowFocusListener listener) {
+        this.windowFocusListener = listener;
+    }
+
+    @Override
     public void setTextInputListener(TextInputListener listener) {
         this.textInputListener = listener;
     }
@@ -281,6 +287,13 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     protected void notifyCursorPos(double x, double y) {
         if (cursorPosListener != null) {
             cursorPosListener.onCursorPos(x, y);
+        }
+    }
+
+    /** Dispatches a window-focus change (true = gained, false = lost). */
+    protected void notifyWindowFocus(boolean focused) {
+        if (windowFocusListener != null) {
+            windowFocusListener.onWindowFocusChanged(focused);
         }
     }
 

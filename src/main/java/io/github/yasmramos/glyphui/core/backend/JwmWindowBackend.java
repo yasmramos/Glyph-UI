@@ -17,6 +17,8 @@ import io.github.humbleui.jwm.EventTextInput;
 import io.github.humbleui.jwm.EventTextInputMarked;
 import io.github.humbleui.jwm.EventWindowClose;
 import io.github.humbleui.jwm.EventWindowCloseRequest;
+import io.github.humbleui.jwm.EventWindowFocusIn;
+import io.github.humbleui.jwm.EventWindowFocusOut;
 import io.github.humbleui.jwm.EventWindowMove;
 import io.github.humbleui.jwm.EventWindowResize;
 import io.github.humbleui.jwm.EventWindowScreenChange;
@@ -974,6 +976,10 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         } else if (event instanceof EventWindowMove e) {
             posX = e.getWindowLeft();
             posY = e.getWindowTop();
+        } else if (event instanceof EventWindowFocusIn) {
+            notifyWindowFocus(true);
+        } else if (event instanceof EventWindowFocusOut) {
+            notifyWindowFocus(false);
         } else if (event instanceof EventWindowCloseRequest) {
             setShouldClose(true);
         } else if (event instanceof EventWindowClose) {

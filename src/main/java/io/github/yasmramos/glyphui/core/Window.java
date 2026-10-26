@@ -584,4 +584,15 @@ public class Window implements AutoCloseable {
         checkThread();
         backend.setCursorPosListener(listener);
     }
+
+    /**
+     * Registers the window-focus listener (null removes). The callback fires
+     * when the window is activated or deactivated, e.g. after Alt+Tab or a
+     * click on another application; the toolkit uses it to dismiss open
+     * menus so they never linger while another window is in front.
+     */
+    public void setWindowFocusListener(WindowBackend.WindowFocusListener listener) {
+        checkThread();
+        backend.setWindowFocusListener(listener);
+    }
 }

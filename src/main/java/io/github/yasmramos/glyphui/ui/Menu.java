@@ -40,6 +40,9 @@ public class Menu extends Panel {
     private Component trigger;
     private Paint borderPaint;
 
+    /** Layer this menu is registered with, if any (for hover switching). */
+    private PopupLayer registeredLayer;
+
     /**
      * Creates a closed menu with no rows and no trigger.
      */
@@ -106,6 +109,14 @@ public class Menu extends Panel {
      */
     public void setTrigger(Component trigger) {
         this.trigger = trigger;
+        Application app = Application.getCurrent();
+        if (trigger != null && app != null) {
+            // Register eagerly: hover-switching must know this menu's trigger
+            // before the menu has ever been opened.
+            attachToLayer(app.getPopupLayer());
+        } else if (trigger == null) {
+            detachFromLayer();
+        }
     }
 
     /**
@@ -138,6 +149,9 @@ public class Menu extends Panel {
         Application app = Application.getCurrent();
         if (getParent() == null && app != null) {
             app.getPopupLayer().add(this);
+        }
+        if (getParent() instanceof PopupLayer layer) {
+            attachToLayer(layer);
         }
         setWidth(getPreferredWidth());
         setHeight(getPreferredHeight());
@@ -251,9 +265,12 @@ public class Menu extends Panel {
     @Override
     protected void render(Canvas canvas) {
         // Popup surface reads as chrome above the page: the control colour
-        // separates it from the window background beneath.
+        // separates it from the window background beneath. Use the setter,
+        // not the field: Panel only fills its bounds when the background is
+        // explicit (CSS or setBackgroundColor), otherwise the page shows
+        // through the popup and the rows look translucent.
         Theme theme = getTheme();
-        this.backgroundColor = theme.getControlNormalColor();
+        setBackgroundColor(theme.getControlNormalColor());
         super.render(canvas);
 
         // Hairline border on top of everything: rows are inset by PADDING,
@@ -267,5 +284,35 @@ public class Menu extends Panel {
         int color = theme.getBorderColor();
         borderPaint.setColor((BORDER_ALPHA << 24) | (color & 0x00FFFFFF));
         canvas.drawRect(x + 0.5f, y + 0.5f, width - 1.0f, height - 1.0f, borderPaint);
+    }
+
+    /**
+     * Tracks this menu in a popup layer so hover-switching can find it while
+     * it is closed. Idempotent.
+     */
+    private void attachToLayer(PopupLayer layer) {
+        if (layer == null || layer == registeredLayer) {
+            return;
+        }
+        detachFromLayer();
+        registeredLayer = layer;
+        layer.registerMenu(this);
+    }
+
+    private void detachFromLayer() {
+        if (registeredLayer != null) {
+            registeredLayer.unregisterMenu(this);
+            registeredLayer = null;
+        }
+    }
+
+    @Override
+    protected void onDispose() {
+        detachFromLayer();
+        if (borderPaint != null) {
+            borderPaint.close();
+            borderPaint = null;
+        }
+        super.onDispose();
     }
 }

@@ -351,6 +351,26 @@ public interface WindowBackend extends AutoCloseable {
     /** Registers the cursor-position listener (null removes). */
     void setCursorPosListener(CursorPosListener listener);
 
+    /**
+     * Receives window focus changes (the user switched to another
+     * application, minimized the window, ...). Backends without native focus
+     * events never fire it.
+     */
+    @FunctionalInterface
+    interface WindowFocusListener {
+        /**
+         * @param focused true when the window gained the focus, false when it
+         *                lost it
+         */
+        void onWindowFocusChanged(boolean focused);
+    }
+
+    /**
+     * Registers the window-focus listener (null removes). Used to dismiss
+     * floating UI (menus) when the window is deactivated.
+     */
+    void setWindowFocusListener(WindowFocusListener listener);
+
     // ------------------------------------------------------------------
     // Backend capabilities / rendering hooks
     // ------------------------------------------------------------------

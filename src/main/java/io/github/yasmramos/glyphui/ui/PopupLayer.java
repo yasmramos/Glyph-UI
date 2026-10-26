@@ -5,6 +5,9 @@ import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * The window-sized, top-most layer that hosts floating popups such as
  * {@link Menu}s.
@@ -23,8 +26,10 @@ import io.github.yasmramos.glyphui.graphics.Canvas;
  *
  * <p>That same hook provides native-style dismissal: a press outside every
  * popup (and outside the popup's trigger, so clicking a menu button again
- * still toggles it) closes the open menus. {@link #closeOnEscape()} backs the
- * ESC gesture.</p>
+ * still toggles it) closes the open menus. It also implements the menu-bar
+ * hover rule — while a menu is open, moving onto a sibling trigger switches
+ * to that menu, exactly like JavaFX and native menu bars. {@link
+ * #closeOnEscape()} backs the ESC gesture.</p>
  *
  * <p>The layer itself is transparent and never claims hover: {@link #hitTest}
  * reports {@code null} when the pointer is not over a popup, which is how
@@ -35,6 +40,14 @@ public class PopupLayer extends Panel {
     // Drop-shadow paints, created lazily on first render.
     private Paint haloPaint;
     private Paint dropPaint;
+
+    /**
+     * Menus that belong to this layer, including closed ones. Needed for the
+     * menu-bar hover rule: while one menu is open, hovering the trigger of a
+     * sibling has to open that sibling, and a closed menu is not a child of
+     * the layer yet.
+     */
+    private final List<Menu> menus = new ArrayList<>();
 
     /**
      * Creates an empty layer covering the window (the application sizes it).
@@ -78,7 +91,63 @@ public class PopupLayer extends Panel {
                 }
             }
         }
+
+        // Native menu-bar behaviour (also JavaFX's): once a menu is showing,
+        // sliding the pointer onto a sibling's trigger switches to it without
+        // another click. With every menu closed hovering does nothing.
+        if (!consumed && event.getType() == MouseEventType.MOVE) {
+            switchMenuUnderPointer(windowX, windowY);
+        }
         return consumed;
+    }
+
+    /**
+     * Registers a menu so hover-switching can find its trigger even while the
+     * menu is closed.
+     *
+     * @param menu the menu to track
+     */
+    void registerMenu(Menu menu) {
+        if (menu != null && !menus.contains(menu)) {
+            menus.add(menu);
+        }
+    }
+
+    /**
+     * Stops tracking a menu (called when it is disposed).
+     *
+     * @param menu the menu to forget
+     */
+    void unregisterMenu(Menu menu) {
+        menus.remove(menu);
+    }
+
+    /**
+     * Opens the menu whose trigger is under the pointer when a different menu
+     * is already open, closing the previous one.
+     */
+    private void switchMenuUnderPointer(float windowX, float windowY) {
+        Menu open = null;
+        for (Component child : children) {
+            if (child instanceof Menu menu && menu.isOpen()) {
+                open = menu;
+                break;
+            }
+        }
+        if (open == null) {
+            return;
+        }
+        for (Menu candidate : menus) {
+            if (candidate == open || candidate.isOpen()
+                    || candidate.getTrigger() == null) {
+                continue;
+            }
+            if (isOnTrigger(candidate, windowX, windowY)) {
+                open.close();
+                candidate.open();
+                return;
+            }
+        }
     }
 
     /**
@@ -91,15 +160,37 @@ public class PopupLayer extends Panel {
         for (int i = children.size() - 1; i >= 0; i--) {
             Component child = children.get(i);
             if (child.isVisible()) {
-                if (child instanceof Menu menu) {
-                    menu.close();
-                } else {
-                    child.setVisible(false);
-                }
+                closeChild(child);
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Dismisses every open popup. Called when the window loses the focus, so
+     * a menu does not stay on screen while another application is in front.
+     *
+     * @return true when at least one popup was open
+     */
+    public boolean closeAll() {
+        boolean closed = false;
+        for (int i = children.size() - 1; i >= 0; i--) {
+            Component child = children.get(i);
+            if (child.isVisible()) {
+                closeChild(child);
+                closed = true;
+            }
+        }
+        return closed;
+    }
+
+    private static void closeChild(Component child) {
+        if (child instanceof Menu menu) {
+            menu.close();
+        } else {
+            child.setVisible(false);
+        }
     }
 
     /**

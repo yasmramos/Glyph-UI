@@ -726,6 +726,16 @@ public class Application implements AutoCloseable {
             requestRepaint();
         });
 
+        // Window deactivation dismisses floating UI. Without this, clicking
+        // another application while a menu is open leaves the menu on screen
+        // until the user clicks back inside the window (no press is delivered
+        // to a deactivated window, so the outside-press dismissal never runs).
+        window.setWindowFocusListener(focused -> {
+            if (!focused && popupLayer.closeAll()) {
+                requestRepaint();
+            }
+        });
+
         // Focus manager: owns Tab / Shift+Tab traversal and the focused widget
         focusManager = new FocusManager(this::requestRepaint);
         focusManager.setRoot(rootPanel);

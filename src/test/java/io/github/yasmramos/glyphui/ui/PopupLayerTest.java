@@ -149,6 +149,34 @@ public class PopupLayerTest extends TestBase {
     }
 
     @Test
+    public void closeAllDismissesEveryOpenPopup() {
+        Menu first = new Menu();
+        Menu second = new Menu();
+        PopupLayer layer = new PopupLayer();
+        layer.add(first);
+        layer.add(second);
+        first.addItem("Uno");
+        second.addItem("Dos");
+        first.open();
+        second.open();
+
+        assertTrue(layer.closeAll(), "open popups must be reported as dismissed");
+        assertFalse(first.isOpen(), "the first popup closes");
+        assertFalse(second.isOpen(), "the second popup closes");
+
+        assertFalse(layer.closeAll(), "nothing left to dismiss");
+    }
+
+    @Test
+    public void closeAllIgnoresClosedPopups() {
+        Menu menu = new Menu();
+        PopupLayer layer = layerWithOpenMenu(menu);
+        menu.close();
+
+        assertFalse(layer.closeAll(), "a closed popup must not count as dismissed");
+    }
+
+    @Test
     public void escapeDoesNothingWhenNoPopupIsOpen() {
         PopupLayer layer = new PopupLayer();
         assertFalse(layer.closeOnEscape());
@@ -171,6 +199,84 @@ public class PopupLayerTest extends TestBase {
         menu.close();
         assertNull(layer.hitTest(5.0f, 5.0f),
                 "a closed popup is invisible to hit-testing");
+    }
+
+    @Test
+    public void hoveringASiblingTriggerWhileAMenuIsOpenSwitchesMenus() {
+        Panel host = new Panel(0, 0, 400, 300);
+        Button archivo = new Button(0, 10, 80, 24, "Archivo");
+        Button editar = new Button(80, 10, 80, 24, "Editar");
+        host.add(archivo);
+        host.add(editar);
+
+        Menu file = new Menu();
+        file.addItem("Nuevo");
+        file.setTrigger(archivo);
+        Menu edit = new Menu();
+        edit.addItem("Copiar");
+        edit.setTrigger(editar);
+
+        PopupLayer layer = new PopupLayer();
+        layer.setWidth(400.0f);
+        layer.setHeight(300.0f);
+        layer.add(file);
+        layer.add(edit);
+        // A menu joins the layer's registry when it opens; close it again so
+        // the test starts from the native "nothing showing" state.
+        edit.open();
+        edit.close();
+        file.open();
+
+        boolean consumed = layer.onMouseEvent(ev(MouseEventType.MOVE, 120, 20));
+
+        assertFalse(consumed, "the hover is over the page, not the popup");
+        assertFalse(file.isOpen(), "the previous menu closes on hover");
+        assertTrue(edit.isOpen(), "the hovered sibling takes over");
+    }
+
+    @Test
+    public void hoveringAWhollyClosedMenuBarDoesNotOpenAnything() {
+        Panel host = new Panel(0, 0, 400, 300);
+        Button archivo = new Button(0, 10, 80, 24, "Archivo");
+        host.add(archivo);
+
+        Menu file = new Menu();
+        file.addItem("Nuevo");
+        file.setTrigger(archivo);
+
+        PopupLayer layer = new PopupLayer();
+        layer.setWidth(400.0f);
+        layer.setHeight(300.0f);
+        layer.add(file);
+        file.open();
+        file.close(); // registered, but nothing is showing
+
+        layer.onMouseEvent(ev(MouseEventType.MOVE, 40, 20));
+
+        assertFalse(file.isOpen(),
+                "hover alone must not deploy a menu when none is open");
+    }
+
+    @Test
+    public void hoveringTheOpenMenuTriggerKeepsItOpen() {
+        Panel host = new Panel(0, 0, 400, 300);
+        Button archivo = new Button(0, 10, 80, 24, "Archivo");
+        host.add(archivo);
+
+        Menu file = new Menu();
+        file.addItem("Nuevo");
+        file.setTrigger(archivo);
+
+        PopupLayer layer = new PopupLayer();
+        layer.setWidth(400.0f);
+        layer.setHeight(300.0f);
+        layer.add(file);
+        file.open();
+
+        layer.onMouseEvent(ev(MouseEventType.MOVE, 40, 20));
+
+        assertTrue(file.isOpen(),
+                "moving over the trigger of the open menu is a no-op");
     }
 
     @Test
