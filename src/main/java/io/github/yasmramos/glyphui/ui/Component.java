@@ -122,6 +122,17 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
+     * Clears the global style-dirty latch. Test-support hook (package-private
+     * in {@code io.github.yasmramos.glyphui.ui}): unit tests in other packages
+     * drain it via reflection so each test starts from a known-clean cascade
+     * state regardless of what other tests or setup code invalidated. Never
+     * part of the frozen public API surface.
+     */
+    static void resetStyleDirtyForTests() {
+        globalStyleDirty.set(false);
+    }
+
+    /**
      * Default width used when no explicit bounds were provided and layout is
      * free to decide.
      */
