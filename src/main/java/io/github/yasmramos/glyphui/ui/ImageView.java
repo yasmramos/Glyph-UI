@@ -68,6 +68,16 @@ public class ImageView extends Component {
 
     @Override
     public Dimension measure(float maxWidth, float maxHeight) {
+        // An explicit CSS width/height (or bounds set through the layout /
+        // constructor path) must win over the image's intrinsic pixel size:
+        // delegate to the base measurement path, which honours declared
+        // sizes including percentages resolved against the parent.
+        io.github.yasmramos.glyphui.style.Style s = getComputedStyle();
+        boolean cssSized = s != null && (s.has(io.github.yasmramos.glyphui.style.StyleProperty.WIDTH)
+                || s.has(io.github.yasmramos.glyphui.style.StyleProperty.HEIGHT));
+        if (sizeExplicitlySet || cssSized) {
+            return super.measure(maxWidth, maxHeight);
+        }
         float w = (image != null && image.isLoaded()) ? image.getWidth() : 0.0f;
         float h = (image != null && image.isLoaded()) ? image.getHeight() : 0.0f;
         if (Float.isNaN(maxWidth) || maxWidth == Float.POSITIVE_INFINITY) {
