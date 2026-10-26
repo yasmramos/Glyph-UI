@@ -152,4 +152,66 @@ public class FocusManagerTest extends TestBase {
         assertTrue(repaintCounter[0] > before,
                 "Focus changes must request a repaint");
     }
+
+    @Test
+    public void testPointerFocusDoesNotShowTheFocusRing() {
+        assertTrue(manager.requestFocusFromPointer(first));
+
+        assertTrue(first.isFocused(), "a pointer press still focuses the widget");
+        assertFalse(first.isFocusVisible(),
+                "focus gained by the pointer must not paint a ring");
+    }
+
+    @Test
+    public void testKeyboardFocusShowsTheFocusRing() {
+        assertTrue(manager.requestFocus(first));
+        assertTrue(first.isFocusVisible(),
+                "programmatic focus is keyboard-visible");
+
+        assertTrue(manager.focusNext());
+        assertTrue(second.isFocusVisible(), "Tab must reveal the next focus");
+        assertFalse(first.isFocusVisible(), "the old focus must drop its ring");
+    }
+
+    @Test
+    public void testPointerPressClearsTheRingOfAKeyboardFocusedWidget() {
+        manager.requestFocus(first);
+        assertTrue(first.isFocusVisible());
+        int before = repaintCounter[0];
+
+        assertTrue(manager.requestFocusFromPointer(first),
+                "same owner, new acquisition: the ring must be cleared");
+
+        assertTrue(first.isFocused(), "focus stays with the widget");
+        assertFalse(first.isFocusVisible());
+        assertTrue(repaintCounter[0] > before,
+                "dropping the ring must request a repaint");
+    }
+
+    @Test
+    public void testRevealFocusShowsTheRingAfterAPointerPress() {
+        manager.requestFocusFromPointer(first);
+        assertFalse(first.isFocusVisible());
+
+        assertTrue(manager.revealFocus());
+        assertTrue(first.isFocusVisible(),
+                "keyboard interaction must reveal a pointer-focused ring");
+
+        assertFalse(manager.revealFocus(),
+                "no redundant repaint when the ring is already visible");
+    }
+
+    @Test
+    public void testLosingFocusClearsTheVisibleFlag() {
+        manager.requestFocus(first);
+        manager.requestFocus(second);
+
+        assertFalse(first.isFocused());
+        assertFalse(first.isFocusVisible());
+
+        // Regaining it through the pointer starts hidden again.
+        manager.requestFocusFromPointer(first);
+        assertTrue(first.isFocused());
+        assertFalse(first.isFocusVisible());
+    }
 }

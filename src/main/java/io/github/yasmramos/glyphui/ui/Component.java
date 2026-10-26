@@ -323,6 +323,13 @@ public abstract class Component implements StyleNode, Disposable {
     private boolean focused;
 
     /**
+     * Whether the current focus was established without the pointer (Tab,
+     * programmatic request), i.e. whether the focus ring has to be drawn.
+     * Only meaningful while {@link #focused} is true.
+     */
+    private boolean focusVisible;
+
+    /**
      * Optional explicit accessibility name override (see
      * {@link #getAccessibleName()}). Null means "derive a default".
      */
@@ -1557,14 +1564,49 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
+     * Checks whether this component should paint its focus ring.
+     *
+     * <p>Focus gained through the keyboard (Tab) or a programmatic
+     * {@link #requestFocus()} is "focus visible"; focus gained by pressing
+     * the component with the pointer is not, so a mouse click does not leave
+     * a dashed ring behind. Widgets that draw an attention border (e.g.
+     * {@link Button}) gate it on this method, not on {@link #isFocused()},
+     * so keyboard users still see where the focus is.</p>
+     *
+     * @return true if focused and the focus was not acquired by the pointer
+     */
+    public boolean isFocusVisible() {
+        return focused && focusVisible;
+    }
+
+    /**
      * Requests the keyboard focus for this component through the global
      * {@link io.github.yasmramos.glyphui.core.FocusManager}. No-op when the
      * component is not focusable or not visible/enabled.
+     *
+     * <p>Programmatic focus counts as focus-visible: callers use this when
+     * keyboard users need to see the ring (dialogs, shortcuts). Pointer
+     * handlers must use {@link #requestFocusFromPointer()} instead.</p>
      */
     public void requestFocus() {
         io.github.yasmramos.glyphui.core.FocusManager fm = io.github.yasmramos.glyphui.core.FocusManager.getGlobalFocusManager();
         if (fm != null) {
             fm.requestFocus(this);
+        }
+    }
+
+    /**
+     * Requests the keyboard focus in response to a pointer press.
+     *
+     * <p>The component still becomes the focus owner — Enter/Space keep
+     * working — but it does not paint a focus ring until the keyboard is
+     * used again (see {@link #isFocusVisible()}). Mouse clicks that focus a
+     * button should therefore call this method, not {@link #requestFocus()}.</p>
+     */
+    public void requestFocusFromPointer() {
+        io.github.yasmramos.glyphui.core.FocusManager fm = io.github.yasmramos.glyphui.core.FocusManager.getGlobalFocusManager();
+        if (fm != null) {
+            fm.requestFocusFromPointer(this);
         }
     }
 
@@ -1580,13 +1622,27 @@ public abstract class Component implements StyleNode, Disposable {
      * @param focused the new focus state
      */
     void setFocusedInternal(boolean focused) {
-        if (this.focused == focused) {
+        setFocusedInternal(focused, focused);
+    }
+
+    /**
+     * Internal focus setter that also records how the focus was acquired.
+     *
+     * @param focused      the new focus state
+     * @param focusVisible whether the focus ring should be painted (ignored
+     *                     when {@code focused} is false)
+     */
+    void setFocusedInternal(boolean focused, boolean focusVisible) {
+        boolean visible = focused && focusVisible;
+        if (this.focused == focused && this.focusVisible == visible) {
             return;
         }
+        boolean wasFocused = this.focused;
         this.focused = focused;
-        if (focused) {
+        this.focusVisible = visible;
+        if (focused && !wasFocused) {
             onFocusGained();
-        } else {
+        } else if (!focused && wasFocused) {
             onFocusLost();
         }
         invalidate();
@@ -1605,6 +1661,19 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public final void applyFocusChange(boolean focused) {
         setFocusedInternal(focused);
+    }
+
+    /**
+     * Internal focus bridge used by
+     * {@link io.github.yasmramos.glyphui.core.FocusManager}: gains the focus
+     * and records whether the focus ring should be painted. Losing the focus
+     * always clears the visible flag.
+     *
+     * @param focused      the new internal focus state
+     * @param focusVisible whether the focus ring should be painted
+     */
+    public final void applyFocusChange(boolean focused, boolean focusVisible) {
+        setFocusedInternal(focused, focusVisible);
     }
 
     /**
@@ -1707,7 +1776,7 @@ public abstract class Component implements StyleNode, Disposable {
      * Draws the standard focus ring for this component using the theme's accent
      * color: a dashed rounded rectangle inset by one logical pixel. Widgets
      * that accept focus ({@code Button}, {@code TextField}, ...) call this from
-     * {@code render} when {@link #isFocused()} is true.
+     * {@code render} when {@link #isFocusVisible()} is true.
      *
      * @param canvas the canvas to draw on
      */

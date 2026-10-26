@@ -789,6 +789,9 @@ public class Application implements AutoCloseable {
             char keyChar = pressed ? mapKeyToChar(key) : 0;
             KeyEvent event = new KeyEvent(type, key, keyChar, modifiers);
             rootPanel.onKeyEvent(event);
+            // Keyboard interaction makes the focus visible, even if the
+            // widget was focused by a previous pointer press.
+            focusManager.revealFocus();
             requestRepaint();
         });
 

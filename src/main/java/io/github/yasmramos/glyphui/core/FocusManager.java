@@ -73,16 +73,50 @@ public class FocusManager {
      * @return true if the focus changed as requested
      */
     public boolean requestFocus(Component component) {
+        return requestFocus(component, true);
+    }
+
+    /**
+     * Gives the keyboard focus to a component in response to a pointer press.
+     *
+     * <p>The component becomes the focus owner (Enter/Space keep working)
+     * but it is marked as pointer-focused, so widgets that paint a focus ring
+     * keep it hidden until the keyboard is used, matching the web's
+     * {@code :focus-visible} behaviour. A press on an already focused widget
+     * that currently shows its ring clears that ring.</p>
+     *
+     * @param component the component to focus (null clears the focus)
+     * @return true if the focus state changed as requested
+     */
+    public boolean requestFocusFromPointer(Component component) {
+        return requestFocus(component, false);
+    }
+
+    /**
+     * Marks the current focus as keyboard-visible (Tab traversal or any key
+     * sent to the focused widget). Used so a widget focused by the pointer
+     * shows its ring as soon as the user interacts with it from the keyboard.
+     *
+     * @return true if the visible flag changed
+     */
+    public boolean revealFocus() {
+        Component current = focusedComponent;
+        if (current == null || current.isFocusVisible()) {
+            return false;
+        }
+        current.applyFocusChange(true, true);
+        repaint();
+        return true;
+    }
+
+    private boolean requestFocus(Component component, boolean focusVisible) {
         if (component == null) {
-            return changeFocus(null);
+            return changeFocus(null, false);
         }
         if (!isFocusCandidate(component)) {
             return false;
         }
-        if (component == focusedComponent) {
-            return false;
-        }
-        return changeFocus(component);
+        return changeFocus(component, focusVisible);
     }
 
     /**
@@ -93,7 +127,7 @@ public class FocusManager {
      */
     public void clearFocus(Component component) {
         if (focusedComponent == component) {
-            changeFocus(null);
+            changeFocus(null, false);
         }
     }
 
@@ -117,7 +151,7 @@ public class FocusManager {
 
     private void clearFocusIfIneligible(Component component) {
         if (focusedComponent == component && !isFocusCandidate(component)) {
-            changeFocus(null);
+            changeFocus(null, false);
         }
     }
 
@@ -160,7 +194,7 @@ public class FocusManager {
         java.util.List<Component> order = new java.util.ArrayList<>();
         collectFocusable(root, order);
         if (order.isEmpty()) {
-            return changeFocus(null);
+            return changeFocus(null, false);
         }
         int index = focusedComponent == null ? -1 : order.indexOf(focusedComponent);
         int next;
@@ -170,7 +204,9 @@ public class FocusManager {
         } else {
             next = (index + (forward ? 1 : -1) + order.size()) % order.size();
         }
-        return changeFocus(order.get(next));
+        // Tab traversal always reveals the ring: the user needs to see where
+        // the keyboard focus landed.
+        return changeFocus(order.get(next), true);
     }
 
     private Panel resolveRoot() {
@@ -214,21 +250,32 @@ public class FocusManager {
         return component.isFocusable() && component.isEnabled() && component.isVisible();
     }
 
-    private boolean changeFocus(Component newFocus) {
+    private boolean changeFocus(Component newFocus, boolean focusVisible) {
         Component old = focusedComponent;
         if (old == newFocus) {
-            return false;
+            if (newFocus == null || newFocus.isFocusVisible() == focusVisible) {
+                return false;
+            }
+            // Same owner, new acquisition: e.g. a keyboard-focused button is
+            // pressed with the pointer and must drop its ring.
+            newFocus.applyFocusChange(true, focusVisible);
+            repaint();
+            return true;
         }
         focusedComponent = newFocus;
         if (old != null) {
             old.applyFocusChange(false);
         }
         if (newFocus != null) {
-            newFocus.applyFocusChange(true);
+            newFocus.applyFocusChange(true, focusVisible);
         }
+        repaint();
+        return true;
+    }
+
+    private void repaint() {
         if (repaintCallback != null) {
             repaintCallback.run();
         }
-        return true;
     }
 }
