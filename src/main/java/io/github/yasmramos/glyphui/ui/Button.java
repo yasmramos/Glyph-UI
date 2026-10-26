@@ -7,6 +7,8 @@ import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Property;
+import io.github.yasmramos.glyphui.graphics.Theme;
+import io.github.yasmramos.glyphui.style.StyleProperty;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
 
@@ -549,7 +551,23 @@ public class Button extends Component {
      */
     private int getBackgroundColor() {
         if (!enabled) {
-            return getTheme().getControlDisabledColor();
+            // Consult the computed style first so `button:disabled { ... }`
+            // rules win over every fallback (the engine re-cascades on
+            // enablement changes, so a :disabled declaration is present
+            // here). A base `button { background: ... }` rule also applies
+            // while disabled — CSS has no implicit dimming. Only when no CSS
+            // declaration exists do we fall back to an explicit per-state
+            // override (setNormalColor must not leak into the disabled
+            // appearance) and then to the theme's disabled color.
+            Theme theme = getTheme();
+            if (hasStyleValue(StyleProperty.BACKGROUND)) {
+                return resolveIntStyle(StyleProperty.BACKGROUND, null,
+                        theme.getControlDisabledColor());
+            }
+            if (normalColorOverride != null) {
+                return normalColorOverride;
+            }
+            return theme.getControlDisabledColor();
         }
 
         switch (state) {
