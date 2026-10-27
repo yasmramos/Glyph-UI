@@ -35,7 +35,42 @@ public class GlSurfaceFactory implements SurfaceFactory {
      */
     private static final int DEFAULT_FRAMEBUFFER_ID = 0;
 
+    /**
+     * Default number of MSAA samples requested for GPU render targets
+     * (4 = MSAA x4) to smooth geometric edges in hardware. Can be overridden
+     * with the {@code glyph.gl.samples} system property (set it to {@code 0}
+     * to fall back to pure software antialiasing on drivers without multisample
+     * support). Values other than 0/2/4/8 are clamped to the default.
+     */
+    private static final int DEFAULT_MSAA_SAMPLES = 4;
+
+    /** Resolved MSAA sample count, read once from the system property. */
+    private static final int MSAA_SAMPLES = resolveMsaaSamples();
+
     private DirectContext directContext;
+
+    /**
+     * Reads and validates the MSAA sample count from the
+     * {@code glyph.gl.samples} system property.
+     *
+     * @return one of 0, 2, 4 or 8
+     */
+    private static int resolveMsaaSamples() {
+        String raw = System.getProperty("glyph.gl.samples");
+        if (raw == null || raw.isEmpty()) {
+            return DEFAULT_MSAA_SAMPLES;
+        }
+        try {
+            int n = Integer.parseInt(raw.trim());
+            // Skia only accepts power-of-two sample counts up to 8.
+            if (n == 0 || n == 2 || n == 4 || n == 8) {
+                return n;
+            }
+        } catch (NumberFormatException ignored) {
+            // Fall through to the default below.
+        }
+        return DEFAULT_MSAA_SAMPLES;
+    }
 
     @Override
     public SurfaceResult create(Window window) {
@@ -62,7 +97,7 @@ public class GlSurfaceFactory implements SurfaceFactory {
         BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
                 fbWidth,
                 fbHeight,
-                0, // samples
+                MSAA_SAMPLES, // hardware antialiasing (see resolveMsaaSamples)
                 0, // stencil
                 fbId,
                 GR_GL_RGBA8 // GL_RGBA8 constant
@@ -99,7 +134,7 @@ public class GlSurfaceFactory implements SurfaceFactory {
         BackendRenderTarget renderTarget = BackendRenderTarget.makeGL(
                 fbWidth,
                 fbHeight,
-                0, // samples
+                MSAA_SAMPLES, // hardware antialiasing (see resolveMsaaSamples)
                 0, // stencil
                 fbId,
                 GR_GL_RGBA8 // GL_RGBA8 constant

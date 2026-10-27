@@ -87,6 +87,22 @@ public class Canvas {
     }
 
     /**
+     * Returns a paint pre-configured with Glyph-UI's global visual-quality
+     * defaults (Priority 1: eliminate jagged "staircase" edges). Skija has no
+     * canvas-level antialias toggle — geometric smoothing is a per-paint flag
+     * — so every drawing helper in this wrapper routes its {@code Paint}
+     * through this method when the caller supplies a raw Skija paint, and
+     * widgets are encouraged to start from here as well.
+     *
+     * @param paint the paint to configure (mutated in place, not closed)
+     * @return the same paint instance, for chaining
+     */
+    public static io.github.humbleui.skija.Paint withQualityDefaults(io.github.humbleui.skija.Paint paint) {
+        paint.setAntiAlias(true);
+        return paint;
+    }
+
+    /**
      * Installs (or clears, with {@code null}) the static hook consulted by
      * newly constructed wrappers to obtain their thread-affinity target.
      *
@@ -272,6 +288,9 @@ public class Canvas {
      */
     public void drawRect(float x, float y, float width, float height, Paint paint) {
         checkUiThread();
+        // Global visual-quality default (Priority 1): Skia has no canvas-level
+        // AA toggle, so geometric smoothing is enforced per paint here.
+        withQualityDefaults(paint);
         Rect rect = Rect.makeXYWH(x, y, width, height);
         canvas.drawRect(rect, paint);
     }
@@ -289,6 +308,9 @@ public class Canvas {
      */
     public void drawRRect(float x, float y, float width, float height, float radiusX, float radiusY, Paint paint) {
         checkUiThread();
+        // Global visual-quality default (Priority 1): Skia has no canvas-level
+        // AA toggle, so geometric smoothing is enforced per paint here.
+        withQualityDefaults(paint);
         RRect rrect = RRect.makeXYWH(x, y, width, height, radiusX, radiusY);
         canvas.drawRRect(rrect, paint);
     }
@@ -303,6 +325,9 @@ public class Canvas {
      */
     public void drawCircle(float centerX, float centerY, float radius, Paint paint) {
         checkUiThread();
+        // Global visual-quality default (Priority 1): Skia has no canvas-level
+        // AA toggle, so geometric smoothing is enforced per paint here.
+        withQualityDefaults(paint);
         canvas.drawCircle(centerX, centerY, radius, paint);
     }
 
@@ -317,6 +342,9 @@ public class Canvas {
      */
     public void drawLine(float x1, float y1, float x2, float y2, Paint paint) {
         checkUiThread();
+        // Global visual-quality default (Priority 1): Skia has no canvas-level
+        // AA toggle, so geometric smoothing is enforced per paint here.
+        withQualityDefaults(paint);
         canvas.drawLine(x1, y1, x2, y2, paint);
     }
 

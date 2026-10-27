@@ -227,7 +227,10 @@ public final class FontManager {
         Font font = bySize.get(size);
         if (font == null) {
             Typeface typeface = resolveTypeface(null, FontStyle.NORMAL);
-            font = new Font(typeface, size);
+            // Route through Fonts.applyQualityDefaults so cached role fonts
+            // get the same subpixel-AA + slight-hinting treatment as widget
+            // fonts (Priority 1 visual quality).
+            font = Fonts.applyQualityDefaults(new Font(typeface, size));
             bySize.put(size, font);
         }
         return font;

@@ -1,6 +1,8 @@
 package io.github.yasmramos.glyphui.graphics;
 
 import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.FontEdging;
+import io.github.humbleui.skija.FontHinting;
 import io.github.humbleui.skija.FontStyle;
 import io.github.humbleui.skija.Typeface;
 
@@ -51,11 +53,40 @@ public final class Fonts {
      * the shared default typeface. The returned {@code Font} is owned by the
      * caller and must be closed together with the widget that uses it.
      *
+     * <p>The font is configured for crisp "modern web" text rendering:
+     * subpixel antialiasing edging (with an automatic grayscale fallback on
+     * backends that do not support LCD subpixel rasterization, such as GPU
+     * targets) plus slight hinting, which keeps glyph shapes faithful while
+     * improving legibility at small sizes.</p>
+     *
      * @param size the font size in points
      * @return a new {@code Font} backed by the shared typeface
      */
     public static Font createDefaultFont(float size) {
-        return new Font(getDefaultTypeface(), size);
+        return applyQualityDefaults(new Font(getDefaultTypeface(), size));
+    }
+
+    /**
+     * Applies Glyph-UI's global text-rendering quality settings to a font:
+     * {@link FontEdging#SUBPIXEL_ANTI_ALIAS} for maximum sharpness on LCD
+     * displays and {@link FontHinting#SLIGHT} as a balance between glyph
+     * shape fidelity and legibility. Callers that construct {@code Font}
+     * objects directly should route them through this method so every widget
+     * renders text consistently.
+     *
+     * <p>Note: Skia silently falls back to grayscale antialiasing when the
+     * destination surface does not support subpixel coverage (e.g. GPU-backed
+     * canvases), so this setting never produces artifacts — worst case it is
+     * equivalent to {@link FontEdging#ANTI_ALIAS}.</p>
+     *
+     * @param font the font to configure (not closed by this method)
+     * @return the same font instance, for chaining
+     */
+    public static Font applyQualityDefaults(Font font) {
+        java.util.Objects.requireNonNull(font, "font");
+        font.setEdging(FontEdging.SUBPIXEL_ANTI_ALIAS);
+        font.setHinting(FontHinting.SLIGHT);
+        return font;
     }
 
     /**

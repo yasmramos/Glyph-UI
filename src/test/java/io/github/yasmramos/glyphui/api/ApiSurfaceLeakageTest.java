@@ -83,6 +83,8 @@ public class ApiSurfaceLeakageTest {
             "io.github.yasmramos.glyphui.graphics.Canvas#measureText",
             "io.github.yasmramos.glyphui.graphics.Canvas#getTextHeight",
             "io.github.yasmramos.glyphui.graphics.Canvas#drawImage",
+            // Paint-typed quality helper (same renderer-extension rationale).
+            "io.github.yasmramos.glyphui.graphics.Canvas#withQualityDefaults",
             // Widget render extension points (protected, renderer-facing).
             "io.github.yasmramos.glyphui.ui.Component#resolveFont",
             "io.github.yasmramos.glyphui.ui.Component#render",

@@ -25,7 +25,8 @@ public class PreferredButtonSizingTest {
     static void checkSkijaAvailable() {
         assumeTrue(RasterCanvasTestFactory.isAvailable(),
                 "Skija native library not available on this host");
-        referenceFont = new Font(Typeface.makeFromName(null, FontStyle.NORMAL), 16.0f);
+        referenceFont = io.github.yasmramos.glyphui.graphics.Fonts.applyQualityDefaults(
+                new Font(Typeface.makeFromName(null, FontStyle.NORMAL), 16.0f));
     }
 
     @AfterAll
