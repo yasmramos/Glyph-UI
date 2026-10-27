@@ -657,7 +657,20 @@ public class Application implements AutoCloseable {
         // values. Subscribe through the neutral listener API (never a raw
         // native callback) so the toolkit works with any backend.
         window.setFramebufferSizeListener((fbWidth, fbHeight) -> {
-            recreateSurface(fbWidth, fbHeight);
+            // Hardening (review item 5): a backend must never hand the
+            // toolkit a degenerate framebuffer, but we do not trust that —
+            // negative values would reach Skija's surface factory and throw
+            // from inside a native event callback. Clamp them to zero so
+            // recreateSurface()'s existing guard skips the resize instead
+            // (the same path a minimized 0x0 window takes).
+            int safeWidth = Math.max(0, fbWidth);
+            int safeHeight = Math.max(0, fbHeight);
+            if (safeWidth != fbWidth || safeHeight != fbHeight) {
+                log.log(Logger.Level.WARNING, "Ignoring degenerate framebuffer size from "
+                        + "backend (" + fbWidth + "x" + fbHeight + "); clamped to "
+                        + safeWidth + "x" + safeHeight + ".");
+            }
+            recreateSurface(safeWidth, safeHeight);
             requestRepaint();
         });
 
@@ -665,6 +678,17 @@ public class Application implements AutoCloseable {
         // only the per-frame scale factor changes; render() reads it live,
         // so we just need a repaint.
         window.setContentScaleListener((xscale, yscale) -> {
+            // Hardening (review item 5): a non-positive or non-finite scale
+            // would make every logical→physical conversion produce a zero or
+            // negative framebuffer on the next resize, silently killing all
+            // painting. Keep the last good scale instead and report it.
+            if (!Float.isFinite(xscale) || xscale <= 0f
+                    || !Float.isFinite(yscale) || yscale <= 0f) {
+                log.log(Logger.Level.WARNING, "Ignoring invalid content scale from "
+                        + "backend (" + xscale + " x " + yscale + "); keeping "
+                        + this.contentScaleX + " x " + this.contentScaleY + ".");
+                return;
+            }
             this.contentScaleX = xscale;
             this.contentScaleY = yscale;
             requestRepaint();
