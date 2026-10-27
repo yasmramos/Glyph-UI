@@ -13,11 +13,13 @@ import io.github.yasmramos.glyphui.events.MouseEventType;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.RasterCanvasTestFactory;
 import io.github.humbleui.skija.Surface;
+import io.github.humbleui.skija.Bitmap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.EnumSet;
 
@@ -174,6 +176,31 @@ public class TextFieldEditingTest extends TestBase {
         field.insertText(null);
         field.insertText("");
         assertEquals("X", field.getText());
+    }
+
+    @Test
+    public void insertTextDropsControlCharacters() {
+        // Windows also delivers Tab through the IME/committed-text path.
+        // This is a single-line field, so control characters must never
+        // reach the buffer: they render as a missing-glyph box and Tab is a
+        // focus key, not content.
+        field.setText("ab");
+        field.insertText("\t");
+        assertEquals("ab", field.getText(), "a lone Tab inserts nothing");
+        assertEquals(2, field.getCaret());
+
+        field.insertText("a\tb");
+        assertEquals("abab", field.getText(), "tabs are stripped, text kept");
+        assertEquals(4, field.getCaret());
+
+        field.insertText("\r\n");
+        field.insertText(String.valueOf((char) 127));
+        assertEquals("abab", field.getText());
+
+        field.applyImeText("\t", -1, -1);
+        field.applyImeText("\n", 0, 2); // must not delete the range either
+        assertEquals("abab", field.getText(), "IME control commits are ignored");
+        assertEquals(4, field.getCaret());
     }
 
     // ------------------------------------------------------------------
@@ -502,6 +529,100 @@ public class TextFieldEditingTest extends TestBase {
         // NaN constraints behave like unbounded ones.
         Dimension nan = field.measure(Float.NaN, Float.NaN);
         assertTrue(nan.getWidth() > 0);
+    }
+
+    @Test
+    public void preferredWidthStaysStableWhileTyping() {
+        // A layout-managed field (no explicit bounds) used to derive its
+        // intrinsic width from the buffer, so every keystroke invalidated the
+        // row and widened the widget. Size must now follow the placeholder
+        // only, keeping the layout stable while writing.
+        TextField intrinsic = new TextField();
+        try {
+            intrinsic.setPlaceholder("Your name");
+            float initial = intrinsic.getPreferredWidth();
+            assertEquals(initial, intrinsic.measure(Float.POSITIVE_INFINITY,
+                    Float.POSITIVE_INFINITY).getWidth(), 1e-3);
+
+            intrinsic.setText("a fairly long name that would have widened it");
+            assertEquals(initial, intrinsic.getPreferredWidth(), 1e-3,
+                    "text must not drive the intrinsic width");
+            assertEquals(initial, intrinsic.measure(Float.POSITIVE_INFINITY,
+                    Float.POSITIVE_INFINITY).getWidth(), 1e-3);
+
+            intrinsic.insertText(" and even more");
+            assertEquals(initial, intrinsic.getPreferredWidth(), 1e-3);
+        } finally {
+            intrinsic.dispose();
+        }
+    }
+
+    @Test
+    public void longTextIsClippedAndPannedInsideTheField() {
+        Surface[] holder = new Surface[1];
+        io.github.yasmramos.glyphui.graphics.Canvas canvas = RasterCanvasTestFactory.create(holder);
+        TextField narrow = new TextField(0, 0, 120, 30);
+        try {
+            narrow.setVisible(true);
+            narrow.requestFocus();
+            narrow.setText("abcdefghijklmnopqrstuvwxyz0123456789");
+            narrow.renderInternal(canvas);
+
+            byte[] pixels = readPixels(holder[0]);
+            int surfaceWidth = holder[0].getWidth();
+
+            // Nothing may be painted to the right of the border. The field
+            // keeps its width, so overflowing text used to spill over the
+            // frame and look like the widget was growing.
+            for (int px = 121; px < 200; px++) {
+                assertEquals(0, argbAt(pixels, surfaceWidth, px, 15) >>> 24,
+                        "text painted outside the field at x=" + px);
+            }
+
+            // The caret must remain visible: the text pans instead of being
+            // silently clipped away. (The focused border is also accent
+            // coloured, so sample the inner area only.)
+            int accent = narrow.getTheme().getAccentColor();
+            boolean caretVisible = false;
+            for (int px = 100; px < 117 && !caretVisible; px++) {
+                for (int py = 5; py < 25; py++) {
+                    if (argbAt(pixels, surfaceWidth, px, py) == accent) {
+                        caretVisible = true;
+                        break;
+                    }
+                }
+            }
+            assertTrue(caretVisible, "caret must be panned into view");
+        } finally {
+            narrow.dispose();
+            if (holder[0] != null) {
+                holder[0].close();
+            }
+        }
+    }
+
+    /** Reads the raster surface as N32 premultiplied bytes ([B, G, R, A]). */
+    private static byte[] readPixels(Surface surface) {
+        int w = surface.getWidth();
+        int h = surface.getHeight();
+        Bitmap bitmap = new Bitmap();
+        try {
+            assertTrue(bitmap.allocN32Pixels(w, h), "allocN32Pixels failed");
+            assertTrue(surface.readPixels(bitmap, 0, 0), "readPixels failed");
+            ByteBuffer buffer = bitmap.peekPixels();
+            buffer.rewind();
+            byte[] pixels = new byte[buffer.remaining()];
+            buffer.get(pixels);
+            return pixels;
+        } finally {
+            bitmap.close();
+        }
+    }
+
+    private static int argbAt(byte[] pixels, int surfaceWidth, int x, int y) {
+        int offset = (y * surfaceWidth + x) * 4;
+        return (pixels[offset] & 0xFF) | ((pixels[offset + 1] & 0xFF) << 8)
+                | ((pixels[offset + 2] & 0xFF) << 16) | ((pixels[offset + 3] & 0xFF) << 24);
     }
 
     @Test
