@@ -804,10 +804,46 @@ public class TextField extends Component
         if (sizeExplicitlySet) {
             return width;
         }
+        // Priority 3 item 7: cache the measurement against every input it
+        // depends on (buffer, placeholder, resolved font identity — stable
+        // thanks to the shared style-font/theme caches — and field padding).
         Font font = getFont();
+        float pad = getFieldPadding();
+        // The current text deliberately does NOT participate in the width
+        // (see the Javadoc above); it is still tracked as a cache key so a
+        // setText invalidates any stale cached measurement.
+        String textKey = text.intern();
+        String placeholderKey = placeholder.intern();
+        if (cachedPreferredWidth != null && cachedPreferredWidthText == textKey
+                && cachedPreferredWidthPlaceholder == placeholderKey
+                && cachedPreferredWidthFont == font && cachedPreferredWidthPad == pad) {
+            return cachedPreferredWidth;
+        }
         float content = font.measureTextWidth(placeholder);
-        return Math.max(content + 2.0f * getFieldPadding(), MIN_INTRINSIC_WIDTH);
+        float result = Math.max(content + 2.0f * pad, MIN_INTRINSIC_WIDTH);
+        cachedPreferredWidth = result;
+        cachedPreferredWidthText = textKey;
+        cachedPreferredWidthPlaceholder = placeholderKey;
+        cachedPreferredWidthFont = font;
+        cachedPreferredWidthPad = pad;
+        return result;
     }
+
+    /**
+     * Preferred-size cache fields (Priority 3 item 7). Text inputs are
+     * matched through {@link String#intern()} so equal-but-distinct strings
+     * (e.g. a programmatic setText with a fresh StringBuilder result) still
+     * hit the cache instead of forcing a recompute.
+     */
+    private Float cachedPreferredWidth;
+    private String cachedPreferredWidthText;
+    private String cachedPreferredWidthPlaceholder;
+    private Font cachedPreferredWidthFont;
+    private Float cachedPreferredWidthPad;
+
+    private Float cachedPreferredHeight;
+    private Font cachedPreferredHeightFont;
+    private Float cachedPreferredHeightPad;
 
     /**
      * Resolves the horizontal/vertical padding: a CSS {@code padding}
@@ -821,8 +857,20 @@ public class TextField extends Component
 
     @Override
     public float getPreferredHeight() {
-        io.github.humbleui.skija.FontMetrics metrics = getFont().getMetrics();
-        return (metrics.getDescent() - metrics.getAscent()) + 2.0f * getFieldPadding();
+        // Priority 3 item 7: metrics are cached against font identity and
+        // padding; both are stable objects/values between invalidations.
+        Font font = getFont();
+        float pad = getFieldPadding();
+        if (cachedPreferredHeight != null && cachedPreferredHeightFont == font
+                && cachedPreferredHeightPad == pad) {
+            return cachedPreferredHeight;
+        }
+        io.github.humbleui.skija.FontMetrics metrics = font.getMetrics();
+        float result = (metrics.getDescent() - metrics.getAscent()) + 2.0f * pad;
+        cachedPreferredHeight = result;
+        cachedPreferredHeightFont = font;
+        cachedPreferredHeightPad = pad;
+        return result;
     }
 
     @Override
