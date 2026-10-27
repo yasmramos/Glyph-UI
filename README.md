@@ -2,6 +2,8 @@
 
 A modern UI toolkit built on Skija and JWM for Java 17+.
 
+![Glyph UI example application showing menus, a text field and buttons](screenshots/glypui.png)
+
 ## Features
 
 - Modern rendering engine powered by Skija (Skia for Java)

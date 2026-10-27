@@ -51,6 +51,9 @@ public class TextField extends Component
     private static final int KEY_END = 269;       // GlyphKeys.END
     private static final int KEY_ENTER = 257;     // GlyphKeys.ENTER
 
+    /** Width of the blinking caret, in pixels. */
+    private static final float CARET_WIDTH = 1.5f;
+
     /** Clipboard bridge installed by {@code Application} at startup. */
     private static Runnable clipboardCopyHandler;   // copies this field's selection to the system clipboard
     private static Runnable clipboardPasteHandler;  // reads the system clipboard and inserts it here
@@ -70,6 +73,12 @@ public class TextField extends Component
 
     /** True between a press that began a selection and its end (release/hover). */
     private boolean selecting = false;
+
+    /**
+     * Horizontal text scroll, in pixels, keeping the caret inside the content
+     * box. The field never widens for its content, so long values pan instead.
+     */
+    private float scrollOffset = 0.0f;
 
     private Paint backgroundPaint;
     private Paint borderPaint;
@@ -230,8 +239,10 @@ public class TextField extends Component
         this.text = (newText == null) ? "" : newText;
         this.caret = Math.max(0, Math.min(newCaret, this.text.length()));
         this.selectionAnchor = this.caret;
-        // Buffer content drives the preferred width: relayout upward.
-        invalidateLayout();
+        // The intrinsic width no longer depends on the content (see
+        // getPreferredWidth), so editing only needs a repaint — not a
+        // relayout that would re-measure and resize the field on every key.
+        invalidate();
         if (notify && !old.equals(this.text) && onTextChanged != null) {
             onTextChanged.run();
         }
@@ -400,12 +411,18 @@ public class TextField extends Component
 
     /**
      * Inserts text at the caret, replacing the current selection first.
-     * This is the entry point used by the backend char callback.
+     * This is the entry point used by the backend char callback and the
+     * clipboard/IME paths.
      *
-     * @param chars the text to insert (ignored when null/empty or disabled)
+     * @param chars the text to insert (ignored when null/empty or disabled);
+     *              ISO control characters are dropped
      */
     public void insertText(String chars) {
         if (!isEnabled() || chars == null || chars.isEmpty()) {
+            return;
+        }
+        chars = stripControlCharacters(chars);
+        if (chars.isEmpty()) {
             return;
         }
         // Drop any pending selection first (counted into the same final
@@ -416,6 +433,36 @@ public class TextField extends Component
         int hi = Math.max(caret, selectionAnchor);
         String updated = text.substring(0, lo) + chars + text.substring(hi);
         setTextInternal(updated, lo + chars.length(), true);
+    }
+
+    /**
+     * Removes ISO control characters (Tab, CR/LF, DEL, ...) from incoming
+     * text. This is a single-line field: Tab is a focus key rather than
+     * content, and a control character would otherwise be painted as a
+     * missing-glyph box. The common clean case returns the same instance.
+     */
+    private static String stripControlCharacters(String value) {
+        boolean clean = true;
+        for (int i = 0; i < value.length(); ) {
+            int cp = value.codePointAt(i);
+            if (Character.isISOControl(cp)) {
+                clean = false;
+                break;
+            }
+            i += Character.charCount(cp);
+        }
+        if (clean) {
+            return value;
+        }
+        StringBuilder filtered = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); ) {
+            int cp = value.codePointAt(i);
+            if (!Character.isISOControl(cp)) {
+                filtered.appendCodePoint(cp);
+            }
+            i += Character.charCount(cp);
+        }
+        return filtered.toString();
     }
 
     /**
@@ -432,7 +479,7 @@ public class TextField extends Component
      * as "at the caret".</p>
      *
      * @param committed        the committed text (ignored when null/empty or
-     *                         disabled)
+     *                         disabled); ISO control characters are dropped
      * @param replacementStart start of the range to replace, or a negative
      *                         sentinel meaning "at the caret"
      * @param replacementEnd   end of the range to replace (>= start when
@@ -440,6 +487,13 @@ public class TextField extends Component
      */
     public void applyImeText(String committed, int replacementStart, int replacementEnd) {
         if (!isEnabled() || committed == null || committed.isEmpty()) {
+            return;
+        }
+        // Strip before honouring the range: a commit made only of control
+        // characters (Windows also reports Tab here) must not delete a
+        // composition region on its way to inserting an invisible glyph.
+        committed = stripControlCharacters(committed);
+        if (committed.isEmpty()) {
             return;
         }
         boolean atCaret = replacementStart < 0 || replacementEnd < 0
@@ -735,10 +789,13 @@ public class TextField extends Component
     private static final float MIN_INTRINSIC_WIDTH = 80.0f;
 
     /**
-     * Gets the preferred width from the content (text or placeholder) plus
-     * padding, with a modest intrinsic minimum so an empty field still has a
-     * usable click target. Used by the base measurement path when no explicit
-     * CSS size was declared.
+     * Gets the preferred width from the placeholder plus padding, with a
+     * modest intrinsic minimum so an empty field still has a usable click
+     * target. The current text deliberately does NOT participate: like a
+     * native input, the field keeps a stable size, pans horizontally to keep
+     * the caret in view and clips the rest instead of widening the layout
+     * while the user types. Explicit CSS widths and layout-assigned sizes
+     * still win.
      *
      * @return the preferred width in pixels
      */
@@ -747,10 +804,46 @@ public class TextField extends Component
         if (sizeExplicitlySet) {
             return width;
         }
+        // Priority 3 item 7: cache the measurement against every input it
+        // depends on (buffer, placeholder, resolved font identity — stable
+        // thanks to the shared style-font/theme caches — and field padding).
         Font font = getFont();
-        float content = Math.max(font.measureTextWidth(text), font.measureTextWidth(placeholder));
-        return Math.max(content + 2.0f * getFieldPadding(), MIN_INTRINSIC_WIDTH);
+        float pad = getFieldPadding();
+        // The current text deliberately does NOT participate in the width
+        // (see the Javadoc above); it is still tracked as a cache key so a
+        // setText invalidates any stale cached measurement.
+        String textKey = text.intern();
+        String placeholderKey = placeholder.intern();
+        if (cachedPreferredWidth != null && cachedPreferredWidthText == textKey
+                && cachedPreferredWidthPlaceholder == placeholderKey
+                && cachedPreferredWidthFont == font && cachedPreferredWidthPad == pad) {
+            return cachedPreferredWidth;
+        }
+        float content = font.measureTextWidth(placeholder);
+        float result = Math.max(content + 2.0f * pad, MIN_INTRINSIC_WIDTH);
+        cachedPreferredWidth = result;
+        cachedPreferredWidthText = textKey;
+        cachedPreferredWidthPlaceholder = placeholderKey;
+        cachedPreferredWidthFont = font;
+        cachedPreferredWidthPad = pad;
+        return result;
     }
+
+    /**
+     * Preferred-size cache fields (Priority 3 item 7). Text inputs are
+     * matched through {@link String#intern()} so equal-but-distinct strings
+     * (e.g. a programmatic setText with a fresh StringBuilder result) still
+     * hit the cache instead of forcing a recompute.
+     */
+    private Float cachedPreferredWidth;
+    private String cachedPreferredWidthText;
+    private String cachedPreferredWidthPlaceholder;
+    private Font cachedPreferredWidthFont;
+    private Float cachedPreferredWidthPad;
+
+    private Float cachedPreferredHeight;
+    private Font cachedPreferredHeightFont;
+    private Float cachedPreferredHeightPad;
 
     /**
      * Resolves the horizontal/vertical padding: a CSS {@code padding}
@@ -764,8 +857,20 @@ public class TextField extends Component
 
     @Override
     public float getPreferredHeight() {
-        io.github.humbleui.skija.FontMetrics metrics = getFont().getMetrics();
-        return (metrics.getDescent() - metrics.getAscent()) + 2.0f * getFieldPadding();
+        // Priority 3 item 7: metrics are cached against font identity and
+        // padding; both are stable objects/values between invalidations.
+        Font font = getFont();
+        float pad = getFieldPadding();
+        if (cachedPreferredHeight != null && cachedPreferredHeightFont == font
+                && cachedPreferredHeightPad == pad) {
+            return cachedPreferredHeight;
+        }
+        io.github.humbleui.skija.FontMetrics metrics = font.getMetrics();
+        float result = (metrics.getDescent() - metrics.getAscent()) + 2.0f * pad;
+        cachedPreferredHeight = result;
+        cachedPreferredHeightFont = font;
+        cachedPreferredHeightPad = pad;
+        return result;
     }
 
     @Override
@@ -831,12 +936,40 @@ public class TextField extends Component
         // "y + padding - ascent" left the text sitting high in taller fields.
         float baseline = y + (height - lineHeight) / 2.0f - metrics.getAscent();
 
+        // Content box: the field keeps its size, so text scrolls horizontally
+        // instead of spilling past the border (it also keeps the caret in
+        // view while typing). Everything drawn from here is clipped to the
+        // box, like a native single-line input.
+        float contentLeft = x + padding;
+        float contentWidth = Math.max(0.0f, width - 2.0f * padding);
+        float totalTextWidth = font.measureTextWidth(text);
+        if (isFocused()) {
+            float caretTextX = font.measureTextWidth(text.substring(0, caret));
+            // Reserve the caret's own width so it never lands exactly on the
+            // clip edge (where it would be cropped away).
+            float visibleRight = Math.max(0.0f, contentWidth - CARET_WIDTH);
+            if (caretTextX - scrollOffset > visibleRight) {
+                scrollOffset = caretTextX - visibleRight;
+            } else if (caretTextX - scrollOffset < 0.0f) {
+                scrollOffset = caretTextX;
+            }
+        }
+        // Never pan past the end, and don't pan at all when the value fits.
+        float maxScroll = totalTextWidth <= contentWidth
+                ? 0.0f
+                : Math.max(0.0f, totalTextWidth - Math.max(0.0f, contentWidth - CARET_WIDTH));
+        scrollOffset = Math.max(0.0f, Math.min(scrollOffset, maxScroll));
+        float textX = contentLeft - scrollOffset;
+
+        int saveCount = canvas.save();
+        canvas.clipRect(contentLeft, y, contentWidth, height);
+
         // Selection highlight
         if (isFocused() && hasSelection()) {
             int lo = Math.min(caret, selectionAnchor);
             int hi = Math.max(caret, selectionAnchor);
-            float startX = x + padding + font.measureTextWidth(text.substring(0, lo));
-            float endX = x + padding + font.measureTextWidth(text.substring(0, hi));
+            float startX = textX + font.measureTextWidth(text.substring(0, lo));
+            float endX = textX + font.measureTextWidth(text.substring(0, hi));
             selectionPaint.setColor(withAlpha(theme.getAccentColor(), 90));
             canvas.drawRect(startX, baseline + metrics.getAscent() - 2.0f,
                     Math.max(0.0f, endX - startX), lineHeight + 4.0f, selectionPaint);
@@ -851,19 +984,21 @@ public class TextField extends Component
                     ? resolveIntStyle(StyleProperty.COLOR, null, theme.getForegroundColor())
                     : resolveIntStyle(StyleProperty.COLOR, null, theme.getControlTextDisabledColor());
             textPaint.setColor(textColor);
-            canvas.drawString(text, x + padding, baseline, textPaint, font);
+            canvas.drawString(text, textX, baseline, textPaint, font);
         } else if (!isFocused() && !placeholder.isEmpty()) {
             textPaint.setColor(withAlpha(theme.getForegroundColor(), 120));
-            canvas.drawString(placeholder, x + padding, baseline, textPaint, font);
+            canvas.drawString(placeholder, contentLeft, baseline, textPaint, font);
         }
 
         // Caret
         if (isFocused() && enabled) {
-            float caretX = x + padding + font.measureTextWidth(text.substring(0, caret));
+            float caretX = textX + font.measureTextWidth(text.substring(0, caret));
             cursorPaint.setColor(resolveIntStyle(StyleProperty.ACCENT_COLOR, null, theme.getAccentColor()));
             canvas.drawRect(caretX, baseline + metrics.getAscent() - 2.0f,
-                    1.5f, lineHeight + 4.0f, cursorPaint);
+                    CARET_WIDTH, lineHeight + 4.0f, cursorPaint);
         }
+
+        canvas.restoreToCount(saveCount);
     }
 
     /** Blends an alpha byte into an opaque ARGB color. */

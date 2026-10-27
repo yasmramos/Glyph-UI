@@ -937,11 +937,24 @@ public class JwmWindowBackend extends AbstractWindowBackend {
      * @param event the JWM event to process
      */
     private void onJwmEvent(io.github.humbleui.jwm.Event event) {
+        // Hardening (review item 4): this method is the single JNI upcall
+        // entry point for every native event. Nothing — not even a failure
+        // of the error-reporting path itself — may escape into JWM's message
+        // loop, so the outer catch covers Throwable and the logging call is
+        // additionally guarded against secondary failures (e.g. an OOM or a
+        // misbehaving custom appender inside the logger).
         try {
             handleJwmEvent(event);
         } catch (Throwable t) {
-            log.log(Logger.Level.ERROR, "JWM event handler failed ("
-                + t.getMessage() + ").", t);
+            try {
+                log.log(Logger.Level.ERROR, "JWM event handler failed ("
+                    + t.getMessage() + ").", t);
+            } catch (Throwable reportFailure) {
+                // Last-resort channel: reporting must never re-throw upward.
+                System.err.println("Glyph UI: JWM event handler failed and "
+                    + "could not be logged: " + t);
+                t.printStackTrace();
+            }
         }
     }
 

@@ -260,13 +260,35 @@ public final class FontManager {
     /**
      * Releases all cached fonts and registered typefaces. Called from
      * {@code Application.destroy()} so native Skija objects do not leak.
+     *
+     * <p>Hardening (review item 6): every registered {@code Typeface} is
+     * closed exactly once even if one of them throws during {@code close()}
+     * — a single bad native handle must not abort the sweep and leak the
+     * remaining typefaces. Failures are collected and reported after the
+     * registry has been cleared, then rethrown as the first captured
+     * exception so callers still observe the problem.</p>
      */
     public static void dispose() {
         clearCaches();
+        RuntimeException firstFailure = null;
         for (Typeface typeface : registered.values()) {
-            typeface.close();
+            try {
+                typeface.close();
+            } catch (RuntimeException | Error e) {
+                // Keep sweeping: skipping the rest would leak native memory.
+                if (firstFailure == null) {
+                    firstFailure = (e instanceof RuntimeException re)
+                            ? re : new RuntimeException("Typeface close failed", e);
+                } else {
+                    firstFailure.addSuppressed((e instanceof RuntimeException re)
+                            ? re : new RuntimeException("Typeface close failed", e));
+                }
+            }
         }
         registered.clear();
+        if (firstFailure != null) {
+            throw firstFailure;
+        }
     }
 
     /**

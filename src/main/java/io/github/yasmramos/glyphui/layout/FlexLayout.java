@@ -232,7 +232,14 @@ public class FlexLayout extends LayoutManager {
         return Math.max(0f, base - 2 * pad);
     }
 
-    @Override
+    // Priority 3 item 8: reusable per-pass scratch buffers. Guarded by the
+    // UI-thread contract of the layout pipeline (layout() only runs from
+    // Panel.doLayout on the UI thread), so no synchronization is needed.
+    private Dimension[] scratchMeasured;
+    private float[] scratchMarginStart;
+    private float[] scratchMarginEnd;
+    private Dimension[] scratchFinalSizes;
+
     public void layout(Panel panel) {
         Style style = panel.getComputedStyle();
         Direction dir = style != null && style.has(StyleProperty.FLEX_DIRECTION)
@@ -273,6 +280,7 @@ public class FlexLayout extends LayoutManager {
             return;
         }
 
+
         // Pass 1: measure each item against the container's full cross space.
         // The main axis is left unconstrained on purpose: measuring with the
         // remaining main space would clamp explicit CSS widths down to what
@@ -293,10 +301,24 @@ public class FlexLayout extends LayoutManager {
         // against the authoritative box captured up front.
         float assignedW = panel.getWidth();
         float assignedH = panel.getHeight();
-        int n = items.size();
-        Dimension[] measured = new Dimension[n];
-        float[] marginStart = new float[n];
-        float[] marginEnd = new float[n];
+        final int n = items.size();
+        // Priority 3 item 8: the per-pass scratch buffers are reused across
+        // layout calls on this instance whenever the visible-item count is
+        // unchanged, so steady-state relayouts (60fps animations) stop
+        // allocating a fresh Dimension[] + float[] triplet every pass. The
+        // arrays are only scratch space — measured/final values never escape
+        // into children (sizes are applied through applyLayoutSize), so
+        // stale entries from previous passes are harmless once overwritten.
+        if (scratchMeasured == null || scratchMeasured.length != n) {
+            scratchMeasured = new Dimension[n];
+            scratchMarginStart = new float[n];
+            scratchMarginEnd = new float[n];
+            scratchFinalSizes = new Dimension[n];
+        }
+        final Dimension[] measured = scratchMeasured;
+        final float[] marginStart = scratchMarginStart;
+        final float[] marginEnd = scratchMarginEnd;
+        final Dimension[] finalSizes = scratchFinalSizes;
         for (int i = 0; i < n; i++) {
             Component c = items.get(i);
             Style cs = c.getComputedStyle();
@@ -356,7 +378,6 @@ public class FlexLayout extends LayoutManager {
         // Pass 3: per-line grow/shrink resolution. Overflow shrinks items
         // proportionally to flex-shrink x base size, floored at zero;
         // leftover space grows items proportionally to flex-grow.
-        Dimension[] finalSizes = new Dimension[n];
         for (int li = 0; li < lines.size(); li++) {
             List<Integer> line = lines.get(li);
             float lineMainTotal = lineMainTotals.isEmpty() ? totalLineMain(row, measured,

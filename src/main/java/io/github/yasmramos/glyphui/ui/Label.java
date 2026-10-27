@@ -2,6 +2,7 @@ package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Property;
+import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleProperty;
 import io.github.yasmramos.glyphui.events.MouseEvent;
@@ -194,14 +195,31 @@ public class Label extends Component {
         if (sizeExplicitlySet) {
             return width;
         }
+        // Priority 3 item 7: measuring per frame is expensive, so the result
+        // is cached against every input it depends on (caption, resolved font
+        // identity and theme padding). Font/padding misses recompute once; a
+        // caption change always misses because text is interned before being
+        // stored (see setTextInternal), so reference equality is exact.
+        io.github.humbleui.skija.Font f = getFont();
+        Theme theme = getTheme();
+        float pad = theme != null ? theme.getPadding() : 0.0f;
+        String captionKey = text == null ? null : text.intern();
+        if (cachedPreferredWidth != null && cachedPreferredWidthText == captionKey
+                && cachedPreferredWidthFont == f && cachedPreferredWidthPad == pad) {
+            return cachedPreferredWidth;
+        }
         // The widest line governs: a wrapped caption must not be measured as if
         // every line started at the same x.
-        io.github.humbleui.skija.Font f = getFont();
         float widest = 0.0f;
         for (String line : textLines()) {
             widest = Math.max(widest, f.measureTextWidth(line));
         }
-        return widest + 2.0f * getTheme().getPadding();
+        float result = widest + 2.0f * pad;
+        cachedPreferredWidth = result;
+        cachedPreferredWidthText = captionKey;
+        cachedPreferredWidthFont = f;
+        cachedPreferredWidthPad = pad;
+        return result;
     }
 
     /**
@@ -215,13 +233,45 @@ public class Label extends Component {
         if (sizeExplicitlySet) {
             return height;
         }
-        FontMetrics metrics = getFont().getMetrics();
+        // Priority 3 item 7: cached like the preferred width — see the note
+        // there for the cache-key rationale.
+        io.github.humbleui.skija.Font f = getFont();
+        Theme theme = getTheme();
+        float pad = theme != null ? theme.getPadding() : 0.0f;
+        String[] lines = textLines();
+        String captionKey = text == null ? null : text.intern();
+        if (cachedPreferredHeight != null && cachedPreferredHeightText == captionKey
+                && cachedPreferredHeightFont == f && cachedPreferredHeightPad == pad) {
+            return cachedPreferredHeight;
+        }
+        FontMetrics metrics = f.getMetrics();
         // Block 5 item 5.6: the per-line step must include the font leading,
         // matching Label.render's lineStep so measured and painted heights of
         // multi-line captions agree.
         float line = metrics.getDescent() - metrics.getAscent() + metrics.getLeading();
-        return line * textLines().length + 2.0f * getTheme().getPadding();
+        float result = line * lines.length + 2.0f * pad;
+        cachedPreferredHeight = result;
+        cachedPreferredHeightText = captionKey;
+        cachedPreferredHeightFont = f;
+        cachedPreferredHeightPad = pad;
+        return result;
     }
+
+    // --- Preferred-size caches (Priority 3 item 7). The resolved font is a
+    // shared, identity-stable object (theme role fonts / style-font cache),
+    // so reference equality is a safe staleness check. Captions are matched
+    // through String.intern(): two equal texts always share one interned
+    // instance, so a programmatic setText with an equivalent-but-distinct
+    // string still hits the cache instead of forcing a recompute. ---
+    private Float cachedPreferredWidth;
+    private String cachedPreferredWidthText;
+    private io.github.humbleui.skija.Font cachedPreferredWidthFont;
+    private Float cachedPreferredWidthPad;
+
+    private Float cachedPreferredHeight;
+    private String cachedPreferredHeightText;
+    private io.github.humbleui.skija.Font cachedPreferredHeightFont;
+    private Float cachedPreferredHeightPad;
 
     /**
      * Splits the caption into rendered lines. {@code null} and the empty
