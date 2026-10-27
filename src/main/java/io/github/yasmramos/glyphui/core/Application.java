@@ -16,6 +16,7 @@ import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.ComponentState;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.PopupLayer;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.humbleui.skija.*;
 import io.github.yasmramos.glyphui.graphics.Fonts;
@@ -72,6 +73,9 @@ public class Application implements AutoCloseable {
     private SurfaceResult surfaceResult;
     private Canvas canvas;
     private final Panel rootPanel;
+
+    /** Top-most layer hosting popups (menus); rendered and hit last. */
+    private final PopupLayer popupLayer;
     /**
      * The GPU context of the active backend, or null for raster. Owned by
      * {@link #surfaceFactory} once created (the factory hands over closing
@@ -231,6 +235,7 @@ public class Application implements AutoCloseable {
         this.forceRasterSurface = false;
         this.paintDirty = true; // first frame must always be painted
         this.rootPanel = new Panel(0, 0, 800, 600);
+        this.popupLayer = new PopupLayer();
         // NOTE: the repaint hook (Component.setGlobalRepaintRequester) is
         // deliberately NOT installed here. A constructor that grabs
         // process-wide static state would leak the hook when the instance is
@@ -458,6 +463,10 @@ public class Application implements AutoCloseable {
             rootPanel.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW));
             rootPanel.setWidth(window.getWidth());
             rootPanel.setHeight(window.getHeight());
+            // The popup layer spans the window so popups can be placed at
+            // any window coordinate and hit-tested against the full surface.
+            popupLayer.setWidth(window.getWidth());
+            popupLayer.setHeight(window.getHeight());
 
             lastFrameTime = nowSeconds();
             running = true;
@@ -680,7 +689,13 @@ public class Application implements AutoCloseable {
             // hold the previous cursor-move location (or (0,0) when no move
             // arrived yet), so clicks landed on the wrong widget.
             MouseEvent event = new MouseEvent(type, (int) x, (int) y, glyphButton, 1);
-            rootPanel.onMouseEvent(event);
+            // Popups (menus) sit above everything: they see the event first
+            // and swallow it when it lands on popup chrome. What they do not
+            // consume falls through to the page; a press outside every popup
+            // is what dismisses an open menu (see PopupLayer).
+            if (!popupLayer.onMouseEvent(event)) {
+                rootPanel.onMouseEvent(event);
+            }
             requestRepaint();
         });
 
@@ -702,11 +717,23 @@ public class Application implements AutoCloseable {
             }
             MouseEventType type = anyButtonHeld ? MouseEventType.DRAG : MouseEventType.MOVE;
             MouseEvent event = new MouseEvent(type, (int) mouseX, (int) mouseY, MouseButton.LEFT, 0);
-            rootPanel.onMouseEvent(event);
+            if (!popupLayer.onMouseEvent(event)) {
+                rootPanel.onMouseEvent(event);
+            }
             if (type == MouseEventType.MOVE) {
                 updateHover();
             }
             requestRepaint();
+        });
+
+        // Window deactivation dismisses floating UI. Without this, clicking
+        // another application while a menu is open leaves the menu on screen
+        // until the user clicks back inside the window (no press is delivered
+        // to a deactivated window, so the outside-press dismissal never runs).
+        window.setWindowFocusListener(focused -> {
+            if (!focused && popupLayer.closeAll()) {
+                requestRepaint();
+            }
         });
 
         // Focus manager: owns Tab / Shift+Tab traversal and the focused widget
@@ -741,12 +768,39 @@ public class Application implements AutoCloseable {
         // when they hold the keyboard focus). Key codes use the toolkit's own
         // GlyphKeys vocabulary mapped by each backend.
         window.setKeyListener((key, pressed, mods) -> {
+            // ESC dismisses an open popup menu first; only when no popup is
+            // open does the close-window opt-in below get a chance.
+            if (key == GlyphKeys.ESCAPE && pressed && popupLayer.closeOnEscape()) {
+                requestRepaint();
+                return;
+            }
+
             // ESC closes the window only as an explicit opt-in (see
             // setCloseOnEscape): by default it stays a normal keystroke for
             // focused widgets.
             if (closeOnEscape && !pressed && key == GlyphKeys.ESCAPE) {
                 window.setShouldClose(true);
                 return;
+            }
+
+            // An open popup owns the keyboard: arrows and Home/End move its
+            // highlight, Enter/Space activate, and letters jump by initial.
+            // Nothing falls through to the page while a menu is up, and Tab
+            // dismisses the popup instead of traversing the hidden widgets.
+            if (popupLayer.hasOpenPopup()) {
+                if (key == GlyphKeys.TAB && pressed) {
+                    popupLayer.closeAll();
+                    requestRepaint();
+                    return;
+                }
+                KeyEventType popupType = pressed
+                        ? KeyEventType.PRESS : KeyEventType.RELEASE;
+                KeyEvent popupEvent = new KeyEvent(popupType, key,
+                        pressed ? mapKeyToChar(key) : 0, getModifiers(mods));
+                if (popupLayer.routeKeyEvent(popupEvent)) {
+                    requestRepaint();
+                    return;
+                }
             }
 
             if (key == GlyphKeys.TAB && pressed) {
@@ -765,6 +819,9 @@ public class Application implements AutoCloseable {
             char keyChar = pressed ? mapKeyToChar(key) : 0;
             KeyEvent event = new KeyEvent(type, key, keyChar, modifiers);
             rootPanel.onKeyEvent(event);
+            // Keyboard interaction makes the focus visible, even if the
+            // widget was focused by a previous pointer press.
+            focusManager.revealFocus();
             requestRepaint();
         });
 
@@ -774,6 +831,12 @@ public class Application implements AutoCloseable {
         // AbstractWindowBackend#notifyTextInput) keeps plain characters
         // flowing here as well.
         window.setCharListener(codepoint -> {
+            // Open menus consume plain letters for initial-letter jumps; the
+            // page must not see text typed while a popup is up.
+            if (popupLayer.routeCharTyped(codepoint)) {
+                requestRepaint();
+                return;
+            }
             Component focused = focusManager.getFocused();
             if (focused instanceof TextField textField) {
                 textField.onCharTyped((char) (int) codepoint);
@@ -785,6 +848,15 @@ public class Application implements AutoCloseable {
         // range marks the currently composing region inside the focused
         // TextField, so candidate-window commits replace the marked text.
         window.setTextInputListener((text, replacementStart, replacementEnd) -> {
+            // The IME/text pipeline is the path plain letters take on JWM
+            // (charListener only sees them when no text-input listener is
+            // installed), so an open menu must consume them here too before
+            // they reach a TextField hidden behind the popup.
+            if (popupLayer.hasOpenPopup()) {
+                text.codePoints().forEach(popupLayer::routeCharTyped);
+                requestRepaint();
+                return;
+            }
             Component focused = focusManager.getFocused();
             if (focused instanceof TextField tf) {
                 // applyImeText reads the (-1,-1) Windows sentinel as "at the
@@ -887,6 +959,8 @@ public class Application implements AutoCloseable {
         // Update root panel size (logical coordinates)
         rootPanel.setWidth(result.logicalWidth());
         rootPanel.setHeight(result.logicalHeight());
+        popupLayer.setWidth(result.logicalWidth());
+        popupLayer.setHeight(result.logicalHeight());
 
         requestRepaint();
     }
@@ -903,7 +977,13 @@ public class Application implements AutoCloseable {
      * happened to repaint it.</p>
      */
     private void updateHover() {
-        Component target = rootPanel.getComponentAt((float) mouseX, (float) mouseY);
+        // Popups overlay the page, so they win the hover race; hitTest()
+        // reports null when the pointer is not over one, letting the page
+        // underneath keep its own hover updates.
+        Component target = popupLayer.hitTest((float) mouseX, (float) mouseY);
+        if (target == null) {
+            target = rootPanel.getComponentAt((float) mouseX, (float) mouseY);
+        }
         if (target == hovered) {
             return;
         }
@@ -960,6 +1040,19 @@ public class Application implements AutoCloseable {
      */
     public Panel getRootPanel() {
         return rootPanel;
+    }
+
+    /**
+     * Gets the top-most popup layer of the application. Popups added here
+     * (typically {@link io.github.yasmramos.glyphui.ui.Menu}s) paint above the
+     * whole scene, receive the pointer before the root panel, and are
+     * dismissed by a press outside them. {@code Menu.open()} attaches itself
+     * automatically, so applications rarely need this accessor directly.
+     *
+     * @return the popup layer (never null, valid before {@link #init()})
+     */
+    public PopupLayer getPopupLayer() {
+        return popupLayer;
     }
 
     /**
@@ -1415,6 +1508,7 @@ public class Application implements AutoCloseable {
         // see the styleDirty flag in frameStep().
         if (styleEngine != null && cascade) {
             styleEngine.apply(rootPanel);
+            styleEngine.apply(popupLayer);
         }
 
         io.github.humbleui.skija.Canvas nativeCanvas = canvas.nativeCanvasForInternalUse();
@@ -1430,6 +1524,10 @@ public class Application implements AutoCloseable {
 
             // Render root panel and all children (in logical coordinates)
             rootPanel.renderInternal(canvas);
+
+            // The popup layer paints last so menus overlay page content —
+            // this is the toolkit's substitute for a z-index.
+            popupLayer.renderInternal(canvas);
         } finally {
             nativeCanvas.restoreToCount(saveCount);
         }
@@ -1505,6 +1603,11 @@ public class Application implements AutoCloseable {
         // Dispose all components in the root panel (cascades to children)
         if (rootPanel != null) {
             rootPanel.dispose();
+        }
+
+        // Same for any popup still attached to the layer (menus).
+        if (popupLayer != null) {
+            popupLayer.dispose();
         }
 
         // Release the shared typeface cache after every widget font is closed

@@ -624,8 +624,9 @@ public class Button extends Component {
         // Draw text
         canvas.drawString(caption, textX, textY, textPaint, f);
 
-        // Focus ring when this button holds the keyboard focus
-        if (isFocused()) {
+        // Focus ring only for keyboard focus: a mouse click focuses the
+        // button for Enter/Space but must not leave a dashed ring behind.
+        if (isFocusVisible()) {
             renderFocusRing(canvas);
         }
     }
@@ -654,8 +655,9 @@ public class Button extends Component {
             case PRESS:
                 if (isInside && event.getButton() == io.github.yasmramos.glyphui.events.MouseButton.LEFT) {
                     setState(ComponentState.PRESSED);
-                    // Clicking a control gives it the keyboard focus
-                    requestFocus();
+                    // Clicking a control gives it the keyboard focus, but
+                    // without the focus ring (pointer focus).
+                    requestFocusFromPointer();
                 }
                 break;
 

@@ -59,6 +59,8 @@ final class CssValues {
             case "padding", "margin", "width", "height",
                  "border", "border-width", "border-radius",
                  "font-size", "gap" -> true;
+            // flex-shrink is a unitless factor, not a length: parse it like
+            // opacity/flex-grow (bare number), never through the px path.
             default -> false;
         };
     }
@@ -121,7 +123,8 @@ final class CssValues {
         if (isLengthProperty(property)) {
             return parseLength(v);
         }
-        if (property.equals("opacity") || property.equals("flex-grow")) {
+        if (property.equals("opacity") || property.equals("flex-grow")
+                || property.equals("flex-shrink")) {
             try {
                 return Float.parseFloat(v);
             } catch (NumberFormatException e) {

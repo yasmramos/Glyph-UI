@@ -68,6 +68,17 @@ public final class SignalList<T> implements Trackable<SignalList<T>> {
     }
 
     /**
+     * Returns this list without registering a dependency.
+     *
+     * <p>Equivalent to {@code Reactor.untracked(list::get)} but shorter.</p>
+     *
+     * @return this list, untracked
+     */
+    public SignalList<T> peek() {
+        return Reactor.untracked(() -> this);
+    }
+
+    /**
      * Gets the element at {@code index}.
      *
      * @param index the index

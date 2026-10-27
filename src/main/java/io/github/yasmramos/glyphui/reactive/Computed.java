@@ -31,6 +31,7 @@ public final class Computed<T> extends AbstractObserver implements Trackable<T> 
     private Supplier<? extends T> function;
     private T value;
     private boolean dirty = true;
+    private boolean initialised;
     private boolean evaluating;
 
     /**
@@ -58,11 +59,55 @@ public final class Computed<T> extends AbstractObserver implements Trackable<T> 
         return value;
     }
 
+    /**
+     * Reads the current value without registering a dependency on this
+     * computed.
+     *
+     * <p><b>Lazy semantics:</b> when the value is dirty (a source changed
+     * since the last evaluation, or it was never evaluated), {@code peek()}
+     * returns the previously cached value without running the function —
+     * exactly like reading a snapshot. This keeps peek side-effect free: it
+     * never mutates the dependency graph, never re-subscribes and never runs
+     * user code with observable consequences beyond the pure computation.
+     * Call {@link #get()} when an up-to-date value is required.</p>
+     *
+     * <p>Useful inside effects and {@code Computed} bodies that must inspect a
+     * derived value without adding it as a source.</p>
+     *
+     * @return the cached value (recomputes only if never evaluated before)
+     */
+    public T peek() {
+        if (isDisposed()) {
+            throw new IllegalStateException("Computed has been disposed");
+        }
+        // First read initialises the cache so peek() and get() agree from the
+        // start; afterwards peek() never re-evaluates while dirty.
+        if (dirty && !initialised) {
+            evaluateFresh();
+        }
+        return value;
+    }
+
+    /** Runs the function outside any tracked context and caches its result. */
+    private void evaluateFresh() {
+        Observer previous = Reactor.swapCurrent(null);
+        evaluating = true;
+        try {
+            value = tracked(function);
+            dirty = false;
+            initialised = true;
+        } finally {
+            evaluating = false;
+            Reactor.swapCurrent(previous);
+        }
+    }
+
     private void recompute() {
         evaluating = true;
         try {
             value = tracked(function);
             dirty = false;
+            initialised = true;
         } finally {
             evaluating = false;
         }

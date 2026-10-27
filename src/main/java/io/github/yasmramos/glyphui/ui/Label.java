@@ -216,7 +216,10 @@ public class Label extends Component {
             return height;
         }
         FontMetrics metrics = getFont().getMetrics();
-        float line = metrics.getDescent() - metrics.getAscent();
+        // Block 5 item 5.6: the per-line step must include the font leading,
+        // matching Label.render's lineStep so measured and painted heights of
+        // multi-line captions agree.
+        float line = metrics.getDescent() - metrics.getAscent() + metrics.getLeading();
         return line * textLines().length + 2.0f * getTheme().getPadding();
     }
 
@@ -320,7 +323,10 @@ public class Label extends Component {
         io.github.humbleui.skija.Font f = getFont();
         io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
         String[] lines = textLines();
-        float lineStep = metrics.getDescent() - metrics.getAscent();
+        // Full line pitch: ascent-to-ascent distance includes the font's
+        // leading gap, so multi-line text is not visually cramped with fonts
+        // that declare extra interline spacing.
+        float lineStep = metrics.getDescent() - metrics.getAscent() + metrics.getLeading();
 
         // The whole block is centered vertically, so with a single line this
         // reduces exactly to the single-line baseline below. drawString takes

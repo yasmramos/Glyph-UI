@@ -24,6 +24,14 @@ public class Panel extends Component {
     protected int backgroundColor;
 
     /**
+     * True once the user explicitly calls {@link #setBackgroundColor(int)}.
+     * Replaces the previous transparent-color sentinel (Block 5 item 5.26):
+     * an explicit fully transparent background is now honored instead of
+     * silently falling back to the theme window background.
+     */
+    private boolean hasExplicitBackground;
+
+    /**
      * Set once the user calls {@code setWidth}/{@code setHeight} on this
      * panel. Combined with the constructor flag (see
      * {@code Component.isCtorSizeExplicit}) it defines "user-pinned size" for
@@ -610,22 +618,87 @@ public class Panel extends Component {
         if (s != null && s.has(StyleProperty.BACKGROUND)) {
             return s.getInt(StyleProperty.BACKGROUND, 0xFF000000);
         }
-        if (backgroundColor == Color.makeARGB(0, 0, 0, 0)) {
-            return Theme.current().getBackgroundColor();
+        // Block 5 item 5.26: an explicit boolean flag replaces the old
+        // transparent-color sentinel, so setBackgroundColor(0x00000000) is
+        // honored as "explicitly transparent" instead of reverting to the
+        // theme window background.
+        if (!hasExplicitBackground) {
+            // Block 5 item 5.25: resolve through Component.getTheme() for
+            // consistency with every other themed accessor; a future
+            // per-subtree theme hook only needs to override that one method.
+            return getTheme().getBackgroundColor();
         }
         return backgroundColor;
     }
 
     /**
-     * Sets the background color of this panel.
+     * Whether the effective background color should be painted. True when a
+     * CSS rule declares {@code background}, or when the user explicitly set a
+     * background whose alpha channel is non-zero. An unset or fully
+     * transparent background means "the theme paints behind me", so the panel
+     * itself must not draw anything (Block 5 items 5.26 and 5.27).
+     *
+     * @return true when {@link #render} must fill the panel bounds
+     */
+    /**
+     * Whether the user explicitly set a background color on this panel via
+     * {@link #setBackgroundColor(int)} (Block 5 item 5.26). Package-private
+     * test seam; public API is {@link #getBackgroundColor()} and
+     * {@link #clearExplicitBackground()}.
+     *
+     * @return true when an explicit background was set and not cleared
+     */
+    boolean hasExplicitBackground() {
+        return hasExplicitBackground;
+    }
+
+    private boolean shouldPaintBackground() {
+        Style s = getComputedStyle();
+        if (s != null && s.has(StyleProperty.BACKGROUND)) {
+            return true;
+        }
+        return hasExplicitBackground && (backgroundColor >>> 24) != 0;
+    }
+
+    /**
+     * Sets the background color of this panel. Passing a fully transparent
+     * color is honored as an explicit choice (the panel paints nothing but no
+     * longer follows the theme background); call
+     * {@link #clearExplicitBackground()} to return to theme-driven painting.
      *
      * @param backgroundColor the new background color (as ARGB int)
      */
     public void setBackgroundColor(int backgroundColor) {
-        if (this.backgroundColor != backgroundColor) {
+        if (this.backgroundColor != backgroundColor || !hasExplicitBackground) {
             this.backgroundColor = backgroundColor;
+            this.hasExplicitBackground = true;
             requestRepaint();
         }
+    }
+
+    /**
+     * Clears any explicit background so the panel again follows the current
+     * theme's window background (Block 5 item 5.26).
+     */
+    public void clearExplicitBackground() {
+        if (hasExplicitBackground) {
+            hasExplicitBackground = false;
+            backgroundColor = Color.makeARGB(0, 0, 0, 0);
+            requestRepaint();
+        }
+    }
+
+    /**
+     * Whether a component's computed style declares {@code display: none}
+     * (Block 5 item 5.28). Shared by the render loop and exposed as a static
+     * helper so layout managers keep using their own equivalent check.
+     *
+     * @param child the component to inspect
+     * @return true when the computed display is exactly "none"
+     */
+    static boolean isDisplayNone(Component child) {
+        Style s = child.getComputedStyle();
+        return s != null && "none".equals(s.getString(StyleProperty.DISPLAY, null));
     }
 
     @Override
@@ -637,14 +710,15 @@ public class Panel extends Component {
         // Ensure layout is applied before rendering children
         doLayout();
 
-        // Draw background if color is set (non-transparent). The paint object
-        // is reused across frames to avoid per-frame native allocations.
-        // Compare the alpha channel directly: io.github.humbleui.skija.Color
-        // is an int value class that does not override equals(), so reference
-        // comparison against a freshly built transparent color is unreliable.
-        if ((backgroundColor >>> 24) != 0) {
+        // Draw the effective background when it should be painted. Block 5
+        // item 5.27: consult getBackgroundColor() (CSS-aware) instead of the
+        // raw field, so a stylesheet `background: red` actually paints; the
+        // separate shouldPaintBackground() check keeps theme-only panels from
+        // drawing anything themselves. The paint object is reused across
+        // frames to avoid per-frame native allocations.
+        if (shouldPaintBackground()) {
             ensureBgPaint();
-            bgPaint.setColor(backgroundColor);
+            bgPaint.setColor(getBackgroundColor());
             canvas.drawRect(x, y, width, height, bgPaint);
         }
 
@@ -656,9 +730,11 @@ public class Panel extends Component {
         canvas.clipRect(0, 0, width, height);
 
         try {
-            // Render all children in local coordinates
+            // Render all children in local coordinates. Block 5 item 5.28:
+            // a computed `display: none` hides the child from rendering too,
+            // not just from flex layout (FlexLayout already filters it out).
             for (Component child : children) {
-                if (child.isVisible()) {
+                if (child.isVisible() && !isDisplayNone(child)) {
                     child.renderInternal(canvas);
                 }
             }

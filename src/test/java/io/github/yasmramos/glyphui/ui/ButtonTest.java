@@ -193,6 +193,25 @@ public class ButtonTest extends TestBase {
     }
 
     @Test
+    public void testMousePressFocusesWithoutShowingTheFocusRing() {
+        Button button = buttonWithClick(new AtomicInteger());
+
+        button.onMouseEvent(mouse(MouseEventType.PRESS, 50, 30));
+
+        assertTrue(button.isFocused(), "a press must still focus the button");
+        assertFalse(button.isFocusVisible(),
+                "a mouse click must not leave a dashed focus ring");
+    }
+
+    @Test
+    public void testProgrammaticFocusShowsTheFocusRing() {
+        Button button = focusButton(buttonWithClick(new AtomicInteger()));
+
+        assertTrue(button.isFocusVisible(),
+                "keyboard/programmatic focus must show where it is");
+    }
+
+    @Test
     public void testSpaceKeyReleasesAndTriggersClick() {
         AtomicInteger clicks = new AtomicInteger();
         Button button = focusButton(buttonWithClick(clicks));

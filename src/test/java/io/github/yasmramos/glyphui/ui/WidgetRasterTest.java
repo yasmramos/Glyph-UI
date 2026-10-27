@@ -550,6 +550,34 @@ class WidgetRasterTest extends io.github.yasmramos.glyphui.TestBase {
         }
     }
 
+    // ---- Menu: rendering tests ---------------------------------------------
+
+    @Nested
+    @DisplayName("Menu rendering")
+    class MenuRendering {
+
+        @Test
+        @DisplayName("popup surface is opaque and hides the page behind it")
+        void menuPaintsOpaqueSurface() {
+            canvas.clear(OPAQUE_BLUE);
+
+            Menu menu = new Menu();
+            menu.addItem("Guardar");
+            menu.open();
+            menu.renderInternal(canvas);
+            canvas.flush();
+
+            // Sample the top-left padding: inside the popup, away from the
+            // hairline border and from any row text.
+            int surface = io.github.yasmramos.glyphui.graphics.Theme.current()
+                    .getControlNormalColor();
+            assertEquals(surface, pixelAt(3, 3),
+                    "the popup must paint its own surface instead of letting "
+                    + "the page show through the rows");
+            menu.dispose();
+        }
+    }
+
     // ---- helpers -----------------------------------------------------------
 
     private static io.github.yasmramos.glyphui.events.MouseEvent mouse(

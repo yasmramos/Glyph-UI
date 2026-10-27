@@ -259,6 +259,30 @@ public class TextField extends Component
         return onTextChanged;
     }
 
+    /** Per-field submit listener fired when Enter is pressed while focused. */
+    private Runnable onSubmit;
+
+    /**
+     * Registers a handler invoked when the user presses Enter while this field
+     * has focus. Single-line fields collapse their selection and then fire the
+     * handler, mirroring HTML form behaviour so a {@code TextField} inside a
+     * form can trigger submission without an explicit button click.
+     *
+     * @param onSubmit the handler (may be null to clear)
+     */
+    public void setOnSubmit(Runnable onSubmit) {
+        this.onSubmit = onSubmit;
+    }
+
+    /**
+     * Gets the registered submit handler.
+     *
+     * @return the handler or null
+     */
+    public Runnable getOnSubmit() {
+        return onSubmit;
+    }
+
     /**
      * Gets the placeholder shown when the field is empty and unfocused.
      *
@@ -547,8 +571,12 @@ public class TextField extends Component
                 handleDelete();
                 break;
             case KEY_ENTER:
-                // Single-line field: Enter just commits (collapses selection)
+                // Single-line field: Enter commits (collapses selection) and
+                // fires the submit handler, mirroring HTML form behaviour.
                 clearSelection();
+                if (onSubmit != null) {
+                    onSubmit.run();
+                }
                 break;
             default:
                 if (ctrl) {
@@ -651,14 +679,34 @@ public class TextField extends Component
         Font font = getFont();
         float padding = getFieldPadding();
         float local = mouseX - x - padding;
+        // Single linear pass over per-code-point advances (O(n)) instead of
+        // re-measuring every prefix with substring() (which was O(n^2)).
+        int[] codePoints = text.codePoints().toArray();
+        if (codePoints.length == 0) {
+            return 0;
+        }
+        float[] advances = new float[codePoints.length];
+        for (int i = 0; i < codePoints.length; i++) {
+            String cp = new String(Character.toChars(codePoints[i]));
+            advances[i] = font.measureTextWidth(cp);
+        }
+        // UTF-16 width of each code point (1 or 2), so the returned index is a
+        // valid String offset even for surrogate pairs.
+        int[] units = new int[codePoints.length];
+        for (int i = 0; i < codePoints.length; i++) {
+            units[i] = Character.charCount(codePoints[i]);
+        }
         int best = 0;
-        float bestDist = Float.MAX_VALUE;
-        for (int i = 0; i <= text.length(); i++) {
-            float pos = font.measureTextWidth(text.substring(0, i));
+        float bestDist = Math.abs(local); // distance at position 0
+        float pos = 0.0f;
+        int utf16Pos = 0;
+        for (int i = 0; i < codePoints.length; i++) {
+            pos += advances[i];
+            utf16Pos += units[i];
             float dist = Math.abs(pos - local);
             if (dist < bestDist) {
                 bestDist = dist;
-                best = i;
+                best = utf16Pos;
             }
         }
         return best;
