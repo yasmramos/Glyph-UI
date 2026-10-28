@@ -35,5 +35,14 @@ public enum AccessibleRole {
     MENU_ITEM,
 
     /** A non-interactive divider between menu rows ({@link MenuSeparator}). */
-    MENU_SEPARATOR
+    MENU_SEPARATOR,
+
+    /** A check box with a boolean state ({@link CheckBox}). */
+    CHECKBOX,
+
+    /** A non-interactive divider between content regions ({@link Separator}). */
+    SEPARATOR,
+
+    /** A scrollable container ({@link ScrollPane}). */
+    SCROLL_PANE
 }

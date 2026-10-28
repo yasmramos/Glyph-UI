@@ -998,6 +998,32 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
+     * 1-based position among the parent panel's children, backing the
+     * structural pseudo-classes ({@code :first-child}, {@code :nth-child(…)}).
+     * Returns 0 ("unknown") when this component has no parent.
+     */
+    @Override
+    public int childIndex() {
+        if (parent == null) {
+            return 0;
+        }
+        int idx = parent.getChildren().indexOf(this);
+        return idx < 0 ? 0 : idx + 1;
+    }
+
+    /**
+     * Number of children in the parent panel, used by {@code :last-child} and
+     * {@code :only-child}. Returns 0 ("unknown") without a parent.
+     */
+    @Override
+    public int siblingCount() {
+        if (parent == null) {
+            return 0;
+        }
+        return parent.getChildren().size();
+    }
+
+    /**
      * Gets the x-coordinate of the component.
      *
      * @return the x-coordinate
