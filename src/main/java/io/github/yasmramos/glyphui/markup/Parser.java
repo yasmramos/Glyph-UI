@@ -53,6 +53,12 @@ public final class Parser {
     /**
      * Parses a complete document.
      *
+     * <p>Instance state ({@link #tokens}, {@link #index}, {@link #errors},
+     * {@link #openStack}) is fully re-initialised at the start of every call,
+     * so sequential calls on one parser are independent. For concurrent use,
+     * prefer the static {@link #parse(String)} entry point (item 5.17): it
+     * allocates a fresh parser per invocation and is therefore thread-safe.</p>
+     *
      * @param source the {@code .glyph} markup text (null → empty document)
      * @return the parse result with the AST and all recoverable errors
      * @throws MarkupException on unrecoverable lexical problems
@@ -74,6 +80,19 @@ public final class Parser {
             openStack.remove(openStack.size() - 1);
         }
         return new ParseResult(doc, errors);
+    }
+
+    /**
+     * One-shot static parse (item 5.17): allocates a fresh {@link Parser}
+     * per invocation, so this entry point carries no shared mutable state
+     * and is safe to call concurrently from any thread.
+     *
+     * @param source the {@code .glyph} markup text (null → empty document)
+     * @return the parse result with the AST and all recoverable errors
+     * @throws MarkupException on unrecoverable lexical problems
+     */
+    public static ParseResult parseSource(String source) {
+        return new Parser().parse(source);
     }
 
     // ------------------------------------------------------------------

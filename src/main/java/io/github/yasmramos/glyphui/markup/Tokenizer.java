@@ -131,6 +131,12 @@ public final class Tokenizer {
      * inside a binding
      */
     public List<Token> tokenize() {
+        // Item 5.18: the scanner is single-use by design — every cursor,
+        // mode and buffer field is mutated while scanning, so a second call
+        // on the same instance would resume past EOF and return only the
+        // terminating token. Re-creating a Tokenizer (or calling the static
+        // Tokenizer.tokenize(String) / Parser.parse(String) entry points)
+        // is the supported way to re-scan a source.
         while (pos < src.length()) {
             switch (mode) {
                 case CONTENT ->
@@ -155,6 +161,24 @@ public final class Tokenizer {
         return Collections.unmodifiableList(tokens);
     }
 
+    /**
+     * One-shot convenience scan (item 5.18): tokenizes {@code source} with a
+     * fresh internal {@link Tokenizer} instance and returns the result.
+     *
+     * <p>Because each call allocates its own scanner, this entry point is
+     * stateless and therefore safe to call from any thread any number of
+     * times — unlike {@link #tokenize()} on a shared instance, which is
+     * single-use.</p>
+     *
+     * @param source the complete {@code .glyph} document text (null → empty)
+     * @return unmodifiable token list, always terminated by a single EOF token
+     * @throws MarkupException on unrecoverable lexical conditions (see
+     *         {@link #tokenize()})
+     */
+    public static List<Token> tokenize(String source) {
+        return new Tokenizer(source).tokenize();
+    }
+
     // ------------------------------------------------------------------
     // CONTENT mode
     // ------------------------------------------------------------------
@@ -167,6 +191,15 @@ public final class Tokenizer {
      * Escape folding note: {@code &#123;&#123;} / {@code &#125;&#125;} fold
      * into the surrounding text run without splitting it, so each TEXT token
      * starts exactly at the position of its first literal character.</p>
+     *
+     * <p>
+     * Item 5.20 clarification: a structural {@code &#123;path&#125;} binding
+     * does split the text run — the prefix before {@code &#123;} is flushed as
+     * a TEXT token here, and the suffix after {@code &#125;} arrives as a new
+     * TEXT token anchored at that closing brace. The parser's
+     * {@code splitTextAfterBinding} then shifts the anchor to the real start of
+     * the tail (skipping the folded escape characters) and emits Text/Binding/
+     * Text children in source order.</p>
      */
     private void scanContent() {
         StringBuilder buf = new StringBuilder();
