@@ -66,12 +66,24 @@ public final class Theme {
     private final float padding;
     private final float buttonPaddingHorizontal;
     private final float buttonPaddingVertical;
+    /**
+     * Per-role font-size overrides owned by this theme (5.15). Empty when the
+     * theme defers entirely to {@link FontManager} defaults. Immutable copy;
+     * read through {@link #getFontSize(FontRole)}.
+     */
+    private final java.util.Map<FontRole, Float> fontSizes;
 
     /**
      * Creates a theme with all values supplied explicitly.
      */
     private Theme(Builder b) {
         this.mode = b.mode;
+        // Snapshot only the roles the builder actually overrode so themes
+        // that never touch font sizes compare equal to legacy ones and keep
+        // an empty map in equals/hashCode/toString.
+        this.fontSizes = b.fontSizes.isEmpty()
+                ? java.util.Map.of()
+                : java.util.Map.copyOf(b.fontSizes);
         this.backgroundColor = b.backgroundColor;
         this.foregroundColor = b.foregroundColor;
         this.accentColor = b.accentColor;
@@ -165,6 +177,31 @@ public final class Theme {
     }
 
     /**
+     * Starts building a customized theme on top of a base palette.
+     *
+     * <p><strong>Ordering note (5.14):</strong> {@link Builder#mode(Mode)}
+     * reseeds <em>every</em> color token from the chosen palette, so calling
+     * it after custom setters silently discards them. When the base palette
+     * is known up front — the common case — prefer this factory over
+     * {@code Theme.builder().mode(...)}: the mode is applied before any
+     * custom setter runs and cannot overwrite anything.</p>
+     *
+     * <pre>{@code
+     * // Correct: red accent survives because the palette is seeded first.
+     * Theme t = Theme.builder(Theme.Mode.LIGHT).accentColor(red).build();
+     *
+     * // Wrong order: mode(LIGHT) re-seeds all colors and drops the red.
+     * Theme bad = Theme.builder().accentColor(red).mode(Theme.Mode.LIGHT).build();
+     * }</pre>
+     *
+     * @param mode the base palette to seed the builder from
+     * @return a new builder pre-populated with the palette's colors
+     */
+    public static Builder builder(Mode mode) {
+        return new Builder(mode);
+    }
+
+    /**
      * Creates a builder pre-populated with this theme's values.
      *
      * @return a new builder copying this theme
@@ -188,6 +225,7 @@ public final class Theme {
         b.padding = padding;
         b.buttonPaddingHorizontal = buttonPaddingHorizontal;
         b.buttonPaddingVertical = buttonPaddingVertical;
+        b.fontSizes.putAll(fontSizes);
         return b;
     }
 
@@ -332,12 +370,86 @@ public final class Theme {
     }
 
     /**
-     * Gets the default body font size in logical units.
+     * Gets the default font size for a semantic role in logical units.
      *
-     * @return the body font size
+     * <p><strong>Not part of the frozen public API:</strong> reserved for
+     * toolkit internals and tests (see {@link #getFont(FontRole)}).</p>
+     *
+     * @param role the font role
+     * @return the role's default size
      */
     public float getFontSize(FontRole role) {
-        return FontManager.getDefaultFontSize(role);
+        Float override = fontSizes.get(role);
+        return override != null ? override : FontManager.getDefaultFontSize(role);
+    }
+
+    // ------------------------------------------------------------------
+    // Value semantics
+    // ------------------------------------------------------------------
+
+    /**
+     * Two themes are equal when every visual token they carry is identical:
+     * mode, colors, metrics and per-role font-size overrides. Themes are
+     * immutable value objects, so equality by value (not identity) is safe
+     * and makes multi-theme assertions in tests straightforward.
+     */
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Theme other)) return false;
+        return backgroundColor == other.backgroundColor
+                && foregroundColor == other.foregroundColor
+                && accentColor == other.accentColor
+                && controlNormalColor == other.controlNormalColor
+                && controlHoverColor == other.controlHoverColor
+                && controlPressedColor == other.controlPressedColor
+                && controlDisabledColor == other.controlDisabledColor
+                && controlTextColor == other.controlTextColor
+                && controlTextDisabledColor == other.controlTextDisabledColor
+                && borderColor == other.borderColor
+                && inputBackgroundColor == other.inputBackgroundColor
+                && titleBarBackgroundColor == other.titleBarBackgroundColor
+                && Float.compare(controlCornerRadius, other.controlCornerRadius) == 0
+                && Float.compare(focusRingRadius, other.focusRingRadius) == 0
+                && Float.compare(padding, other.padding) == 0
+                && Float.compare(buttonPaddingHorizontal, other.buttonPaddingHorizontal) == 0
+                && Float.compare(buttonPaddingVertical, other.buttonPaddingVertical) == 0
+                && mode == other.mode
+                && fontSizes.equals(other.fontSizes);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = mode.hashCode();
+        result = 31 * result + backgroundColor;
+        result = 31 * result + foregroundColor;
+        result = 31 * result + accentColor;
+        result = 31 * result + controlNormalColor;
+        result = 31 * result + controlHoverColor;
+        result = 31 * result + controlPressedColor;
+        result = 31 * result + controlDisabledColor;
+        result = 31 * result + controlTextColor;
+        result = 31 * result + controlTextDisabledColor;
+        result = 31 * result + borderColor;
+        result = 31 * result + inputBackgroundColor;
+        result = 31 * result + titleBarBackgroundColor;
+        result = 31 * result + Float.floatToIntBits(controlCornerRadius);
+        result = 31 * result + Float.floatToIntBits(focusRingRadius);
+        result = 31 * result + Float.floatToIntBits(padding);
+        result = 31 * result + Float.floatToIntBits(buttonPaddingHorizontal);
+        result = 31 * result + Float.floatToIntBits(buttonPaddingVertical);
+        result = 31 * result + fontSizes.hashCode();
+        return result;
+    }
+
+    @Override
+    public String toString() {
+        return "Theme[mode=" + mode
+                + ", bg=" + Integer.toHexString(backgroundColor)
+                + ", fg=" + Integer.toHexString(foregroundColor)
+                + ", accent=" + Integer.toHexString(accentColor)
+                + (fontSizes.isEmpty() ? "" : ", fontSizes=" + fontSizes)
+                + "]";
     }
 
     // ------------------------------------------------------------------
@@ -366,6 +478,13 @@ public final class Theme {
         private float padding;
         private float buttonPaddingHorizontal;
         private float buttonPaddingVertical;
+        /**
+         * Per-role font-size overrides (5.15). Kept in the builder so a theme
+         * can carry its own type scale instead of relying solely on the
+         * process-wide {@link FontManager} defaults.
+         */
+        private final java.util.EnumMap<FontRole, Float> fontSizes =
+                new java.util.EnumMap<>(FontRole.class);
 
         private Builder(Mode mode) {
             mode(mode);
@@ -380,6 +499,11 @@ public final class Theme {
         /**
          * Selects the base palette (light or dark). Individual setters may
          * still override specific values afterwards.
+         *
+         * <p><strong>Order matters (5.14):</strong> this method reseeds every
+         * color token from the chosen palette, silently discarding custom
+         * colors set earlier. Call it first — or use
+         * {@link Theme#builder(Mode)} — then apply individual overrides.</p>
          *
          * @param mode the palette mode
          * @return this builder
@@ -441,6 +565,27 @@ public final class Theme {
         public Builder padding(float p) { this.padding = p; return this; }
         public Builder buttonPaddingHorizontal(float p) { this.buttonPaddingHorizontal = p; return this; }
         public Builder buttonPaddingVertical(float p) { this.buttonPaddingVertical = p; return this; }
+
+        /**
+         * Overrides the default font size for a semantic role in this theme
+         * (5.15). Widgets that resolve their size through
+         * {@link Theme#getFontSize(FontRole)} pick up the override; passing
+         * {@code null} removes it and falls back to the
+         * {@link FontManager} default.
+         *
+         * @param role the font role (non-null)
+         * @param size the size in logical units, or null to clear
+         * @return this builder
+         */
+        public Builder fontSize(FontRole role, Float size) {
+            java.util.Objects.requireNonNull(role, "role");
+            if (size == null) {
+                fontSizes.remove(role);
+            } else {
+                fontSizes.put(role, size);
+            }
+            return this;
+        }
 
         /**
          * Builds the immutable theme.
