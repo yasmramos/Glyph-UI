@@ -67,6 +67,16 @@ public enum StyleProperty {
      */
     RAW_VALUES(false),
 
+    /**
+     * Parallel carrier to {@link #RAW_VALUES} for declarations deferred by
+     * {@link StyleSheet#parse} because they use relative length units
+     * (em/rem/vw/vh): {@code Map<StyleProperty, String>} keeping the original
+     * declaration text of each rule whose typed value must be re-parsed at
+     * cascade time with the engine's variable map. Synthetic; never set
+     * programmatically and always dropped together with {@link #RAW_VALUES}.
+     */
+    RAW_TEXT(false),
+
     /** Uniform margin outside the border box (Float). */
     MARGIN(false),
 
@@ -129,7 +139,7 @@ public enum StyleProperty {
                  OPACITY, FONT_SIZE, GAP, FLEX_GROW, FLEX_SHRINK -> Float.class;
             case FONT_FAMILY, DISPLAY, FLEX_DIRECTION, JUSTIFY_CONTENT,
                  ALIGN_ITEMS, FLEX_WRAP, ALIGN_SELF -> String.class;
-            case RAW_VALUES -> null; // synthetic carrier, exempt from validation
+            case RAW_VALUES, RAW_TEXT -> null; // synthetic carriers, exempt from validation
         };
     }
 
