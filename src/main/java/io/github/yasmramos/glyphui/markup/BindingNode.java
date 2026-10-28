@@ -15,6 +15,12 @@ import java.util.List;
  */
 public final class BindingNode extends AstNode {
 
+    /** Leaf node: bindings never contain children. */
+    @Override
+    public List<AstNode> getChildren() {
+        return List.of();
+    }
+
     /** Dot-separated identifier segments, e.g. ["user", "name"]. */
     private final List<String> segments;
 

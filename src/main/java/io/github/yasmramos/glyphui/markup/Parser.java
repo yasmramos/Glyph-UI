@@ -79,6 +79,9 @@ public final class Parser {
         } finally {
             openStack.remove(openStack.size() - 1);
         }
+        // Post-parse linking pass (item 5.22): every node reachable from the
+        // root learns its owner so getParent() answers correctly.
+        AstNode.linkParents(doc);
         return new ParseResult(doc, errors);
     }
 
@@ -205,8 +208,9 @@ public final class Parser {
     /**
      * Consumes {@code </name>} and records its position for the enclosing
      * element (read back by {@link #parseElement()} through
-     * {@link #lastCloseLine}). The recorded position anchors on the end-tag
-     * <em>name</em>, which is what diagnostics should point at.
+     * {@link #lastCloseLine}). The recorded position anchors on the
+     * {@code &lt;/} sequence that opens the end tag, which is where a range
+     * diagnostic should start.
      *
      * @param openName the expected tag name (already validated by the caller)
      */
@@ -224,9 +228,15 @@ public final class Parser {
             error("expected '>' to close end tag", peek());
             advance();
         }
-        // Anchor the recorded position at the tag name, not the "</".
-        lastCloseLine = name.line();
-        lastCloseColumn = name.column();
+        // Anchor the recorded position at the "</" that opens the end tag.
+        Token open = tokens.get(Math.max(0, index - 3));
+        if (open.kind() == TokenKind.OPEN_CLOSE_TAG) {
+            lastCloseLine = open.line();
+            lastCloseColumn = open.column();
+        } else {
+            lastCloseLine = name.line();
+            lastCloseColumn = name.column();
+        }
     }
 
     /**

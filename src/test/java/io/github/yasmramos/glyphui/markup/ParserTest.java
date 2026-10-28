@@ -353,4 +353,101 @@ class ParserTest {
             assertFalse(label.findAttribute("else").hasValue());
         }
     }
+
+    @Nested
+    @DisplayName("Source extents and parent links (items 5.21 / 5.22)")
+    class ExtentsAndParents {
+
+        @Test
+        @DisplayName("element close position anchors on the matching end tag")
+        void elementClosePositionFromEndTag() {
+            Document doc = parseOk("<Box>\n  <Label/>\n</Box>");
+            Element box = doc.getRootElement();
+            assertEquals(3, box.getCloseLine());
+            assertEquals(1, box.getCloseColumn());
+        }
+
+        @Test
+        @DisplayName("self-closing element close position anchors on \"/>\"")
+        void selfClosingElementClosePosition() {
+            Document doc = parseOk("<Button/>");
+            Element button = doc.getRootElement();
+            assertEquals(1, button.getCloseLine());
+            // "<Button/>": '<' at col 1, the '/' of "/>" sits at column 8.
+            assertEquals(8, button.getCloseColumn());
+        }
+
+        @Test
+        @DisplayName("unclosed element reports no close position (-1)")
+        void unclosedElementHasNoClosePosition() {
+            ParseResult r = new Parser().parse("<Box>text");
+            assertFalse(r.isSuccess(), "missing end tag must be reported");
+            Element box = r.document().getRootElement();
+            assertEquals(-1, box.getCloseLine());
+            assertEquals(-1, box.getCloseColumn());
+        }
+
+        @Test
+        @DisplayName("binding close position anchors on the closing brace")
+        void bindingClosePosition() {
+            Document doc = parseOk("<Label>Hola {user.name}!</Label>");
+            Element label = doc.getRootElement();
+            BindingNode binding = (BindingNode) label.getChildren().get(1);
+            assertEquals(1, binding.getCloseLine());
+            // "<Label>Hola {user.name}!</Label>" -> the trailing "!" folds into
+            // the binding's text run, so the consumed BINDING_CLOSE token is
+            // the '}' of "!}" at column 23 (1-based).
+            assertEquals(23, binding.getCloseColumn());
+        }
+
+        @Test
+        @DisplayName("top-level nodes report the document as parent")
+        void topLevelNodesParentIsDocument() {
+            Document doc = parseOk("<Box>Hello</Box>");
+            Element box = doc.getRootElement();
+            assertNull(box.getParent(), "document root has no AstNode parent");
+            assertSame(doc, box.getParentLink(),
+                    "raw link still points at the owning Document");
+        }
+
+        @Test
+        @DisplayName("nested children know their enclosing element")
+        void nestedNodesKnowTheirOwner() {
+            Document doc = parseOk("<Box><Label>Hola {user.name}!</Label></Box>");
+            Element box = doc.getRootElement();
+            Element label = (Element) box.getChildren().get(0);
+            assertSame(box, label.getParent());
+            TextNode text = (TextNode) label.getChildren().get(0);
+            assertSame(label, text.getParent());
+            BindingNode binding = (BindingNode) label.getChildren().get(1);
+            assertSame(label, binding.getParent());
+        }
+
+        @Test
+        @DisplayName("linking pass is idempotent and safe on empty documents")
+        void linkingIsIdempotent() {
+            Document doc = parseOk("<Box><Label/></Box>");
+            AstNode.linkParents(doc);
+            AstNode.linkParents(doc); // re-running refreshes the same links
+            Element box = doc.getRootElement();
+            assertSame(box, ((Element) box.getChildren().get(0)).getParent());
+            AstNode.linkParents(null); // must not throw
+        }
+
+        @Test
+        @DisplayName("detached nodes report null parent until linked")
+        void detachedNodesHaveNoParent() {
+            Element orphan = new Element("Box", false, 1, 1);
+            assertNull(orphan.getParent());
+            assertNull(orphan.getParentLink());
+        }
+
+        private static void assertSame(Object expected, Object actual, String message) {
+            org.junit.jupiter.api.Assertions.assertSame(expected, actual, message);
+        }
+
+        private static void assertSame(Object expected, Object actual) {
+            org.junit.jupiter.api.Assertions.assertSame(expected, actual);
+        }
+    }
 }
