@@ -183,4 +183,157 @@ class SelectorTest {
         assertEquals(0, starSpec, "\"*\" must contribute zero type specificity");
         assertEquals(1, typeSpec, "a type selector contributes one element");
     }
+
+    // ------------------------------------------------------------------
+    // Structural pseudo-classes: :first-child / :last-child / :only-child
+    // / :nth-child(an+b|odd|even)  (item 5.11)
+    // ------------------------------------------------------------------
+
+    /** Fake node that also reports its position among siblings. */
+    private record PosNode(String styleTag, String id, List<String> classes,
+                           int childIndex, int siblingCount) implements StyleNode {
+        @Override
+        public boolean hasClass(String className) {
+            return classes.contains(className);
+        }
+
+        @Override
+        public boolean matchesPseudo(Selector.PseudoClass pseudo) {
+            return false;
+        }
+
+        @Override
+        public StyleNode parent() {
+            return null;
+        }
+
+        @Override
+        public int childIndex() {
+            return childIndex;
+        }
+
+        @Override
+        public int siblingCount() {
+            return siblingCount;
+        }
+    }
+
+    /** Path of [root, child@position] where child is index-th of total. */
+    private static List<StyleNode> pathAt(int index, int total) {
+        return List.of(
+                new FakeNode("panel", "", List.of()),
+                new PosNode("li", "", List.of(), index, total));
+    }
+
+    /** Path of [root, button@position] for tests keyed on the "button" tag. */
+    private static List<StyleNode> buttonPathAt(int index, int total) {
+        return List.of(
+                new FakeNode("panel", "", List.of()),
+                new PosNode("button", "", List.of(), index, total));
+    }
+
+    @Test
+    void structuralPseudoClassesParse() {
+        assertDoesNotThrow(() -> Selector.parse("button:first-child"));
+        assertDoesNotThrow(() -> Selector.parse("button:last-child"));
+        assertDoesNotThrow(() -> Selector.parse("button:only-child"));
+        assertDoesNotThrow(() -> Selector.parse("li:nth-child(2n+1)"));
+        assertDoesNotThrow(() -> Selector.parse("li:nth-child(odd)"));
+        assertDoesNotThrow(() -> Selector.parse("li:nth-child(even)"));
+        assertDoesNotThrow(() -> Selector.parse("li:nth-child(3)"));
+        assertDoesNotThrow(() -> Selector.parse("li:nth-child(-n+2)"));
+        assertDoesNotThrow(() -> Selector.parse("li:nth-child(n + 4)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> Selector.parse("li:nth-child(banana)"));
+        assertThrows(IllegalArgumentException.class,
+                () -> Selector.parse("li:nth-child(2n+"));
+    }
+
+    @Test
+    void firstChildMatchesOnlyPositionOne() {
+        Selector sel = Selector.parse("button:first-child");
+        assertTrue(sel.matches(buttonPathAt(1, 3)));
+        assertFalse(sel.matches(buttonPathAt(2, 3)));
+        assertFalse(sel.matches(buttonPathAt(3, 3)));
+    }
+
+    @Test
+    void lastChildMatchesOnlyFinalPosition() {
+        Selector sel = Selector.parse("button:last-child");
+        assertTrue(sel.matches(buttonPathAt(3, 3)));
+        assertFalse(sel.matches(buttonPathAt(1, 3)));
+        // Unknown sibling count degrades conservatively: no match.
+        assertFalse(sel.matches(buttonPathAt(1, 0)));
+    }
+
+    @Test
+    void onlyChildRequiresSingleSibling() {
+        Selector sel = Selector.parse("button:only-child");
+        assertTrue(sel.matches(buttonPathAt(1, 1)));
+        assertFalse(sel.matches(buttonPathAt(1, 2)));
+        assertFalse(sel.matches(buttonPathAt(2, 2)));
+    }
+
+    @Test
+    void nthChildOddEvenAndPlainForms() {
+        Selector odd = Selector.parse("li:nth-child(odd)");
+        assertTrue(odd.matches(pathAt(1, 5)));
+        assertTrue(odd.matches(pathAt(3, 5)));
+        assertFalse(odd.matches(pathAt(2, 5)));
+
+        Selector even = Selector.parse("li:nth-child(even)");
+        assertTrue(even.matches(pathAt(2, 5)));
+        assertFalse(even.matches(pathAt(5, 5)));
+
+        Selector third = Selector.parse("li:nth-child(3)");
+        assertTrue(third.matches(pathAt(3, 5)));
+        assertFalse(third.matches(pathAt(4, 5)));
+    }
+
+    @Test
+    void nthChildGeneralAnPlusBForm() {
+        // 2n+1 == odd positions starting at 1.
+        Selector sel = Selector.parse("li:nth-child(2n+1)");
+        assertTrue(sel.matches(pathAt(1, 6)));
+        assertTrue(sel.matches(pathAt(5, 6)));
+        assertFalse(sel.matches(pathAt(6, 6)));
+
+        // -n+2 selects the first two children.
+        Selector firstTwo = Selector.parse("li:nth-child(-n+2)");
+        assertTrue(firstTwo.matches(pathAt(1, 5)));
+        assertTrue(firstTwo.matches(pathAt(2, 5)));
+        assertFalse(firstTwo.matches(pathAt(3, 5)));
+    }
+
+    @Test
+    void structuralCombinesWithOtherParts() {
+        // ".row button:nth-child(2)" — class on ancestor, position on leaf.
+        List<StyleNode> p = List.of(
+                new FakeNode("row", "", List.of("row")),
+                new PosNode("button", "", List.of(), 2, 4));
+        assertTrue(Selector.parse(".row button:nth-child(2)").matches(p));
+        assertFalse(Selector.parse(".row button:nth-child(3)").matches(p));
+    }
+
+    @Test
+    void structuralPseudoContributesClassSpecificity() {
+        // :first-child counts like a class in the (ids, classes, types) tuple.
+        int[] withStructural = Selector.parse("button:first-child").getSpecificity();
+        assertEquals(1, withStructural[1], "structural pseudo adds class-level specificity");
+        assertEquals(1, withStructural[2], "type part still counts once");
+        // It must lose to an id but beat a plain type selector.
+        assertTrue(Selector.parse("#x").compareSpecificity(
+                Selector.parse("button:first-child")) > 0);
+        assertTrue(Selector.parse("button:first-child").compareSpecificity(
+                Selector.parse("button")) > 0);
+    }
+
+    @Test
+    void unknownPositionDegradesToNoMatchForFirstAndNth() {
+        // Default StyleNode.childIndex() is 0 ("unknown"): :first-child and
+        // :nth-child must not fire on unknown positions.
+        Selector first = Selector.parse("button:first-child");
+        assertFalse(first.matches(path("panel", "button")),
+                "FakeNode reports index 0 (unknown), so :first-child must not match");
+    }
 }

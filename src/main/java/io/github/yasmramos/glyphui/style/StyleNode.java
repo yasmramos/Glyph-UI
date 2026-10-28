@@ -46,4 +46,28 @@ public interface StyleNode {
      * @return the ancestor
      */
     StyleNode parent();
+
+    /**
+     * 1-based index of this node among its parent's children, used by the
+     * structural pseudo-classes ({@code :first-child}, {@code :nth-child(…)},
+     * …). Implementations that cannot determine their position should keep
+     * the default: returning 0 means "unknown", which makes the predicates
+     * degrade conservatively (see item 5.11 in {@link Selector}).
+     *
+     * @return the child index, or 0 when unknown
+     */
+    default int childIndex() {
+        return 0;
+    }
+
+    /**
+     * Total number of children in this node's parent, used together with
+     * {@link #childIndex()} by {@code :last-child} and {@code :only-child}.
+     * The default 0 means "unknown".
+     *
+     * @return the sibling count including this node, or 0 when unknown
+     */
+    default int siblingCount() {
+        return 0;
+    }
 }
