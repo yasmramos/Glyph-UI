@@ -2,6 +2,7 @@ package io.github.yasmramos.glyphui.ui;
 
 import java.util.ArrayList;
 import java.util.List;
+import io.github.yasmramos.glyphui.layout.AbsoluteLayout;
 import io.github.yasmramos.glyphui.layout.LayoutManager;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Paint;
@@ -543,7 +544,22 @@ public class Panel extends Component {
      * Sets the layout manager for this panel and triggers an immediate relayout
      * if there are children.
      *
-     * @param layoutManager the layout manager to set
+     * <p><strong>Passing {@code null} is allowed but discouraged.</strong> A
+     * null layout means this panel performs no arrangement at all: children
+     * keep whatever {@code setX}/{@code setY}/{@code setWidth}/{@code
+     * setHeight} assigned, exactly like Swing's {@code setLayout(null)} —
+     * historically a beginner trap that produces UIs which break under font,
+     * DPI or locale changes (Swing/AWT lesson #4). If manual positioning is
+     * what you want, install {@link AbsoluteLayout} instead: it makes the
+     * intent explicit in the code, keeps every panel on the uniform layout
+     * pipeline, and lets a future switch to a flow-based layout reposition
+     * children without stale-state surprises. For everything else prefer
+     * {@link io.github.yasmramos.glyphui.layout.FlexLayout} or
+     * {@link io.github.yasmramos.glyphui.layout.FlowLayout}.</p>
+     *
+     * @param layoutManager the layout manager to set, or {@code null} to opt
+     *                      out of automatic layout (see
+     *                      {@link AbsoluteLayout} for the supported way)
      */
     public void setLayoutManager(LayoutManager layoutManager) {
         // Detach the previous manager first so its config setters stop
