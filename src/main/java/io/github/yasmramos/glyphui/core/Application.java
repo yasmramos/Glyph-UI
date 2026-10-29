@@ -655,6 +655,27 @@ public class Application implements AutoCloseable {
         return window;
     }
 
+    /**
+     * Test-only window injection used by input-characterization tests: installs
+     * a pre-built {@link io.github.yasmramos.glyphui.core.Window} wrapping a
+     * headless backend <em>before</em> {@code init()} would create the native
+     * one, so {@code setupCallbacks()} subscriptions land on the fake and can
+     * be driven without any display server. Must be called before {@code
+     * init()}; {@code close()} destroys the injected window like a normal one.
+     *
+     * @param testWindow the window to install (null rejected)
+     */
+    void setWindowForTests(Window testWindow) {
+        if (testWindow == null) {
+            throw new IllegalArgumentException("testWindow must not be null");
+        }
+        if (window != null) {
+            throw new IllegalStateException(
+                    "window already created; inject before init()");
+        }
+        this.window = testWindow;
+    }
+
     boolean runningForScheduler() {
         return running;
     }

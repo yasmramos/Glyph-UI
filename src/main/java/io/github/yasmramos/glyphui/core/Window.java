@@ -79,6 +79,19 @@ public class Window implements AutoCloseable {
     private boolean maximized;
 
     /**
+     * Test-only constructor: injects a pre-built backend (e.g.
+     * {@link io.github.yasmramos.glyphui.core.backend.HeadlessTestBackend}) so
+     * characterization tests can drive the toolkit's input routing and window
+     * callbacks without any native windowing library. Production code must use
+     * the public constructors, which instantiate the JWM backend.
+     *
+     * @param backend the backend to delegate to (must not be null)
+     */
+    Window(WindowBackend backend) {
+        this.backend = java.util.Objects.requireNonNull(backend, "backend");
+    }
+
+    /**
      * Creates a new Window with the default {@link WindowConfig}
      * (visible, resizable, decorated, OpenGL 3.2 core, centered).
      *
