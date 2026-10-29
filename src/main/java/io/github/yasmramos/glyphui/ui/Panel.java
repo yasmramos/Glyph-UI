@@ -746,11 +746,11 @@ public class Panel extends Component {
 
     @Override
     protected void render(io.github.yasmramos.glyphui.graphics.Canvas canvas) {
-        if (!visible) {
-            return;
-        }
-
-        // Ensure layout is applied before rendering children
+        // Ensure layout is applied before rendering children. The framework
+        // template Component.renderInternal() has already checked visibility,
+        // saved the canvas and translated the origin to this panel's top-left
+        // corner (and restores it afterwards), so everything here draws in
+        // local coordinates relative to (0, 0).
         doLayout();
 
         // Draw the effective background when it should be painted. Block 5
@@ -762,14 +762,14 @@ public class Panel extends Component {
         if (shouldPaintBackground()) {
             ensureBgPaint();
             bgPaint.setColor(getBackgroundColor());
-            canvas.drawRect(x, y, width, height, bgPaint);
+            canvas.drawRect(0, 0, width, height, bgPaint);
         }
 
-        // Save the canvas state, translate to the panel's local coordinate
-        // system and clip to its bounds so that children cannot draw outside
-        // the panel. The saved state is restored with restoreToCount().
+        // Clip to the panel's bounds so that children cannot draw outside
+        // the panel. The surrounding save/restore is owned by the framework
+        // template (Swing lesson #7: no widget can forget "super"), so only
+        // the extra clip needs saving here.
         int saveCount = canvas.save();
-        canvas.translate(x, y);
         canvas.clipRect(0, 0, width, height);
 
         try {
@@ -782,7 +782,7 @@ public class Panel extends Component {
                 }
             }
         } finally {
-            // Restore the canvas state
+            // Restore the clip (the template restores the outer state).
             canvas.restoreToCount(saveCount);
         }
     }

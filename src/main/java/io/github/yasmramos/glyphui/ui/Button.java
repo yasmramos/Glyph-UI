@@ -583,12 +583,11 @@ public class Button extends Component {
 
     @Override
     protected void render(Canvas canvas) {
-        if (!visible) {
-            return;
-        }
-
         // Paints are created on demand: the constructor never touches Skija,
-        // so buttons are unit-testable without native libraries.
+        // so buttons are unit-testable without native libraries. Visibility
+        // filtering and the local-coordinate translate/save/restore come
+        // from Component.renderInternal(), so all drawing below is relative
+        // to (0, 0).
         ensurePaints();
 
         // Update background color based on state
@@ -597,11 +596,11 @@ public class Button extends Component {
         float radius = getBorderRadius();
 
         // Draw background with rounded corners
-        canvas.drawRRect(x, y, width, height, radius, radius, bgPaint);
+        canvas.drawRRect(0, 0, width, height, radius, radius, bgPaint);
 
         // Update border color and draw border
         borderPaint.setColor(getBorderColor());
-        canvas.drawRRect(x + 0.5f, y + 0.5f, width - 1.0f, height - 1.0f,
+        canvas.drawRRect(0.5f, 0.5f, width - 1.0f, height - 1.0f,
                         radius, radius, borderPaint);
 
         // Calculate text position (centered) using the theme font
@@ -609,26 +608,22 @@ public class Button extends Component {
         String caption = text == null ? "" : text;
         float textWidth = canvas.measureText(caption, f);
         float textHeight = canvas.getTextHeight(f);
-        float textX = x + (width - textWidth) / 2.0f;
+        float textX = (width - textWidth) / 2.0f;
         // drawString takes a baseline. The glyph box spans
         // [baseline + ascent, baseline + descent] (ascent is negative), so
         // centering that box in the button puts the baseline at
         // top + (height - textHeight) / 2 - ascent. The former
         // (height + textHeight) / 2 sat descent pixels too low.
         io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
-        float textY = y + (height - textHeight) / 2.0f - metrics.getAscent();
+        float textY = (height - textHeight) / 2.0f - metrics.getAscent();
 
         // Update text color based on enabled state
         textPaint.setColor(enabled ? getTextColor() : getTheme().getControlTextDisabledColor());
 
         // Draw text
         canvas.drawString(caption, textX, textY, textPaint, f);
-
-        // Focus ring only for keyboard focus: a mouse click focuses the
-        // button for Enter/Space but must not leave a dashed ring behind.
-        if (isFocusVisible()) {
-            renderFocusRing(canvas);
-        }
+        // The focus ring is painted by Component.renderInternal() when
+        // isFocusVisible() is true — widgets must not draw it themselves.
     }
 
     @Override

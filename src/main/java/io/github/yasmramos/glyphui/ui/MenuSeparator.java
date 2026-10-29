@@ -58,9 +58,8 @@ public class MenuSeparator extends Component {
 
     @Override
     protected void render(Canvas canvas) {
-        if (!visible) {
-            return;
-        }
+        // Local coordinates: Component.renderInternal() filtered visibility
+        // and translated the origin to (x, y) before calling this method.
         if (linePaint == null) {
             linePaint = new Paint();
             linePaint.setAntiAlias(true);
@@ -71,8 +70,8 @@ public class MenuSeparator extends Component {
         int color = theme.getBorderColor();
         linePaint.setColor((LINE_ALPHA << 24) | (color & 0x00FFFFFF));
 
-        float lineY = y + height / 2.0f;
-        canvas.drawLine(x + INSET, lineY, x + width - INSET, lineY, linePaint);
+        float lineY = height / 2.0f;
+        canvas.drawLine(INSET, lineY, width - INSET, lineY, linePaint);
     }
 
     @Override

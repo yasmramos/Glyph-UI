@@ -97,20 +97,19 @@ public class Separator extends Component {
 
     @Override
     protected void render(Canvas canvas) {
-        if (!visible) {
-            return;
-        }
+        // Local coordinates: Component.renderInternal() filtered visibility
+        // and translated the origin to (x, y) before calling this method.
         if (paint == null) {
             paint = new Paint();
             paint.setAntiAlias(false);
         }
         paint.setColor(getTheme().getBorderColor());
         if (orientation == Orientation.HORIZONTAL) {
-            float lineY = y + (height - THICKNESS) / 2.0f;
-            canvas.drawRect(x, lineY, width, THICKNESS, paint);
+            float lineY = (height - THICKNESS) / 2.0f;
+            canvas.drawRect(0, lineY, width, THICKNESS, paint);
         } else {
-            float lineX = x + (width - THICKNESS) / 2.0f;
-            canvas.drawRect(lineX, y, THICKNESS, height, paint);
+            float lineX = (width - THICKNESS) / 2.0f;
+            canvas.drawRect(lineX, 0, THICKNESS, height, paint);
         }
     }
 

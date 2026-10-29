@@ -1343,25 +1343,53 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
-     * Renders the component on the canvas. Called by the framework (see
-     * {@link Panel#render(Canvas)}); widget authors implement this, but
-     * application code must not invoke it directly — invalidate instead and
-     * let the next frame repaint.
+     * Renders the component on the canvas. Called by the framework through
+     * {@link #renderInternal(Canvas)}; widget authors implement this, but
+     * application code must not invoke either directly — invalidate instead
+     * and let the next frame repaint.
      *
-     * @param canvas the canvas to draw on
+     * <p><strong>Canvas contract (guaranteed by the framework):</strong> when
+     * {@code render} is invoked, the canvas has been saved and translated so
+     * that (0, 0) is this component's top-left corner, and it will be restored
+     * afterwards no matter what the implementation does. Custom widgets
+     * therefore never need to call {@code save()}/{@code restore()} just to
+     * protect their siblings from stray translates or clips — the equivalent
+     * of Swing calling {@code super.paintComponent} for you. Implementations
+     * should still balance any additional saves they make themselves.</p>
+     *
+     * @param canvas the canvas to draw on, in local coordinates
      */
     protected abstract void render(Canvas canvas);
 
     /**
-     * Framework entry point for painting this component. Delegates to the
-     * subclass {@link #render(Canvas)} implementation; call sites (root panel
-     * painting, container child loops) use this instead so widget authors
-     * never see a public render on their API surface.
+     * Framework entry point for painting this component. This is a template
+     * method: it skips invisible components, wraps the subclass
+     * {@link #render(Canvas)} call in a guaranteed save/translate/restore so
+     * an ill-behaved custom widget cannot leak canvas state to its siblings,
+     * and finally paints the standard focus ring on top. Call sites (root
+     * panel painting, container child loops) use this instead of
+     * {@link #render(Canvas)} so widget authors never see a public render on
+     * their API surface.
      *
-     * @param canvas the canvas to draw on
+     * @param canvas the canvas to draw on (parent coordinate space)
      */
     public final void renderInternal(Canvas canvas) {
-        render(canvas);
+        // Template guarantees (Swing lesson #7: "paintComponent without
+        // super"): visibility filtering and canvas-state isolation happen
+        // here, not in user code, so forgetting them is no longer possible.
+        if (!visible) {
+            return;
+        }
+        int saveCount = canvas.save();
+        try {
+            canvas.translate(x, y);
+            render(canvas);
+            if (isFocusVisible()) {
+                renderFocusRing(canvas);
+            }
+        } finally {
+            canvas.restoreToCount(saveCount);
+        }
     }
 
     /**
@@ -1800,11 +1828,12 @@ public abstract class Component implements StyleNode, Disposable {
 
     /**
      * Draws the standard focus ring for this component using the theme's accent
-     * color: a dashed rounded rectangle inset by one logical pixel. Widgets
-     * that accept focus ({@code Button}, {@code TextField}, ...) call this from
-     * {@code render} when {@link #isFocusVisible()} is true.
+     * color: a dashed rounded rectangle inset by one logical pixel. The
+     * framework calls this from {@link #renderInternal(Canvas)} when
+     * {@link #isFocusVisible()} is true, in the component's local coordinate
+     * space; widget authors normally do not need to invoke it themselves.
      *
-     * @param canvas the canvas to draw on
+     * @param canvas the canvas to draw on, in local coordinates
      */
     protected void renderFocusRing(Canvas canvas) {
         io.github.humbleui.skija.Paint paint = new io.github.humbleui.skija.Paint();
@@ -1817,7 +1846,7 @@ public abstract class Component implements StyleNode, Disposable {
             // focus ring in the process; it must never be closed here (or by
             // Paint.close(), which does not own its PathEffect).
             paint.setPathEffect(FOCUS_DASH_EFFECT);
-            canvas.drawRRect(x + 1.0f, y + 1.0f, Math.max(0.0f, width - 2.0f),
+            canvas.drawRRect(1.0f, 1.0f, Math.max(0.0f, width - 2.0f),
                     Math.max(0.0f, height - 2.0f),
                     getTheme().getFocusRingRadius(), getTheme().getFocusRingRadius(), paint);
         } finally {

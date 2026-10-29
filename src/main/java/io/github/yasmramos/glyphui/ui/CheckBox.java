@@ -217,14 +217,13 @@ public class CheckBox extends Component {
 
     @Override
     protected void render(Canvas canvas) {
-        if (!visible) {
-            return;
-        }
+        // Local coordinates: Component.renderInternal() filtered visibility
+        // and translated the origin to (x, y) before calling this method.
         ensurePaints();
 
         Font font = getTheme().getFont(io.github.yasmramos.glyphui.graphics.Theme.FontRole.BODY);
         float box = Math.max(0.0f, Math.min(BOX_SIZE, height));
-        float boxY = y + (height - box) / 2.0f;
+        float boxY = (height - box) / 2.0f;
 
         int fill = checked
                 ? getTheme().getAccentColor()
@@ -232,33 +231,31 @@ public class CheckBox extends Component {
                         ? getTheme().getControlHoverColor()
                         : getTheme().getInputBackgroundColor());
         boxPaint.setColor(fill);
-        canvas.drawRect(x, boxY, box, box, boxPaint);
+        canvas.drawRect(0, boxY, box, box, boxPaint);
 
         borderPaint.setColor(getTheme().getBorderColor());
-        canvas.drawRect(x + 0.5f, boxY + 0.5f, box - 1.0f, box - 1.0f, borderPaint);
+        canvas.drawRect(0.5f, boxY + 0.5f, box - 1.0f, box - 1.0f, borderPaint);
 
         if (checked) {
             markPaint.setColor(0xFFFFFFFF);
-            canvas.drawLine(x + box * 0.24f, boxY + box * 0.52f,
-                    x + box * 0.44f, boxY + box * 0.72f, markPaint);
-            canvas.drawLine(x + box * 0.44f, boxY + box * 0.72f,
-                    x + box * 0.78f, boxY + box * 0.30f, markPaint);
+            canvas.drawLine(box * 0.24f, boxY + box * 0.52f,
+                    box * 0.44f, boxY + box * 0.72f, markPaint);
+            canvas.drawLine(box * 0.44f, boxY + box * 0.72f,
+                    box * 0.78f, boxY + box * 0.30f, markPaint);
         }
 
         String caption = text == null ? "" : text;
         if (!caption.isEmpty()) {
             FontMetrics metrics = font.getMetrics();
             float line = metrics.getDescent() - metrics.getAscent();
-            float baseline = y + (height - line) / 2.0f - metrics.getAscent();
+            float baseline = (height - line) / 2.0f - metrics.getAscent();
             textPaint.setColor(enabled
                     ? getTheme().getControlTextColor()
                     : getTheme().getControlTextDisabledColor());
-            canvas.drawString(caption, x + box + LABEL_GAP, baseline, textPaint, font);
+            canvas.drawString(caption, box + LABEL_GAP, baseline, textPaint, font);
         }
-
-        if (isFocusVisible()) {
-            renderFocusRing(canvas);
-        }
+        // The focus ring is painted by Component.renderInternal() when
+        // isFocusVisible() is true — widgets must not draw it themselves.
     }
 
     @Override

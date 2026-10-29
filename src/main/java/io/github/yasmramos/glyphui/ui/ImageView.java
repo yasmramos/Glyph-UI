@@ -147,24 +147,24 @@ public class ImageView extends Component {
             // instead of leaving a blank hole in the layout.
             io.github.humbleui.skija.Paint paint = scratchPaint();
             paint.setColor(placeholderColor);
-            canvas.drawRect(x, y, width, height, paint);
+            canvas.drawRect(0, 0, width, height, paint);
             return;
         }
         float iw = image.getWidth();
         float ih = image.getHeight();
-        float dx = x, dy = y, dw = width, dh = height;
+        float dx = 0, dy = 0, dw = width, dh = height;
         if (objectFit != ObjectFit.FILL && iw > 0.0f && ih > 0.0f && width > 0.0f && height > 0.0f) {
             float scale = (objectFit == ObjectFit.CONTAIN)
                     ? Math.min(width / iw, height / ih)
                     : Math.max(width / iw, height / ih);
             dw = iw * scale;
             dh = ih * scale;
-            dx = x + (width - dw) / 2.0f;
-            dy = y + (height - dh) / 2.0f;
+            dx = (width - dw) / 2.0f;
+            dy = (height - dh) / 2.0f;
             if (objectFit == ObjectFit.COVER) {
                 // Clip the overflow so COVER never paints outside the bounds.
                 int saved = canvas.save();
-                canvas.clipRect(x, y, width, height);
+                canvas.clipRect(0, 0, width, height);
                 canvas.drawImage(image, dx, dy, dw, dh);
                 canvas.restoreToCount(saved);
                 return;

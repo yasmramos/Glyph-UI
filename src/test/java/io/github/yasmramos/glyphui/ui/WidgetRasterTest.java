@@ -190,12 +190,12 @@ class WidgetRasterTest extends io.github.yasmramos.glyphui.TestBase {
                 one.setTextColor(OPAQUE_RED);
                 two.setTextColor(OPAQUE_RED);
 
-                one.render(canvas);
+                one.renderInternal(canvas);
                 canvas.flush();
                 int[] single = redRowSpan(10, 0, 310, 120);
 
                 canvas.clear(OPAQUE_BLUE);
-                two.render(canvas);
+                two.renderInternal(canvas);
                 canvas.flush();
                 int[] block = redRowSpan(10, 0, 310, 120);
 
@@ -222,12 +222,12 @@ class WidgetRasterTest extends io.github.yasmramos.glyphui.TestBase {
                 lf.setTextColor(OPAQUE_RED);
                 crlf.setTextColor(OPAQUE_RED);
 
-                lf.render(canvas);
+                lf.renderInternal(canvas);
                 canvas.flush();
                 int[] unix = redRowSpan(10, 0, 310, 120);
 
                 canvas.clear(OPAQUE_BLUE);
-                crlf.render(canvas);
+                crlf.renderInternal(canvas);
                 canvas.flush();
                 int[] windows = redRowSpan(10, 0, 310, 120);
 
@@ -450,7 +450,7 @@ class WidgetRasterTest extends io.github.yasmramos.glyphui.TestBase {
             button.setNormalColor(white);
             button.setTextColor(black);
             button.setBorderColor(white);
-            button.render(canvas);
+            button.renderInternal(canvas);
             canvas.flush();
 
             long ink = 0, sumX = 0, sumY = 0;
@@ -506,7 +506,7 @@ class WidgetRasterTest extends io.github.yasmramos.glyphui.TestBase {
         void renderUsesEntrySurfaceFill() {
             canvas.clear(0xFFFF0000);
             TextField field = new TextField(0, 0, 200, 40);
-            field.render(canvas);
+            field.renderInternal(canvas);
             canvas.flush();
 
             int fill = pixelAt(100, 20);
@@ -525,7 +525,7 @@ class WidgetRasterTest extends io.github.yasmramos.glyphui.TestBase {
             canvas.clear(0xFFFF0000);
             TextField field = new TextField(0, 0, 200, 40);
             field.setPlaceholder("Your name");
-            field.render(canvas);
+            field.renderInternal(canvas);
             canvas.flush();
 
             int fill = pixelAt(100, 20);
@@ -575,6 +575,110 @@ class WidgetRasterTest extends io.github.yasmramos.glyphui.TestBase {
                     "the popup must paint its own surface instead of letting "
                     + "the page show through the rows");
             menu.dispose();
+        }
+    }
+
+    // ---- renderInternal() template guarantees ------------------------------
+
+    @Nested
+    @DisplayName("Render template guarantees")
+    class RenderTemplate {
+
+        /**
+         * A deliberately ill-behaved widget: it translates and clips the
+         * canvas without saving or restoring anything. In Swing, forgetting
+         * {@code super.paintComponent} (or leaking canvas state) corrupts
+         * sibling painting; here the framework template must absorb the
+         * damage instead.
+         */
+        private static final class LeakyWidget extends Component {
+            @Override
+            protected void render(io.github.yasmramos.glyphui.graphics.Canvas canvas) {
+                canvas.translate(1000.0f, 1000.0f);
+                canvas.clipRect(0.0f, 0.0f, 1.0f, 1.0f);
+            }
+
+            @Override
+            public boolean onMouseEvent(io.github.yasmramos.glyphui.events.MouseEvent event) {
+                return false;
+            }
+
+            @Override
+            public void onKeyEvent(io.github.yasmramos.glyphui.events.KeyEvent event) {
+                // No key handling in this test widget.
+            }
+        }
+
+        @Test
+        @DisplayName("a custom widget that leaks canvas state cannot corrupt its siblings")
+        void leakedCanvasStateIsRestoredByTemplate() {
+            canvas.clear(OPAQUE_BLUE);
+
+            Label label = new Label(10, 0, 300, 120, "AAA");
+            LeakyWidget leaky = new LeakyWidget();
+            try {
+                label.setTextColor(OPAQUE_RED);
+                leaky.setX(0.0f);
+                leaky.setY(0.0f);
+                leaky.setWidth(50.0f);
+                leaky.setHeight(50.0f);
+
+                // The leaker runs first; whatever it does to the transform or
+                // clip stack, the template must undo before the next widget.
+                leaky.renderInternal(canvas);
+                label.renderInternal(canvas);
+                canvas.flush();
+
+                assertTrue(anyPixelInRegionEquals(OPAQUE_RED, 10, 20, 220, 100),
+                        "the label after a leaking sibling must still paint at"
+                        + " its own position with an unclipped canvas");
+            } finally {
+                label.dispose();
+                leaky.dispose();
+            }
+        }
+
+        @Test
+        @DisplayName("renderInternal skips invisible components")
+        void templateSkipsInvisibleComponents() {
+            canvas.clear(OPAQUE_BLUE);
+
+            Label label = new Label(10, 0, 300, 120, "AAA");
+            try {
+                label.setTextColor(OPAQUE_RED);
+                label.setVisible(false);
+                label.renderInternal(canvas);
+                canvas.flush();
+
+                assertEquals(OPAQUE_BLUE, pixelAt(50, 60),
+                        "an invisible component must not paint anything");
+            } finally {
+                label.dispose();
+            }
+        }
+
+        @Test
+        @DisplayName("renderInternal translates the origin to the component's x/y")
+        void templateTranslatesToComponentOrigin() {
+            canvas.clear(OPAQUE_BLUE);
+
+            Label label = new Label(0, 0, 300, 120, "AAA");
+            try {
+                label.setTextColor(OPAQUE_RED);
+                // The widget itself draws in local coordinates; only the
+                // template knows where the widget lives inside its parent.
+                label.setX(10.0f);
+                label.setY(20.0f);
+                label.renderInternal(canvas);
+                canvas.flush();
+
+                assertTrue(anyPixelInRegionEquals(OPAQUE_RED, 10, 20, 220, 120),
+                        "ink must appear offset by the component's x/y");
+                assertEquals(OPAQUE_BLUE, pixelAt(2, 2),
+                        "the area above-left of the component must stay untouched");
+            } finally {
+                label.dispose();
+            }
         }
     }
 
