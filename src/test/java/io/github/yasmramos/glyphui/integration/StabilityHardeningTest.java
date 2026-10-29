@@ -8,6 +8,8 @@ import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.core.Window;
 import io.github.yasmramos.glyphui.core.WindowConfig;
 import io.github.yasmramos.glyphui.core.backend.JwmWindowBackend;
+import io.github.yasmramos.glyphui.core.backend.SurfaceFactory;
+import io.github.yasmramos.glyphui.core.backend.SurfaceResult;
 import io.github.yasmramos.glyphui.core.backend.WindowBackend;
 import io.github.yasmramos.glyphui.graphics.FontManager;
 import org.junit.jupiter.api.DisplayName;
@@ -23,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -94,6 +97,22 @@ class StabilityHardeningTest extends TestBase {
         Field f = owner.getDeclaredField(name);
         f.setAccessible(true);
         return f.get(null);
+    }
+
+    /** Writes a declared field anywhere in the target's class hierarchy. */
+    private static void writeField(Object target, String name, Object value) throws Exception {
+        Class<?> c = target.getClass();
+        while (c != null) {
+            try {
+                Field f = c.getDeclaredField(name);
+                f.setAccessible(true);
+                f.set(target, value);
+                return;
+            } catch (NoSuchFieldException ignored) {
+                c = c.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException(name + " on " + target.getClass());
     }
 
 
@@ -246,6 +265,55 @@ class StabilityHardeningTest extends TestBase {
             // And a later valid scale still applies.
             invokeNotifyContentScale(window, 2f, 2f);
             assertEquals(2f, (float) readField(app, "contentScaleX"), 0f);
+        }
+    }
+
+    @Test
+    @DisplayName("item 5: failed surface recreation marks the surface broken, not null")
+    void recreateSurfaceFailureSetsBrokenFlag() throws Exception {
+        try (Application app = new Application()) {
+            assertTrue(app.init("stability-item5-fail", 200, 150, true));
+
+            // Replace the live factory with one whose recreate() always
+            // throws — simulating OOM or a lost GPU context during resize.
+            SurfaceFactory failing = new SurfaceFactory() {
+                @Override
+                public SurfaceResult create(Window window) {
+                    throw new IllegalStateException("unused by this path");
+                }
+
+                @Override
+                public SurfaceResult recreate(Window window, int fbWidth, int fbHeight) {
+                    throw new OutOfMemoryError("simulated allocation failure");
+                }
+
+                @Override
+                public boolean isGpu() {
+                    return false;
+                }
+
+                @Override
+                public void close() {
+                }
+            };
+            writeField(app, "surfaceFactory", failing);
+
+            // The resize callback drives recreateSurface(); the throw must
+            // be contained (it arrives from a native callback) and leave the
+            // instance in the documented degraded state.
+            assertDoesNotThrow(() -> invokeNotifyFramebuffer(app.getWindow(), 300, 200));
+
+            assertNull(readField(app, "surface"),
+                    "The stale surface is closed first; recreation failed.");
+            assertEquals(Boolean.TRUE, readField(app, "surfaceBroken"),
+                    "A failed recreation must set the broken flag so painting "
+                    + "is suppressed instead of NPE-ing on every frame.");
+
+            // framebufferDegenerate() honors the flag: render() would skip.
+            Method degenerate = Application.class.getDeclaredMethod("framebufferDegenerate");
+            degenerate.setAccessible(true);
+            assertTrue((Boolean) degenerate.invoke(app),
+                    "framebufferDegenerate() must report true while broken.");
         }
     }
 
