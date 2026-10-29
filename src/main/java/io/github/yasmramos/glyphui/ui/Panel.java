@@ -67,7 +67,8 @@ public class Panel extends Component {
      * direct size mutation occurs (Block 3 item 3.2).
      */
     public Panel() {
-        this(0f, 0f, true);
+        super();
+        initPanel();
     }
 
     /**
@@ -77,21 +78,7 @@ public class Panel extends Component {
      * @param height the panel height
      */
     public Panel(float width, float height) {
-        this(width, height, true);
-    }
-
-    /**
-     * Size-only delegating constructor. Unlike {@link Component}'s public
-     * {@code (width, height)} form, this must NOT mark the size as
-     * user-explicit: the historical {@code Panel()} contract keeps panels
-     * content-sized until a direct mutation happens (Block 3 item 3.2), and
-     * routing it through the bounds-carrying constructor would silently pin
-     * a 0x0 size on every default-constructed panel.
-     */
-    private Panel(float width, float height, boolean ignored) {
-        super();
-        applyLayoutSize(width, height);
-        initPanel();
+        this(0f, 0f, width, height);
     }
 
     /**
@@ -111,6 +98,7 @@ public class Panel extends Component {
      * @param height the height of the panel
      */
     public Panel(float x, float y, float width, float height) {
+        super(x, y, width, height);
         initPanel();
     }
 
