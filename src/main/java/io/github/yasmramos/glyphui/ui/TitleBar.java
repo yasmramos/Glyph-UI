@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.core.Window;
 import io.github.yasmramos.glyphui.events.KeyEvent;
@@ -120,9 +121,21 @@ public class TitleBar extends Panel {
     // ------------------------------------------------------------------
     // Window access
     // ------------------------------------------------------------------
-    private static Window window() {
-        Application app = Application.getCurrent();
-        return app != null ? app.getWindow() : null;
+    /**
+     * Resolves the native window through an application context: the context
+     * of the owning tree when available (ownership wins in multi-app
+     * processes), otherwise the documented {@link AppContext} fallback for
+     * detached bars (tests, manually assembled trees). Returns null when no
+     * application is live.
+     */
+    private static Window resolveWindow(AppContext ctx) {
+        return ctx != null ? ctx.app().getWindow() : null;
+    }
+
+    private Window window() {
+        // Resolve by ownership first (this bar's tree), then the documented
+        // AppContext fallback for detached title bars (tests, manual trees).
+        return resolveWindow(context() != null ? context() : AppContext.ofCurrent());
     }
 
     // ------------------------------------------------------------------
@@ -416,7 +429,8 @@ public class TitleBar extends Panel {
             switch (kind) {
                 case MINIMIZE -> canvas.drawLine(cx - 5, cy, cx + 5, cy, iconPaint);
                 case MAXIMIZE -> {
-                    Window w = window();
+                    AppContext ctx = context() != null ? context() : AppContext.ofCurrent();
+                    Window w = resolveWindow(ctx);
                     if (w != null && w.isMaximized()) {
                         // Restore: two overlapping squares.
                         canvas.drawRect(cx - 1, cy - 6, 9, 9, iconPaint);

@@ -2,6 +2,7 @@ package io.github.yasmramos.glyphui.ui;
 
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
+import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
@@ -127,7 +128,8 @@ public class Menu extends Panel {
      */
     public void setTrigger(Component trigger) {
         this.trigger = trigger;
-        Application app = Application.getCurrent();
+        AppContext ctx = context() != null ? context() : AppContext.ofCurrent();
+        Application app = ctx != null ? ctx.app() : null;
         if (trigger != null && app != null) {
             // Register eagerly: hover-switching must know this menu's trigger
             // before the menu has ever been opened.
@@ -164,7 +166,8 @@ public class Menu extends Panel {
      * shows itself; nothing renders it.</p>
      */
     public void open() {
-        Application app = Application.getCurrent();
+        AppContext ctx = context() != null ? context() : AppContext.ofCurrent();
+        Application app = ctx != null ? ctx.app() : null;
         if (getParent() == null && app != null) {
             app.getPopupLayer().add(this);
         }

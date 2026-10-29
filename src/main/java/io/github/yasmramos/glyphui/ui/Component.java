@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.core.FocusManager;
 import io.github.yasmramos.glyphui.core.RepaintRequester;
@@ -219,7 +220,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> xProperty() {
         if (xProperty == null) {
-            xProperty = new Property<>(null, x, v -> { this.x = v; invalidate(); });
+            xProperty = new Property<>(propertyOwner(), x, v -> { this.x = v; invalidate(); });
         }
         return xProperty;
     }
@@ -231,7 +232,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> yProperty() {
         if (yProperty == null) {
-            yProperty = new Property<>(null, y, v -> { this.y = v; invalidate(); });
+            yProperty = new Property<>(propertyOwner(), y, v -> { this.y = v; invalidate(); });
         }
         return yProperty;
     }
@@ -247,7 +248,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> widthProperty() {
         if (widthProperty == null) {
-            widthProperty = new Property<>(null, width, this::applyWidthExplicit);
+            widthProperty = new Property<>(propertyOwner(), width, this::applyWidthExplicit);
         }
         return widthProperty;
     }
@@ -261,7 +262,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Float> heightProperty() {
         if (heightProperty == null) {
-            heightProperty = new Property<>(null, height, this::applyHeightExplicit);
+            heightProperty = new Property<>(propertyOwner(), height, this::applyHeightExplicit);
         }
         return heightProperty;
     }
@@ -273,7 +274,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Boolean> visibleProperty() {
         if (visibleProperty == null) {
-            visibleProperty = new Property<>(null, visible, v -> {
+            visibleProperty = new Property<>(propertyOwner(), visible, v -> {
                 if (this.visible != v) {
                     this.visible = v;
                     // A hidden widget cannot keep the keyboard focus.
@@ -296,7 +297,7 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Property<Boolean> enabledProperty() {
         if (enabledProperty == null) {
-            enabledProperty = new Property<>(null, enabled, v -> {
+            enabledProperty = new Property<>(propertyOwner(), enabled, v -> {
                 if (this.enabled != v) {
                     this.enabled = v;
                     if (!v) {
@@ -1239,6 +1240,49 @@ public abstract class Component implements StyleNode, Disposable {
      */
     public Panel getParent() {
         return parent;
+    }
+
+    /**
+     * The application context of the tree this component belongs to, resolved
+     * by ownership: walks up to the root panel and returns the context
+     * installed there (see {@link Panel#setContext}). Returns {@code null}
+     * when the component is detached or no application owns the tree — code
+     * that needs a context on a detached widget should fall back to
+     * {@link AppContext#ofCurrent()} until it gets attached.
+     *
+     * <p>This is the replacement for the old process-wide
+     * {@code Application.getCurrent()} lookups inside widgets: with two live
+     * applications, each tree resolves its own app instead of whichever one
+     * started last.</p>
+     *
+     * @return the owning context, or null when unavailable
+     */
+    public AppContext context() {
+        Component node = this;
+        while (node != null) {
+            if (node instanceof Panel panel && panel.getContext() != null) {
+                return panel.getContext();
+            }
+            node = node.getParent();
+        }
+        return null;
+    }
+
+    /**
+     * Resolves the marshalling target for lazily created observable
+     * properties: the application owning this component's tree when attached,
+     * otherwise the most recently started live application. Widgets therefore
+     * marshal to the correct app even in multi-application processes.
+     *
+     * @return the owning application, or null in headless/test contexts
+     */
+    protected Application propertyOwner() {
+        AppContext ctx = context();
+        if (ctx != null) {
+            return ctx.app();
+        }
+        AppContext fallback = AppContext.ofCurrent();
+        return fallback != null ? fallback.app() : null;
     }
 
     /**

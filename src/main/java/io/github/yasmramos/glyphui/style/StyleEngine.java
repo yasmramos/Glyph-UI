@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.style;
 
+import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.graphics.FontManager;
 import io.github.yasmramos.glyphui.graphics.Theme;
@@ -331,7 +332,8 @@ public final class StyleEngine {
             vars.put("--root-font-size", vars.get("--font-size-base"));
         }
         if (!vars.containsKey("--viewport-width") || !vars.containsKey("--viewport-height")) {
-            Application app = Application.getCurrent();
+            AppContext ctx = AppContext.ofCurrent();
+            Application app = ctx != null ? ctx.app() : null;
             if (app != null && app.getWindow() != null) {
                 vars.putIfAbsent("--viewport-width", app.getWindow().getWidth() + "px");
                 vars.putIfAbsent("--viewport-height", app.getWindow().getHeight() + "px");

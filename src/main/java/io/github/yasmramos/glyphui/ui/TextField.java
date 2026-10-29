@@ -179,11 +179,12 @@ public class TextField extends Component
      */
     public Property<String> textProperty() {
         if (textProperty == null) {
-            // Application is passed as null on purpose: Property resolves
-            // Application.getCurrent() dynamically at set time (Block 3.7),
+            // The owner is resolved dynamically through propertyOwner():
+            // the application owning this widget's tree when attached, or
+            // the fallback app otherwise (Block 3.7 / AppContext migration),
             // so widgets constructed before the application exists still
             // marshal correctly once it starts.
-            textProperty = new Property<>(null, this.text, newText -> {
+            textProperty = new Property<>(propertyOwner(), this.text, newText -> {
                 // Whole-text replacement: caret goes to the end, selection
                 // cleared; notify so listeners see programmatic changes too.
                 setTextInternal(newText, newText == null ? 0 : newText.length(), true);

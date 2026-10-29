@@ -189,7 +189,7 @@ public class Button extends Component {
      */
     public Property<String> textProperty() {
         if (textProperty == null) {
-            textProperty = new Property<>(null, text, newText -> {
+            textProperty = new Property<>(propertyOwner(), text, newText -> {
                 this.text = newText;
                 invalidateMeasureCache();
                 // Caption metrics feed getPreferredWidth(): relayout upward.

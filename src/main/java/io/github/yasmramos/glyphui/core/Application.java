@@ -229,6 +229,14 @@ public class Application implements AutoCloseable {
      * access, which may happen before {@code init()} completes). Cleared when
      * the application closes. package-private for tests.
      */
+    /**
+     * Alias of {@link AppContext#fallbackApp}: the single process-wide slot
+     * holding the most recently started live application. Kept as a field for
+     * package-visible test assertions; all lifecycle code writes through it so
+     * {@code AppContext} and this class can never disagree. New code should
+     * resolve contexts by tree ownership ({@code Component.context()}) and use
+     * {@link AppContext#ofCurrent()} only as the documented fallback.
+     */
     static volatile Application current;
 
     /**
@@ -506,6 +514,12 @@ public class Application implements AutoCloseable {
             // silently skipping cross-thread marshalling. close() clears it
             // again; the failure path below must not leave a stale pointer.
             current = this;
+            AppContext.fallbackApp = this;
+
+            // Bind the component tree to this application by ownership: every
+            // widget below the root panel resolves its AppContext through the
+            // parent chain instead of the process-wide pointer (multi-app safe).
+            rootPanel.setContext(AppContext.of(this));
 
             return true;
         } catch (Exception e) {
@@ -517,6 +531,10 @@ public class Application implements AutoCloseable {
             if (current == this) {
                 current = null;
             }
+            if (AppContext.fallbackApp == this) {
+                AppContext.fallbackApp = null;
+            }
+            rootPanel.setContext(null);
             releaseRepaintHooks();
             return false;
         }
@@ -1484,6 +1502,7 @@ public class Application implements AutoCloseable {
         // Publish this instance so lazily created widget properties can find
         // the marshalling target (see Application.getCurrent()).
         current = this;
+        AppContext.fallbackApp = this;
         // Let Canvas wrappers created from now on (e.g. per-widget offscreen
         // surfaces) inherit this application's UI-thread affinity, so a draw
         // from a foreign thread fails fast instead of corrupting Skija.
@@ -1699,6 +1718,9 @@ public class Application implements AutoCloseable {
             open = false;
         }
         running = false;
+        if (AppContext.fallbackApp == this) {
+            AppContext.fallbackApp = null;
+        }
         if (current == this) {
             current = null;
         }
@@ -1728,6 +1750,9 @@ public class Application implements AutoCloseable {
 
         // Dispose all components in the root panel (cascades to children)
         if (rootPanel != null) {
+            // Detach the tree from this instance before disposal so no widget
+            // can resolve a context pointing at a closed application.
+            rootPanel.setContext(null);
             rootPanel.dispose();
         }
 
