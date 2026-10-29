@@ -122,6 +122,74 @@ class StyleParseTest {
         assertEquals(120f, style.getFloat(StyleProperty.WIDTH, 0f), 1e-6);
     }
 
+    // ------------------------------------------------------------------
+    // Block 5 item 5.29 — parseInline warning parity with StyleSheet.parse
+    // ------------------------------------------------------------------
+
+    @Test
+    void parseInlineWarnsOnUnsupportedPropertiesLikeStylesheetParse() {
+        java.io.PrintStream original = System.err;
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        try {
+            System.setErr(new java.io.PrintStream(captured, true));
+            // Two bad declarations: an unknown property name and a supported
+            // name whose value form is unparseable (4-value padding shorthand).
+            Style style = Style.parseInline("color: red; bogus-prop: 1; padding: 1 2 3 4", Map.of());
+
+            String log = captured.toString();
+            assertTrue(log.contains("[GlyphUI] Warning")
+                            && log.contains("bogus-prop"),
+                    "unknown inline properties must be warned about, like StyleSheet.parse does");
+            assertTrue(log.contains("padding"),
+                    "supported names with unsupported value forms must also warn");
+            assertEquals(0xFFFF0000, style.getInt(StyleProperty.COLOR, 0),
+                    "valid declarations in the same string must still parse");
+            assertFalse(style.has(StyleProperty.PADDING),
+                    "the unparseable declaration must still be dropped");
+        } finally {
+            System.setErr(original);
+        }
+    }
+
+    @Test
+    void parseInlineWarningIsDeduplicatedPerProperty() {
+        java.io.PrintStream original = System.err;
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        try {
+            System.setErr(new java.io.PrintStream(captured, true));
+            Style.parseInline("bogus-prop: 1; bogus-prop: 2; bogus-prop: 3", Map.of());
+
+            String log = captured.toString();
+            int first = log.indexOf("bogus-prop");
+            long count = java.util.Arrays.stream(log.split("\n"))
+                    .filter(line -> line.contains("bogus-prop")).count();
+            assertTrue(first >= 0, "the dropped property must be reported at least once");
+            assertEquals(1, count,
+                    "repeated bad declarations must warn once per distinct property, "
+                            + "mirroring StyleSheet.parse deduplication");
+        } finally {
+            System.setErr(original);
+        }
+    }
+
+    @Test
+    void parseInlineStaysSilentForMalformedSegmentsWithoutPropertyNames() {
+        java.io.PrintStream original = System.err;
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        try {
+            System.setErr(new java.io.PrintStream(captured, true));
+            // Trailing semicolons, colon-less fragments and custom properties
+            // carry no reportable property name: they must stay silent so
+            // routine hand-written markup does not spam the log.
+            Style.parseInline("noColon; ; --var: 1", Map.of());
+
+            assertEquals("", captured.toString(),
+                    "segments without a property name must not produce warnings");
+        } finally {
+            System.setErr(original);
+        }
+    }
+
     private static void assertRuleHas(StyleSheet sheet, String selectorText,
                                       StyleProperty property, Object expected) {
         StyleSheet.Rule rule = findRule(sheet, selectorText);

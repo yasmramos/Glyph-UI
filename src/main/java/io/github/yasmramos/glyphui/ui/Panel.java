@@ -313,6 +313,13 @@ public class Panel extends Component {
      */
     @Override
     protected void disposeChildren() {
+        // Guard for the render path's deferred-cleanup contract: Component
+        // schedules dispose on the event queue, so a tree disposed while its
+        // paint is still executing must not recurse into children that
+        // render() intentionally left alive after the loop finished.
+        if (children.isEmpty()) {
+            return;
+        }
         List<Component> snapshot = new ArrayList<>(children);
         children.clear();
         RuntimeException failure = null;
@@ -456,17 +463,32 @@ public class Panel extends Component {
      * theirs until the ancestor panel's next layout pass consumes it; this
      * scan reports those deferred requests.
      *
+     * <p>Disposed descendants are pruned (Block 5 item 5.28 hardening): the
+     * public {@link #getChildren()} list is live and external code may have
+     * scheduled a child's disposal without removing it from the tree yet, so
+     * the scan must not cross into subtrees whose native resources are
+     * already released.</p>
+     *
      * @return true when some descendant requested a relayout not yet consumed
      */
     private boolean hasDirtyDescendant() {
-        List<Component> stack = new ArrayList<>(children);
+        List<Component> stack = new ArrayList<>();
+        for (Component child : children) {
+            if (!child.isDisposed()) {
+                stack.add(child);
+            }
+        }
         while (!stack.isEmpty()) {
             Component c = stack.remove(stack.size() - 1);
             if (c.isLayoutDirtyFlag()) {
                 return true;
             }
             if (c instanceof Panel) {
-                stack.addAll(((Panel) c).children);
+                for (Component grandchild : ((Panel) c).children) {
+                    if (!grandchild.isDisposed()) {
+                        stack.add(grandchild);
+                    }
+                }
             }
         }
         return false;
@@ -632,15 +654,6 @@ public class Panel extends Component {
     }
 
     /**
-     * Whether the effective background color should be painted. True when a
-     * CSS rule declares {@code background}, or when the user explicitly set a
-     * background whose alpha channel is non-zero. An unset or fully
-     * transparent background means "the theme paints behind me", so the panel
-     * itself must not draw anything (Block 5 items 5.26 and 5.27).
-     *
-     * @return true when {@link #render} must fill the panel bounds
-     */
-    /**
      * Whether the user explicitly set a background color on this panel via
      * {@link #setBackgroundColor(int)} (Block 5 item 5.26). Package-private
      * test seam; public API is {@link #getBackgroundColor()} and
@@ -652,9 +665,39 @@ public class Panel extends Component {
         return hasExplicitBackground;
     }
 
+    /**
+     * Raw (non-CSS-resolved) value of the {@code backgroundColor} field.
+     * Test-support hook used by the Block 5 regression suite to prove the
+     * cascade never writes the per-instance field (item 5.27): the render
+     * path must go through {@link #getBackgroundColor()}, not this value.
+     * Never part of the frozen public API surface.
+     *
+     * @return the raw field value
+     */
+    int rawBackgroundColorForTests() {
+        return backgroundColor;
+    }
+
+    /**
+     * Whether the effective background color should be painted. True when a
+     * CSS rule declares {@code background}, or when the user explicitly set a
+     * background whose alpha channel is non-zero. An unset or fully
+     * transparent background means "the theme paints behind me", so the panel
+     * itself must not draw anything (Block 5 items 5.26 and 5.27).
+     *
+     * @return true when {@link #render} must fill the panel bounds
+     */
     private boolean shouldPaintBackground() {
         Style s = getComputedStyle();
         if (s != null && s.has(StyleProperty.BACKGROUND)) {
+            // A CSS-declared background always issues a draw op, even at
+            // alpha 0: the user explicitly asked for that layer, and the
+            // "should I paint?" decision stays separate from color
+            // resolution (Block 5 items 5.26/5.27 contract). Skia may skip
+            // fully transparent fills as an optimization, so the rasterized
+            // result of an alpha-0 CSS background is implementation-defined;
+            // tests assert the draw-op intent through this helper instead of
+            // pixel sniffing.
             return true;
         }
         return hasExplicitBackground && (backgroundColor >>> 24) != 0;

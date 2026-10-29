@@ -68,8 +68,15 @@ public final class Style {
      * Parses an HTML {@code style="..."} attribute value into a typed style.
      * Uses the same value pipeline as stylesheet declarations, so
      * {@code var(--name)} references and unsupported properties behave
-     * identically (unknown/unsupported declarations are skipped silently in
-     * inline styles; use {@link StyleSheet#parse} for logged warnings).
+     * identically.
+     *
+     * <p>Block 5 item 5.29 — warning parity with {@link StyleSheet#parse}:
+     * every dropped declaration is now reported once per distinct property
+     * name through the same {@code [GlyphUI] Warning: ...} channel used by
+     * the stylesheet parser, instead of being skipped silently. Malformed
+     * segments (no colon, empty property or value) remain silent on purpose:
+     * they carry no property name to report and trailing semicolons make
+     * them routine noise in hand-written markup.</p>
      *
      * @param inlineText semicolon-separated declarations, e.g.
      *                   {@code "color: red; padding: 8px"} (null/blank → empty)
@@ -82,25 +89,46 @@ public final class Style {
             return EMPTY;
         }
         Builder builder = builder();
+        // Deduplicated warning set, mirroring StyleSheet's `unsupported`
+        // collection so a repeated bad declaration only logs once per call.
+        Set<String> warned = new java.util.HashSet<>();
         for (String decl : inlineText.split(";")) {
             int colon = decl.indexOf(':');
             if (colon <= 0) {
-                continue;
+                continue; // malformed segment: nothing meaningful to warn about
             }
             String prop = decl.substring(0, colon).trim().toLowerCase(java.util.Locale.ROOT);
             String raw = decl.substring(colon + 1).trim();
             if (prop.isEmpty() || raw.isEmpty() || prop.startsWith("--")) {
                 continue;
             }
+            if (raw.isEmpty()) {
+                if (warned.add(prop)) {
+                    System.err.println("[GlyphUI] Warning: empty value for CSS property \""
+                            + prop + "\" ignored");
+                }
+                continue;
+            }
             StyleProperty key = StyleSheet.propertyFor(prop);
             if (key == null) {
+                if (warned.add(prop)) {
+                    System.err.println("[GlyphUI] Warning: unsupported CSS property \""
+                            + prop + "\" (" + raw + ") ignored");
+                }
                 continue; // not part of the supported subset
             }
             Object typed = CssValues.parse(prop, raw,
                     variables != null ? variables : Map.of());
-            if (typed != null) {
-                builder.set(key, typed);
+            if (typed == null) {
+                // Supported property name but unparseable/unsupported value
+                // form — same message shape as StyleSheet.parse (item 5.29).
+                if (warned.add(prop)) {
+                    System.err.println("[GlyphUI] Warning: unsupported CSS property \""
+                            + prop + "\" (" + raw + ") ignored");
+                }
+                continue;
             }
+            builder.set(key, typed);
         }
         return builder.build();
     }
