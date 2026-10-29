@@ -153,6 +153,13 @@ public abstract class Component implements StyleNode, Disposable {
     protected String id;
     protected ComponentState state;
     /**
+     * Scoped theme installed through {@link #setTheme(Theme)}; {@code null}
+     * means "inherit" (walk the ancestor chain, then fall back to
+     * {@link Theme#current()}). See {@link #getTheme()} for the resolution
+     * order (Swing/AWT lesson #8: no process-wide static as the only source).
+     */
+    private Theme themeOverride;
+    /**
      * Tracks whether the bounds (width/height) were set explicitly by the user
      * through a bounds-carrying constructor or
      * {@link #setWidth}/{@link #setHeight}. When false, layout managers are
@@ -1820,10 +1827,110 @@ public abstract class Component implements StyleNode, Disposable {
      * Gets the theme used by this component. Components read colors, fonts,
      * radii and paddings from the current theme at render/measure time.
      *
-     * @return the current theme (never null)
+     * <p><strong>ThemeContext propagation (Swing/AWT lesson #8).</strong>
+     * Swing made statics like {@code UIManager} the only theme source, which
+     * blocks multi-theme apps (two windows, two looks). Glyph-UI resolves a
+     * theme through an explicit chain instead:</p>
+     *
+     * <ol>
+     *   <li>a per-component override installed with {@link #setTheme(Theme)}
+     *       (e.g. a themed card or a dark toolbar inside a light window);</li>
+     *   <li>otherwise the nearest ancestor {@link Panel} that overrides
+     *       {@link Panel#resolveTheme()} with a scoped theme — the subtree
+     *       level {@code ThemeContext};</li>
+     *   <li>otherwise the process-wide {@link Theme#current()} as fallback.</li>
+     * </ol>
+     *
+     * <p>The walk stops at the first non-null override, so embedding a widget
+     * in a themed container is enough to scope it; detached widgets keep the
+     * global behavior. Read the theme through this method (never through
+     * {@code Theme.current()} directly) so future per-window theming reaches
+     * every widget automatically.</p>
+     *
+     * @return the effective theme for this component (never null)
      */
     protected Theme getTheme() {
-        return Theme.current();
+        // The component's own override wins over everything, including any
+        // ancestor context (matches the documented resolution chain and the
+        // "component override beats Panel.resolveTheme hook" contract).
+        if (themeOverride != null) {
+            return themeOverride;
+        }
+        Theme ancestor = resolveAncestorThemeContext();
+        return ancestor != null ? ancestor : Theme.current();
+    }
+
+    /**
+     * Resolves the nearest ancestor {@link Panel} that declares a scoped
+     * theme — either through {@link Component#setTheme(Theme)} or by
+     * overriding {@link Panel#resolveTheme()} — without consulting this
+     * component's own override. Package-private helper backing the
+     * ancestor-context semantics of {@link #getTheme()}: an ancestor context
+     * applies to every descendant but never to the themed container itself,
+     * so a panel carrying a scoped theme keeps reading its own explicit
+     * colors exactly as it did before subtree theming existed (Swing/AWT
+     * lesson #8).
+     *
+     * @return the nearest ancestor scoped theme, or {@code null} when no
+     *         ancestor declares one
+     */
+    Theme resolveAncestorThemeContext() {
+        Component node = this.parent;
+        while (node != null) {
+            if (node.themeOverride != null) {
+                return node.themeOverride;
+            }
+            if (node instanceof Panel) {
+                Theme scoped = ((Panel) node).resolveTheme();
+                if (scoped != null) {
+                    return scoped;
+                }
+            }
+            node = node.parent;
+        }
+        return null;
+    }
+
+    /**
+     * Installs a scoped theme on this component. Every descendant that reads
+     * its appearance through {@link #getTheme()} resolves to {@code theme}
+     * until the override is cleared with {@code setTheme(null)}, falling back
+     * to the ancestor chain and then to {@link Theme#current()}. This is the
+     * subtree-level {@code ThemeContext} that keeps Glyph-UI away from
+     * Swing's process-wide {@code UIManager} static (Swing/AWT lesson #8).
+     *
+     * <p>Setting a theme does not repaint anything by itself beyond the
+     * standard invalidation: call {@link #repaint()} (or let the container do
+     * it) after swapping themes on a live UI.</p>
+     *
+     * @param theme the scoped theme, or {@code null} to clear the override
+     */
+    public void setTheme(Theme theme) {
+        this.themeOverride = theme;
+    }
+
+    /**
+     * Whether this component carries its own theme override. Descendants do
+     * not report the inherited value; only the node where {@link
+     * #setTheme(Theme)} was called returns {@code true}.
+     *
+     * @return {@code true} when a scoped theme is installed on this node
+     */
+    public boolean hasThemeOverride() {
+        return themeOverride != null;
+    }
+
+    /**
+     * Public read-only accessor for the effective theme of this component.
+     * Identical to {@link #getTheme()} but callable from outside the class
+     * hierarchy, so applications and tests can verify scoped-theme resolution
+     * (per-component override &#8594; ancestor chain &#8594;
+     * {@link Theme#current()}) without subclassing.
+     *
+     * @return the effective theme for this component (never null)
+     */
+    public Theme getEffectiveTheme() {
+        return getTheme();
     }
 
     /**

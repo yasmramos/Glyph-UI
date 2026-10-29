@@ -164,14 +164,17 @@ class StyleEngineCacheInvalidationTest {
     class PanelThemeAccessor {
 
         /**
-         * Source-level contract (item 5.25): the body of
-         * {@code Panel.getBackgroundColor()} must resolve the theme through
-         * the inherited {@code Component.getTheme()} accessor instead of
-         * reading {@code Theme.current()} directly, so a future per-subtree
-         * theme hook only needs to override that single method.
+         * Source-level contract (item 5.25, updated for ThemeContext lesson
+         * #8): the body of {@code Panel.getBackgroundColor()} must resolve the
+         * theme through the subtree chain — the package-private
+         * {@code getTheme()} accessor on Component and/or the scoped-theme
+         * ancestor lookup {@code resolveAncestorThemeContext()} — instead of
+         * reading {@code Theme.current()} as the primary source. A direct
+         * {@code Theme.current()} call is only acceptable as the documented
+         * last-resort fallback when no ancestor context exists.
          */
         @Test
-        @DisplayName("Panel.getBackgroundColor resolves via getTheme(), not Theme.current()")
+        @DisplayName("Panel.getBackgroundColor resolves via the theme chain, not raw Theme.current()")
         void panelUsesGetThemeNotCurrent() throws Exception {
             String source = java.nio.file.Files.readString(
                     java.nio.file.Path.of("src/main/java/io/github/yasmramos/glyphui/ui/Panel.java"));
@@ -180,11 +183,12 @@ class StyleEngineCacheInvalidationTest {
             // Method body ends at the closing brace on its own column-4 indent.
             int bodyEnd = source.indexOf("\n    }\n", methodStart);
             String body = source.substring(methodStart, bodyEnd);
-            assertTrue(body.contains("getTheme().getBackgroundColor()"),
-                    "Panel.getBackgroundColor() must call getTheme() (item 5.25)");
-            assertFalse(body.contains("Theme.current()"),
-                    "Panel.getBackgroundColor() must not read Theme.current() "
-                            + "directly (item 5.25)");
+            assertTrue(body.contains("getTheme()") || body.contains("resolveAncestorThemeContext()"),
+                    "Panel.getBackgroundColor() must resolve through the theme chain "
+                            + "(getTheme()/resolveAncestorThemeContext()) — item 5.25 + lesson #8");
+            assertFalse(body.contains("return Theme.current().getBackgroundColor()"),
+                    "Panel.getBackgroundColor() must not read Theme.current() as its "
+                            + "primary theme source (item 5.25)");
         }
 
         @Test

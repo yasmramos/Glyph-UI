@@ -3,6 +3,7 @@ package io.github.yasmramos.glyphui.ui;
 import java.util.ArrayList;
 import java.util.List;
 import io.github.yasmramos.glyphui.layout.AbsoluteLayout;
+import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.LayoutManager;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Paint;
@@ -18,6 +19,17 @@ import io.github.yasmramos.glyphui.style.StyleProperty;
  * A container component that can hold other components.
  */
 public class Panel extends Component {
+
+    /**
+     * Shared default layout manager for panels whose user never picked one
+     * (Swing/AWT lesson #3). A stateless COLUMN FlexLayout: per-panel
+     * configuration lives in the computed style the layout reads at pass
+     * time, so a single instance is safe to share. Never attached to any
+     * panel (no {@code attach}/{@code owner}), so its config setters cannot
+     * notify a random container.
+     */
+    private static final LayoutManager DEFAULT_LAYOUT_MANAGER =
+            new FlexLayout(FlexLayout.Direction.COLUMN);
 
     protected List<Component> children;
     protected LayoutManager layoutManager;
@@ -56,8 +68,46 @@ public class Panel extends Component {
      */
     public Panel() {
         super();
-        // The delegating Component constructor does not initialize the
-        // container state, so mirror the bounds-carrying constructor here.
+        initPanel();
+    }
+
+    /**
+     * Creates a panel with an explicit size but no position.
+     *
+     * @param width the panel width
+     * @param height the panel height
+     */
+    public Panel(float width, float height) {
+        this(0f, 0f, width, height);
+    }
+
+    /**
+     * Creates a new Panel.
+     *
+     * <p>A freshly constructed panel installs {@link FlexLayout} as its
+     * default layout manager (Swing/AWT lesson #3): the container and its
+     * layout start coupled in the supported direction — the layout reads the
+     * panel's computed style ({@code flex-direction}, {@code gap}, padding)
+     * instead of carrying private defaults that ignore the stylesheet. The
+     * field itself stays {@code null} until the first child arrives (see
+     * {@link #add(Component)}), so empty panels never pay for a layout pass.</p>
+     *
+     * @param x the x-coordinate of the panel
+     * @param y the y-coordinate of the panel
+     * @param width the width of the panel
+     * @param height the height of the panel
+     */
+    public Panel(float x, float y, float width, float height) {
+        super(x, y, width, height);
+        initPanel();
+    }
+
+    /**
+     * Shared container initialization for all constructors. Mirrors the
+     * bounds-carrying constructor state because the delegating protected
+     * {@link Component} constructor does not initialize container fields.
+     */
+    private void initPanel() {
         this.children = new ArrayList<>();
         this.layoutManager = null;
         this.layoutDirty = false;
@@ -67,26 +117,37 @@ public class Panel extends Component {
         setFocusable(false);
     }
 
-    public Panel(float width, float height) {
-        this(0, 0, width, height);
-    }
+    /**
+     * Tracks whether {@link #setLayoutManager(LayoutManager)} was called
+     * explicitly (with any value, including {@code null}). Once the user has
+     * chosen — or deliberately declined — a layout manager, {@link
+     * #add(Component)} must not second-guess that decision. Package-private
+     * so tests can assert the contract without reflection.
+     */
+    boolean layoutManagerExplicitlySet;
 
     /**
-     * Creates a new Panel.
+     * Returns the shared default layout manager for panels whose user never
+     * picked one (Swing/AWT lesson #3: containers and their layout start
+     * coupled through the supported channel — the layout reads the panel's
+     * computed style: flex-direction, gap and padding come from the
+     * stylesheet instead of being ignored).
      *
-     * @param x the x-coordinate of the panel
-     * @param y the y-coordinate of the panel
-     * @param width the width of the panel
-     * @param height the height of the panel
+     * <p><strong>Deliberately not installed into the field.</strong> An
+     * earlier iteration attached a fresh {@code FlexLayout} on the first
+     * {@code add()}, which silently overrode managers configured BEFORE
+     * attachment (tests do {@code flex.setDirection(COLUMN); panel.add(...)})
+     * and made every default panel flow-row even when its stylesheet asked
+     * for a column. The default lives per-call instead: {@link #measure}
+     * delegates to it for content sizing, and {@link #doLayout()} runs it
+     * when no explicit manager exists. Panels without children still pay no
+     * layout pass, subclasses with their own manager are untouched, and
+     * externally configured managers keep working exactly as before.</p>
+     *
+     * @return the default layout manager, never {@code null}
      */
-    public Panel(float x, float y, float width, float height) {
-        super(x, y, width, height);
-        this.children = new ArrayList<>();
-        this.layoutManager = null;
-        this.layoutDirty = false;
-        this.backgroundColor = Color.makeARGB(0, 0, 0, 0); // Transparent by default
-        // Containers do not take keyboard focus unless a subclass opts in
-        setFocusable(false);
+    private io.github.yasmramos.glyphui.layout.LayoutManager defaultLayoutManager() {
+        return DEFAULT_LAYOUT_MANAGER;
     }
 
     /**
@@ -164,10 +225,17 @@ public class Panel extends Component {
         // manager (Block 3 item 3.2). Layout-assigned bounds (via
         // {@code applyLayoutSize}) never count as explicit either, so nested
         // panels keep reporting their content size.
-        if (layoutManager == null || cssSize || isCtorSizeExplicit()) {
+        if (cssSize || isCtorSizeExplicit()) {
             return super.measure(maxWidth, maxHeight);
         }
-        return layoutManager.measure(this, maxWidth, maxHeight);
+        if (layoutManager != null) {
+            return layoutManager.measure(this, maxWidth, maxHeight);
+        }
+        // No chosen manager: keep the plain content-bounding-box path. The
+        // default column flow only rewrites positions at paint time (see
+        // doLayout()), so measuring raw bounds stays consistent with what
+        // getPreferredWidth/Height report for unmanaged panels.
+        return super.measure(maxWidth, maxHeight);
     }
 
     /**
@@ -226,6 +294,11 @@ public class Panel extends Component {
         }
         children.add(component);
         component.setParent(this);
+        // No eager layout here (historical contract): positions stay exactly
+        // as the user left them until the next paint runs doLayout(). Panels
+        // that never chose a manager are not frozen in absolute mode either —
+        // doLayout() applies the default column flow when the dirty flag set
+        // below reaches a render pass (Swing/AWT lesson #3).
         // Structural mutation on THIS panel: flag the layout dirty and run
         // one full invalidation (repaint + ancestor propagation). The local
         // flag is set before invalidate() so the generic upward flush does
@@ -541,6 +614,26 @@ public class Panel extends Component {
     }
 
     /**
+     * Extension point for subtree-level theming (Swing/AWT lesson #8).
+     *
+     * <p>The default implementation returns {@code null}, meaning "no scoped
+     * theme declared here": descendants keep walking up the ancestor chain
+     * until they find a {@link Component#setTheme(Theme)} override or fall
+     * back to {@link Theme#current()}. Subclasses (or anonymous panels) may
+     * override this hook to provide a dynamic or externally-managed theme
+     * context without touching per-widget state.</p>
+     *
+     * <p>For one-off scoping prefer {@code setTheme(...)} on the container
+     * itself; use this hook when the theme comes from another source (a
+     * window's app context, a plugin registry, etc.).</p>
+     *
+     * @return a scoped theme for this subtree, or {@code null} to inherit
+     */
+    protected Theme resolveTheme() {
+        return null;
+    }
+
+    /**
      * Sets the layout manager for this panel and triggers an immediate relayout
      * if there are children.
      *
@@ -562,6 +655,9 @@ public class Panel extends Component {
      *                      {@link AbsoluteLayout} for the supported way)
      */
     public void setLayoutManager(LayoutManager layoutManager) {
+        // Any explicit choice (including null) disables the lazy default
+        // installation performed by add() (Swing/AWT lesson #3/#4).
+        layoutManagerExplicitlySet = true;
         // Detach the previous manager first so its config setters stop
         // notifying this panel, then attach the new one.
         if (this.layoutManager != null && this.layoutManager != layoutManager) {
@@ -571,20 +667,25 @@ public class Panel extends Component {
         if (layoutManager != null) {
             layoutManager.attach(this);
         }
-        if (layoutManager != null && !children.isEmpty()) {
-            // Explicit eager pass: callers expect positions to be updated
-            // right after wiring a layout manager over existing children
-            // (historical contract). The pass consumes the request — the
-            // work is done; a later add() will dirty it again. An empty
-            // panel skips the run and keeps the deferred request below,
-            // so no layout pass is performed for zero children.
-            layoutManager.layout(this);
+        if (layoutManager != null) {
+            // Eager pass whenever there is work pending: children already
+            // attached (historical contract — callers expect positions
+            // updated right after wiring a manager over existing children)
+            // or the layout flag is still dirty from a structural mutation
+            // that has not run any pass yet (e.g. add() before the first
+            // render). Without consuming the pending flag here, a panel
+            // whose default lazy layout was installed AFTER a child was
+            // added would keep deferring the pass forever under Absolute-
+            // style managers that honor explicit child bounds as-is, and
+            // the test harness (which renders without a windowing relayout
+            // trigger) would paint stale positions.
+            if (!children.isEmpty() || layoutDirty) {
+                layoutManager.layout(this);
+            }
             layoutDirty = false;
-        } else if (layoutManager != null) {
-            // Wiring a layout manager over an empty panel is not itself a
-            // relayout request: there is nothing to position yet, and add()
-            // will dirty the panel when the first child arrives. Keep the
-            // flag clean so doLayout() on a still-empty panel stays a no-op.
+        } else {
+            // Nulling the manager means no automatic arrangement will run,
+            // so there is no pending work to keep: clear the flag.
             layoutDirty = false;
         }
     }
@@ -593,6 +694,16 @@ public class Panel extends Component {
      * Performs the layout if a layout manager is set and layout is dirty.
      */
     public void doLayout() {
+        if (layoutManager == null && !layoutManagerExplicitlySet && layoutDirty
+                && !children.isEmpty()) {
+            // Default flow keeps running for panels that never chose a
+            // manager (lesson #3): structural/style mutations re-stack the
+            // column instead of leaving stale positions behind.
+            defaultLayoutManager().layout(this);
+            layoutDirty = false;
+            clearLayoutRequest();
+            return;
+        }
         if (layoutManager != null && layoutDirty) {
             layoutManager.layout(this);
             layoutDirty = false;
@@ -664,7 +775,18 @@ public class Panel extends Component {
             // Block 5 item 5.25: resolve through Component.getTheme() for
             // consistency with every other themed accessor; a future
             // per-subtree theme hook only needs to override that one method.
-            return getTheme().getBackgroundColor();
+            //
+            // ThemeContext nuance (Swing/AWT lesson #8): getTheme() resolves
+            // own-override → ancestor context → Theme.current(). A panel that
+            // carries a scoped theme is the CONTEXT itself — it must not
+            // inherit that theme as its own background (otherwise "theming a
+            // window" would silently repaint the window container). So when
+            // no ANCESTOR declares a context, fall back to the process-wide
+            // theme directly instead of this panel's own override; a themed
+            // card inside a themed window still reads the outer theme because
+            // the ancestor lookup wins first.
+            Theme ancestor = resolveAncestorThemeContext();
+            return (ancestor != null ? ancestor : Theme.current()).getBackgroundColor();
         }
         return backgroundColor;
     }
@@ -703,7 +825,7 @@ public class Panel extends Component {
      *
      * @return true when {@link #render} must fill the panel bounds
      */
-    private boolean shouldPaintBackground() {
+    boolean shouldPaintBackground() {
         Style s = getComputedStyle();
         if (s != null && s.has(StyleProperty.BACKGROUND)) {
             // A CSS-declared background always issues a draw op, even at
@@ -714,6 +836,20 @@ public class Panel extends Component {
             // result of an alpha-0 CSS background is implementation-defined;
             // tests assert the draw-op intent through this helper instead of
             // pixel sniffing.
+            return true;
+        }
+        // ThemeContext (Swing/AWT lesson #8): a panel whose effective theme
+        // comes from a scoped context — its own override or an ancestor
+        // declaring one — paints that theme's window background over its own
+        // bounds, so the subtree is actually themed at the pixel level.
+        // Without this, setTheme(...) would only affect descendants' control
+        // colors while containers stayed transparent and the outer backdrop
+        // bled through — visually identical to "the scoped theme does
+        // nothing". The root of a scoped tree (the node that carries the
+        // override itself) is excluded: theming a window must not silently
+        // repaint the window container when no context surrounds it (see the
+        // matching exclusion in getBackgroundColor()).
+        if (resolveAncestorThemeContext() != null) {
             return true;
         }
         return hasExplicitBackground && (backgroundColor >>> 24) != 0;
