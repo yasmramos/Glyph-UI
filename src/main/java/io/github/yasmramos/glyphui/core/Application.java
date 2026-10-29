@@ -91,6 +91,18 @@ public class Application implements AutoCloseable {
      */
     private SurfaceFactory surfaceFactory;
     private boolean running;
+
+    /**
+     * Lifecycle flag backing the strict idempotency of {@link #close()}.
+     * Starts as {@code true}; the first {@code close()} call flips it to
+     * {@code false} under the instance monitor (the same lock used by the
+     * frame loop's test-and-consume), and any subsequent call is a full
+     * no-op. This prevents repeat closes from re-running global teardown
+     * (font cache release, shared hook clearing) that could damage state
+     * still in use by another live Application instance.
+     */
+    private volatile boolean open = true;
+
     private double lastFrameTime;
     private boolean useRasterSurface;
 
@@ -151,6 +163,16 @@ public class Application implements AutoCloseable {
      * starts.
      */
     private volatile Thread uiThread;
+    /**
+     * Thread that constructed the application. Before {@link #run()} starts
+     * there is no UI thread yet, so widget mutation (building the initial
+     * tree) is allowed from this bootstrap thread only — not from arbitrary
+     * threads. This closes the hole where a background pool could silently
+     * build widgets and then crash once the loop was running.
+     */
+    private final Thread initThread = Thread.currentThread();
+    /** True when surface recreation failed and rendering must stay off. */
+    private volatile boolean surfaceBroken;
 
     /**
      * Queue of tasks posted from other threads via
@@ -755,8 +777,20 @@ public class Application implements AutoCloseable {
         // until the user clicks back inside the window (no press is delivered
         // to a deactivated window, so the outside-press dismissal never runs).
         window.setWindowFocusListener(focused -> {
-            if (!focused && popupLayer.closeAll()) {
-                requestRepaint();
+            if (!focused) {
+                // Backends do not deliver button releases that happen while
+                // the cursor is outside (or the window is deactivated), so a
+                // held button would stay latched and every later move would
+                // be misclassified as DRAG. Reset the held-button state and
+                // drop hover; the next press/move re-establishes both.
+                for (int i = 0; i < mouseButtons.length; i++) {
+                    mouseButtons[i] = false;
+                }
+                updateHover();
+                boolean dismissed = popupLayer.closeAll();
+                if (dismissed) {
+                    requestRepaint();
+                }
             }
         });
 
@@ -968,7 +1002,21 @@ public class Application implements AutoCloseable {
                     ? new GlSurfaceFactory() : new RasterSurfaceFactory();
         }
 
-        SurfaceResult result = surfaceFactory.recreate(window, fbWidth, fbHeight);
+        SurfaceResult result;
+        try {
+            result = surfaceFactory.recreate(window, fbWidth, fbHeight);
+        } catch (RuntimeException | Error e) {
+            // Allocation can fail (OOM, lost GPU context). Without a surface
+            // every later paint would NPE inside a native callback, so mark
+            // the surface broken: framebufferDegenerate() suppresses painting
+            // until a subsequent resize recreates it successfully.
+            surfaceBroken = true;
+            log.log(Logger.Level.ERROR,
+                    "Surface recreation failed (" + fbWidth + "x" + fbHeight
+                    + "); painting suppressed until next valid resize: " + e.getMessage(), e);
+            return;
+        }
+        surfaceBroken = false;
         this.surface = result.surface();
         this.directContext = result.directContext();
         this.surfaceResult = result;
@@ -1052,6 +1100,9 @@ public class Application implements AutoCloseable {
         }
         if ((mods & GlyphMods.ALT) != 0) {
             modifiers.add(KeyModifier.ALT);
+        }
+        if ((mods & GlyphMods.SUPER) != 0) {
+            modifiers.add(KeyModifier.SUPER);
         }
 
         return modifiers;
@@ -1156,8 +1207,11 @@ public class Application implements AutoCloseable {
     void renderFrame() {
         checkThread();
         // Test/debug entry point: always cascade so a manually rendered frame
-        // reflects the latest tree state regardless of the dirty latch.
-        Component.consumeStyleDirty();
+        // reflects the latest tree state regardless of the dirty latch. The
+        // global style-dirty latch is deliberately NOT consumed here — it is
+        // still pending for the next real frameStep() (e.g. tests that mix
+        // renderFrame() with loop-driven frames). render(true) cascades
+        // unconditionally, so leaving the latch set costs nothing.
         render(true);
     }
 
@@ -1243,13 +1297,21 @@ public class Application implements AutoCloseable {
     /**
      * Returns true when the calling thread is the UI thread. Before
      * {@link #run()} starts there is no UI thread yet, so widget mutation
-     * (building the initial tree) is also considered "on the UI thread".
+     * (building the initial tree) is also considered "on the UI thread" —
+     * but only from the thread that constructed this application. Any other
+     * background thread fails fast instead of silently corrupting state
+     * once the loop starts.
      *
      * @return true if it is safe to mutate widgets directly from this thread
      */
     public boolean isUiThread() {
+        Thread current = Thread.currentThread();
         Thread thread = uiThread;
-        return thread == null || thread == Thread.currentThread();
+        if (thread == null) {
+            // Bootstrap phase: only the constructing thread may build trees.
+            return current == initThread;
+        }
+        return thread == current;
     }
 
     /**
@@ -1267,7 +1329,11 @@ public class Application implements AutoCloseable {
 
     /**
      * Schedules a task to run on the UI thread during the next event-loop
-     * iteration. If called from the UI thread the task runs immediately.
+     * iteration. The task is always deferred — even when called from the UI
+     * thread itself — so callers can rely on "later" semantics (e.g. mutating
+     * the widget tree safely after the current frame or event dispatch has
+     * finished). Use {@link #runOnUiThread(Runnable)} when you merely need a
+     * thread-safe inline execution on the UI thread.
      *
      * <p>
      * This is the escape hatch for composite operations that cannot be
@@ -1285,18 +1351,39 @@ public class Application implements AutoCloseable {
         if (task == null) {
             return;
         }
-        if (isUiThread()) {
-            task.run();
-            return;
-        }
         uiTaskQueue.add(task);
         requestRepaint();
+        if (isUiThread()) {
+            // Already on the UI thread: the queue is drained at the end of
+            // the current frameStep(), so no native wake-up is needed.
+            return;
+        }
         // Wake the UI thread if it is blocked waiting for events. Only valid
         // once the window backend is initialized; before that the queue is
         // drained on the first run() iteration anyway.
         if (window != null) {
             window.postEmptyEvent();
         }
+    }
+
+    /**
+     * Runs the task inline when already on the UI thread, otherwise defers
+     * it through {@link #invokeLater(Runnable)}. Unlike {@code invokeLater},
+     * this method does NOT guarantee deferral from the UI thread — it
+     * guarantees ordering only across threads. Provided for callers that
+     * explicitly want the "no-op if I am already correct-threaded" behavior.
+     *
+     * @param task the runnable to execute on the UI thread
+     */
+    public void runOnUiThread(Runnable task) {
+        if (task == null) {
+            return;
+        }
+        if (isUiThread()) {
+            task.run();
+            return;
+        }
+        invokeLater(task);
     }
 
     /**
@@ -1507,6 +1594,9 @@ public class Application implements AutoCloseable {
      * @return true when rendering must be skipped
      */
     private boolean framebufferDegenerate() {
+        if (surfaceBroken) {
+            return true;
+        }
         return window != null
                 && (window.getFramebufferWidth() <= 0 || window.getFramebufferHeight() <= 0);
     }
@@ -1596,6 +1686,18 @@ public class Application implements AutoCloseable {
      */
     @Override
     public void close() {
+        // Idempotency guard: a second close() must be a full no-op. Without
+        // it, repeat calls would re-run Fonts.close() and TextField global
+        // hook clearing, which can steal shared/static resources still in
+        // use by another live Application (multi-app processes, sequential
+        // tests with overlapping lifetimes). The test-and-set happens under
+        // the instance monitor so concurrent closers cannot both pass it.
+        synchronized (this) {
+            if (!open) {
+                return;
+            }
+            open = false;
+        }
         running = false;
         if (current == this) {
             current = null;

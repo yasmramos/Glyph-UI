@@ -13,10 +13,13 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Field;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -165,7 +168,8 @@ class ThreadingContractTest extends TestBase {
         assertTrue(loopStarted.await(5, TimeUnit.SECONDS), "UI thread did not start");
 
         // Create the property ON the UI thread (as widget code does). The
-        // loop above polls the queue, so wait until the task has executed.
+        // task is posted from a foreign thread, so invokeLater defers it;
+        // the loop above polls the queue, so wait until it has executed.
         app.invokeLater(() -> propertyRef.set(
                 new Property<>(app, 0, v -> applied.incrementAndGet())));
         Property<Integer> property = null;
@@ -209,10 +213,81 @@ class ThreadingContractTest extends TestBase {
 
     @Test
     void propertySetOnUiThreadAppliesSynchronously() {
-        app.invokeLater(() -> {
+        // runOnUiThread executes inline when already on the UI thread, which
+        // keeps the assertions below scoped to that thread (invokeLater now
+        // always defers — see deferredTaskFromUiThreadIsNotRunInline).
+        app.runOnUiThread(() -> {
             Property<Integer> p = new Property<>(app, 1, v -> { /* hook */ });
             p.set(2);
             assertEquals(2, p.get(), "UI-thread sets are synchronous");
         });
+    }
+
+    @Test
+    void deferredTaskFromUiThreadIsNotRunInline() throws Exception {
+        // Contract: invokeLater ALWAYS defers, even from the UI thread, so
+        // callers can rely on "later" semantics (e.g. mutating the tree in
+        // the middle of a frame dispatch is impossible via this entry point).
+        Thread fakeUiThread = new Thread(() -> {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "fake-ui-thread");
+        fakeUiThread.setDaemon(true);
+        fakeUiThread.start();
+        setField(app, "uiThread", fakeUiThread);
+
+        AtomicBoolean ran = new AtomicBoolean();
+        app.invokeLater(() -> ran.set(true));
+        assertFalse(ran.get(),
+                "invokeLater from the UI thread must not execute inline");
+
+        // Draining the queue (what frameStep() does each iteration) runs it.
+        int executed = TestHooks.drainUiTasksForTests(app);
+        assertEquals(1, executed);
+        assertTrue(ran.get(), "posted task must run when the queue is drained");
+
+        fakeUiThread.interrupt();
+        fakeUiThread.join(2000);
+    }
+
+    @Test
+    void backgroundThreadCannotMutateBeforeRunLoopStarts() throws Exception {
+        // Bootstrap contract: before run() there is no UI thread, but only
+        // the constructing thread may build the widget tree. A pool thread
+        // must fail fast instead of silently passing and crashing later.
+        AtomicReference<Boolean> result = new AtomicReference<>();
+        CountDownLatch done = new CountDownLatch(1);
+        Thread pool = new Thread(() -> {
+            result.set(app.isUiThread());
+            done.countDown();
+        }, "foreign-bootstrap-thread");
+        pool.setDaemon(true);
+        pool.start();
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertFalse(result.get(),
+                "a foreign thread must not qualify as UI thread during bootstrap");
+        pool.join(2000);
+
+        // checkThread() must fail fast on that same foreign thread.
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        CountDownLatch done2 = new CountDownLatch(1);
+        Thread pool2 = new Thread(() -> {
+            try {
+                app.checkThread();
+            } catch (Throwable t) {
+                failure.set(t);
+            } finally {
+                done2.countDown();
+            }
+        }, "foreign-check-thread");
+        pool2.setDaemon(true);
+        pool2.start();
+        assertTrue(done2.await(5, TimeUnit.SECONDS));
+        assertInstanceOf(IllegalStateException.class, failure.get(),
+                "checkThread from a foreign thread must throw before run() starts");
+        pool2.join(2000);
     }
 }

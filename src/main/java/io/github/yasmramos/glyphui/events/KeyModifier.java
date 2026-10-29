@@ -6,5 +6,12 @@ package io.github.yasmramos.glyphui.events;
 public enum KeyModifier {
     SHIFT,
     CTRL,
-    ALT
+    ALT,
+    /**
+     * Super/Win logo key on Windows/Linux. On macOS the backend maps the
+     * Command key onto {@link #CTRL} (the conventional shortcut modifier),
+     * so widgets should treat {@code CTRL} as "Command" when porting from
+     * Swing/AWT — see GlyphMods.CTRL javadoc for the remapping rules.
+     */
+    SUPER
 }
