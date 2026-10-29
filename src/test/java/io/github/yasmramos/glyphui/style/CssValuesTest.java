@@ -344,6 +344,63 @@ class CssValuesTest {
             assertNull(CssValues.parseLength("abc%"));
             assertNull(CssValues.parseLength("%"));
         }
+
+        @Test
+        void remResolvesAgainstRootFontSizeVariable() {
+            Map<String, String> vars = Map.of("--root-font-size", "20px");
+            assertEquals(30f, CssValues.parseLength("1.5rem", vars), 1e-6);
+            assertEquals(-20f, CssValues.parseLength("-1rem", vars), 1e-6);
+        }
+
+        @Test
+        void emResolvesAgainstFontBaseVariableWithRootFallback() {
+            Map<String, String> vars = Map.of("--font-size-base", "14px",
+                    "--root-font-size", "20px");
+            // em prefers --font-size-base; rem prefers --root-font-size.
+            assertEquals(28f, CssValues.parseLength("2em", vars), 1e-6);
+            assertEquals(40f, CssValues.parseLength("2rem", vars), 1e-6);
+            Map<String, String> onlyRoot = Map.of("--root-font-size", "18px");
+            assertEquals(36f, CssValues.parseLength("2em", onlyRoot), 1e-6);
+        }
+
+        @Test
+        void fontUnitsFallBackToCssInitialSizeWhenUnset() {
+            // No variables at all: CSS initial font size (16px) applies.
+            assertEquals(32f, CssValues.parseLength("2rem", NO_VARS), 1e-6);
+            assertEquals(16f, CssValues.parseLength("1em", null), 1e-6);
+        }
+
+        @Test
+        void viewportUnitsDivideByHundred() {
+            Map<String, String> vars = Map.of("--viewport-width", "800px",
+                    "--viewport-height", "600px");
+            assertEquals(400f, CssValues.parseLength("50vw", vars), 1e-6);
+            assertEquals(90f, CssValues.parseLength("15vh", vars), 1e-6);
+        }
+
+        @Test
+        void viewportUnitsWithoutWindowTreatNumberAsPixels() {
+            // Documented degradation: factor of 1 when no reference exists.
+            assertEquals(50f, CssValues.parseLength("50vw", NO_VARS), 1e-6);
+            assertEquals(50f, CssValues.parseLength("50vh", NO_VARS), 1e-6);
+        }
+
+        @Test
+        void rootFontSizeMayItselfUseRemWithoutRecursion() {
+            // parsePixelLiteral is non-recursive: "1rem" as a reference is
+            // not re-expanded, it parses to the numeric value 1 -> clamped
+            // fallback would be silly, so 1px * factor wins by design:
+            // documented behavior keeps references simple pixel literals.
+            Map<String, String> vars = Map.of("--root-font-size", "18px");
+            assertEquals(18f, CssValues.parseLength("1rem", vars), 1e-6);
+        }
+
+        @Test
+        void badRelativeUnitsRejected() {
+            assertNull(CssValues.parseLength("abcem"));
+            assertNull(CssValues.parseLength("rem"));
+            assertNull(CssValues.parseLength("1.2.3em"));
+        }
     }
 
     // ------------------------------------------------------------------
@@ -372,6 +429,62 @@ class CssValuesTest {
         void resultsAreClampedToNonNegativeAndNullUsesFallback() {
             assertEquals(0f, CssValues.resolvePercent(-1f, -50f, -1f), 1e-6);
             assertEquals(-1f, CssValues.resolvePercent(null, 300f, -1f), 1e-6);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // End-to-end: relative units through StyleSheet.parse + StyleEngine
+    // (deferred RAW_VALUES channel resolved against cascade-time vars)
+    // ------------------------------------------------------------------
+
+    @Nested
+    class RelativeUnitsEndToEnd extends io.github.yasmramos.glyphui.TestBase {
+
+        @Test
+        void remResolvesAgainstRootVariableFromStylesheet() {
+            StyleSheet sheet = StyleSheet.parse(
+                    ":root { --root-font-size: 20px; } .target { padding: 2rem; }");
+            io.github.yasmramos.glyphui.ui.Panel root =
+                    new io.github.yasmramos.glyphui.ui.Panel(0, 0, 400, 300);
+            io.github.yasmramos.glyphui.ui.Button b =
+                    new io.github.yasmramos.glyphui.ui.Button(0, 0, 100, 30, "hi");
+            b.addStyleClass("target");
+            root.add(b);
+            StyleEngine.apply(root, sheet);
+            // 2rem * 20px reference -> 40px padding. Without the deferred
+            // re-parse this would fall back to the 16px initial size (32px).
+            assertEquals(40f, b.getComputedStyle().getFloat(StyleProperty.PADDING, -1f), 1e-6);
+        }
+
+        @Test
+        void emFallsBackToBodyFontSizeWhenNoVariableDefined() {
+            StyleSheet sheet = StyleSheet.parse(".target { font-size: 1.5em; }");
+            io.github.yasmramos.glyphui.ui.Panel root =
+                    new io.github.yasmramos.glyphui.ui.Panel(0, 0, 400, 300);
+            io.github.yasmramos.glyphui.ui.Button b =
+                    new io.github.yasmramos.glyphui.ui.Button(0, 0, 100, 30, "hi");
+            b.addStyleClass("target");
+            root.add(b);
+            StyleEngine.apply(root, sheet);
+            float body = io.github.yasmramos.glyphui.graphics.FontManager
+                    .getDefaultFontSize(io.github.yasmramos.glyphui.graphics.Theme.FontRole.BODY);
+            assertEquals(body * 1.5f,
+                    b.getComputedStyle().getFloat(StyleProperty.FONT_SIZE, -1f), 1e-6);
+        }
+
+        @Test
+        void viewportUnitsWithoutWindowUseNumericFallback() {
+            StyleSheet sheet = StyleSheet.parse(".target { width: 25vw; }");
+            io.github.yasmramos.glyphui.ui.Panel root =
+                    new io.github.yasmramos.glyphui.ui.Panel(0, 0, 400, 300);
+            io.github.yasmramos.glyphui.ui.Button b =
+                    new io.github.yasmramos.glyphui.ui.Button(0, 0, 100, 30, "hi");
+            b.addStyleClass("target");
+            root.add(b);
+            StyleEngine.apply(root, sheet);
+            // Headless: no Application window -> documented factor-of-1
+            // degradation, so 25vw behaves as 25px.
+            assertEquals(25f, b.getComputedStyle().getFloat(StyleProperty.WIDTH, -1f), 1e-6);
         }
     }
 }

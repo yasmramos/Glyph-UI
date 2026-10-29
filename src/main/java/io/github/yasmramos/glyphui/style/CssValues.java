@@ -102,7 +102,7 @@ final class CssValues {
         // dispatched like flex-grow: a bare number parses as a Float length;
         // the "1 1 auto" shorthand is out of subset and dropped (see below).
         if (property.equals("flex") && v.matches("\\d+(\\.\\d+)?")) {
-            return parseLength(v);
+            return parseLength(v, variables);
         }
         // `flex` is a multi-token shorthand in CSS ("1 1 auto"). This subset
         // only maps it onto FLEX_GROW, so anything that is not a bare number
@@ -121,7 +121,7 @@ final class CssValues {
             return parseColor(v);
         }
         if (isLengthProperty(property)) {
-            return parseLength(v);
+            return parseLength(v, variables);
         }
         if (property.equals("opacity") || property.equals("flex-grow")
                 || property.equals("flex-shrink")) {
@@ -331,20 +331,43 @@ final class CssValues {
 
     /**
      * Parses a length into logical pixels. Supports {@code px}, unitless
-     * numbers and percentages ({@code 50%}). A percentage is encoded as a
-     * <em>negative</em> float: the magnitude carries the fraction
-     * (e.g. {@code 100% → -1.0f}, {@code 25% → -0.25f}), and the sign marks
-     * it as relative so consumers can resolve it against an available size
-     * via {@link #resolvePercent(float, float)}. Negative lengths are not a
-     * valid layout input anyway, so the sentinel cannot collide with real
-     * values. Other relative units ({@code em}, {@code rem}, {@code vw},
-     * {@code vh}) remain unsupported in this subset.
+     * numbers, percentages ({@code 50%}) and the relative units {@code em},
+     * {@code rem}, {@code vw} and {@code vh}.
+     *
+     * <p>A percentage is encoded as a <em>negative</em> float: the magnitude
+     * carries the fraction (e.g. {@code 100% → -1.0f}, {@code 25% → -0.25f}),
+     * and the sign marks it as relative so consumers can resolve it against an
+     * available size via {@link #resolvePercent(float, float)}. Negative
+     * lengths are not a valid layout input anyway, so the sentinel cannot
+     * collide with real values.</p>
+     *
+     * <p>The relative units are resolved at parse time against the variables
+     * map passed to {@link #parse(String, String, Map)} (see
+     * {@link #resolveRelativeUnit}): {@code em}/{@code rem} multiply a font
+     * size reference and {@code vw}/{@code vh} divide the viewport width/height
+     * by 100. When no reference is available the declaration falls back to its
+     * numeric part interpreted as pixels, which keeps authoring mistakes
+     * visible instead of silently dropping the value.</p>
      *
      * @param value the raw length text
      * @return float pixels (or a negative fraction for %), or null when
      *         unparseable
      */
     static Float parseLength(String value) {
+        return parseLength(value, null);
+    }
+
+    /**
+     * Parses a length into logical pixels, resolving {@code em}, {@code rem},
+     * {@code vw} and {@code vh} against the given custom-property map.
+     *
+     * @param value     the raw length text
+     * @param variables known custom properties providing the unit references
+     *                  (null treated as empty)
+     * @return float pixels (or a negative fraction for %), or null when
+     *         unparseable
+     */
+    static Float parseLength(String value, Map<String, String> variables) {
         String v = value.trim().toLowerCase(Locale.ROOT);
         if (v.endsWith("%")) {
             String num = v.substring(0, v.length() - 1).trim();
@@ -355,11 +378,150 @@ final class CssValues {
                 return null;
             }
         }
+        // Relative units: strip the suffix, scale by the reference size.
+        // Checked before "px" because "rem" also ends in 'm', not 'x' — but
+        // order matters versus the bare-number path below, since a trailing
+        // letter would otherwise fail the keyword guard.
+        String unit = relativeUnitSuffix(v);
+        if (unit != null) {
+            String num = v.substring(0, v.length() - unit.length()).trim();
+            float factor;
+            try {
+                factor = Float.parseFloat(num);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            return factor * resolveRelativeUnit(unit, variables);
+        }
         if (v.endsWith("px")) {
             v = v.substring(0, v.length() - 2).trim();
         } else if (!v.isEmpty() && !Character.isDigit(v.charAt(0)) && v.charAt(0) != '.'
                 && v.charAt(0) != '-') {
             return null; // keywords like "auto" unsupported for lengths
+        }
+        try {
+            return Float.parseFloat(v);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Returns the recognised relative-unit suffix of a trimmed lower-case
+     * length token ({@code "em"}, {@code "rem"}, {@code "vw"}, {@code "vh"}),
+     * or null when the token does not end in one. Longer suffixes are checked
+     * first so {@code "1.5rem"} is not mistaken for {@code "1.5em"} plus a
+     * stray letter.
+     */
+    private static String relativeUnitSuffix(String v) {
+        // Longest suffix first: "1.5rem" must match "rem", never "em" plus a
+        // stray letter. The caller's numeric parse of the stripped prefix
+        // rejects malformed tokens like "abcem".
+        if (v.endsWith("rem")) {
+            return "rem";
+        }
+        if (v.endsWith("em") || v.endsWith("vw") || v.endsWith("vh")) {
+            return v.substring(v.length() - 2);
+        }
+        return null;
+    }
+
+    /**
+     * Resolves the pixel reference for a relative unit from the variable map:
+     * <ul>
+     *   <li>{@code rem} — {@code --root-font-size} (falling back to
+     *       {@code --font-size-base});</li>
+     *   <li>{@code em} — {@code --font-size-base} (falling back to
+     *       {@code --root-font-size});</li>
+     *   <li>{@code vw}/{@code vh} — {@code --viewport-width}/
+     *       {@code --viewport-height} divided by 100.</li>
+     * </ul>
+     * The referenced value is itself parsed as a length, so a theme may define
+     * {@code --root-font-size: 1rem}. Unknown or invalid references degrade to
+     * 16px (the CSS initial font size) for font-relative units and to a factor
+     * of 1 (numeric value treated as pixels) for viewport units, matching the
+     * documented fallback behavior.
+     */
+    private static float resolveRelativeUnit(String unit, Map<String, String> variables) {
+        Map<String, String> vars = variables != null ? variables : Map.of();
+        switch (unit) {
+            case "rem": {
+                String ref = vars.getOrDefault("--root-font-size",
+                        vars.get("--font-size-base"));
+                return fontSizeReference(ref);
+            }
+            case "em": {
+                String ref = vars.getOrDefault("--font-size-base",
+                        vars.get("--root-font-size"));
+                return fontSizeReference(ref);
+            }
+            case "vw": {
+                Float w = parsePixelLiteral(vars.get("--viewport-width"));
+                return w != null ? w / 100f : 1f;
+            }
+            case "vh": {
+                Float h = parsePixelLiteral(vars.get("--viewport-height"));
+                return h != null ? h / 100f : 1f;
+            }
+            default:
+                return 1f;
+        }
+    }
+
+    /**
+     * True when the raw declaration text ends in a relative length unit
+     * ({@code em}, {@code rem}, {@code vw}, {@code vh}). The stylesheet parser
+     * uses this to defer such declarations to cascade time (like unresolved
+     * {@code var()} references), because the environment-provided references
+     * seeded by {@link StyleEngine} are not known at parse time.
+     */
+    static boolean hasRelativeUnit(String value) {
+        if (value == null) {
+            return false;
+        }
+        String v = value.trim().toLowerCase(Locale.ROOT);
+        return relativeUnitSuffix(v) != null;
+    }
+
+    /**
+     * True when a length-valued declaration contains at least one token with
+     * a relative unit suffix ({@code em}, {@code rem}, {@code vw},
+     * {@code vh}). Unlike {@link #hasRelativeUnit(String)} this scans every
+     * whitespace-separated token, so multi-token shorthands like
+     * {@code padding: 1rem 2em} are detected too — the stylesheet parser uses
+     * it to defer such declarations to cascade time.
+     */
+    static boolean containsRelativeUnit(String value) {
+        if (value == null) {
+            return false;
+        }
+        for (String token : value.trim().split("\\s+")) {
+            if (relativeUnitSuffix(token.toLowerCase(Locale.ROOT)) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** CSS initial font size used when no root/base size is configured. */
+    private static final float DEFAULT_FONT_SIZE = 16f;
+
+    private static float fontSizeReference(String raw) {
+        Float px = parsePixelLiteral(raw);
+        return px != null && px > 0f ? px : DEFAULT_FONT_SIZE;
+    }
+
+    /**
+     * Parses a plain pixel/unitless literal (no relative units, no percent
+     * sentinel) used for variable references, to avoid recursive resolution.
+     */
+    private static Float parsePixelLiteral(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String v = raw.trim().toLowerCase(Locale.ROOT);
+        if (v.endsWith("px")) {
+            v = v.substring(0, v.length() - 2).trim();
         }
         try {
             return Float.parseFloat(v);

@@ -14,7 +14,7 @@ import java.util.List;
  * {@code bind:} / {@code on:} and control attributes such as {@code if} or
  * {@code for-each} are <b>not</b> interpreted here — this is the raw tree.</p>
  */
-public final class Element extends AstNode {
+public final class Element extends AstNode implements AstNode.AstContainer {
 
     /**
      * Tag name exactly as written (case preserved).
@@ -131,6 +131,7 @@ public final class Element extends AstNode {
      * @return unmodifiable list of children (text, bindings, elements) in
      * source order
      */
+    @Override
     public List<AstNode> getChildren() {
         return Collections.unmodifiableList(children);
     }

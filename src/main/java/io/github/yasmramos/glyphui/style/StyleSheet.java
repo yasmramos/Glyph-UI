@@ -129,6 +129,7 @@ public final class StyleSheet {
                 }
                 Style.Builder builder = Style.builder();
                 Map<StyleProperty, String> rawValues = new EnumMap<>(StyleProperty.class);
+                Map<StyleProperty, String> deferredTexts = new EnumMap<>(StyleProperty.class);
                 for (int d = 0; d < sr.getDeclarationCount(); d++) {
                     CSSDeclaration decl = sr.getDeclarationAtIndex(d);
                     String prop = decl.getProperty().toLowerCase(Locale.ROOT);
@@ -152,6 +153,20 @@ public final class StyleSheet {
                         rawValues.put(target, rawValue);
                         continue;
                     }
+                    if (typed != null && CssValues.containsRelativeUnit(rawValue)
+                            && !rawValue.contains("var(")) {
+                        // em/rem/vw/vh depend on reference sizes that may be
+                        // seeded at cascade time by StyleEngine (body font
+                        // size, window dimensions). The parse-time map above
+                        // only knows :root custom properties, so keep the
+                        // typed fallback value AND re-parse the declaration
+                        // in the engine's resolveVars pass — same RAW_VALUES
+                        // channel used for unresolved var() refs, with a
+                        // sentinel marking "re-run pipeline with vars" and
+                        // the original text parked in the RAW_TEXT carrier.
+                        rawValues.put(target, Style.DEFERRED_PARSE);
+                        deferredTexts.put(target, rawValue);
+                    }
                     if (typed == null) {
                         // Supported property name but unparseable/unsupported
                         // value form (e.g. 4-value padding shorthand).
@@ -166,6 +181,10 @@ public final class StyleSheet {
                 if (!rawValues.isEmpty()) {
                     builder.set(StyleProperty.RAW_VALUES,
                             Collections.unmodifiableMap(rawValues));
+                }
+                if (!deferredTexts.isEmpty()) {
+                    builder.set(StyleProperty.RAW_TEXT,
+                            Collections.unmodifiableMap(deferredTexts));
                 }
                 // The id is the rule's position in source order: a stable,
                 // unique-per-sheet cache key assigned at parse time.

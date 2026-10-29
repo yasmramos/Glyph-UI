@@ -1,5 +1,7 @@
 package io.github.yasmramos.glyphui.style;
 
+import io.github.yasmramos.glyphui.core.Application;
+import io.github.yasmramos.glyphui.graphics.FontManager;
 import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Panel;
@@ -268,6 +270,42 @@ public final class StyleEngine {
         // can re-define --bg/--fg/--accent/--border from CSS (:root or any
         // other block — custom properties are collected sheet-wide).
         vars.putAll(styleSheet.getRootVariables());
+        // Unit references for the relative length units (em/rem/vw/vh) are
+        // seeded last with environment values, but a stylesheet may still
+        // override them via :root custom properties (checked explicitly so
+        // putAll above is not clobbered by Map.put).
+        seedUnitReferences(vars);
         return vars;
+    }
+
+    /**
+     * Seeds {@code --font-size-base}, {@code --root-font-size},
+     * {@code --viewport-width} and {@code --viewport-height} when the
+     * stylesheet does not define them. These variables provide the reference
+     * sizes that {@link CssValues#parseLength(String, Map)} uses to resolve
+     * {@code em}/{@code rem} (body font size from {@link FontManager}) and
+     * {@code vw}/{@code vh} (window size from the running
+     * {@link Application}). Outside an application context (headless tests,
+     * embedded usage without a window) the viewport entries are omitted and
+     * viewport units degrade to their documented numeric fallback.
+     */
+    private static void seedUnitReferences(Map<String, String> vars) {
+        if (!vars.containsKey("--font-size-base") && !vars.containsKey("--root-font-size")) {
+            float body = FontManager.getDefaultFontSize(Theme.FontRole.BODY);
+            String px = body + "px";
+            vars.put("--font-size-base", px);
+            vars.put("--root-font-size", px);
+        } else if (!vars.containsKey("--font-size-base")) {
+            vars.put("--font-size-base", vars.get("--root-font-size"));
+        } else if (!vars.containsKey("--root-font-size")) {
+            vars.put("--root-font-size", vars.get("--font-size-base"));
+        }
+        if (!vars.containsKey("--viewport-width") || !vars.containsKey("--viewport-height")) {
+            Application app = Application.getCurrent();
+            if (app != null && app.getWindow() != null) {
+                vars.putIfAbsent("--viewport-width", app.getWindow().getWidth() + "px");
+                vars.putIfAbsent("--viewport-height", app.getWindow().getHeight() + "px");
+            }
+        }
     }
 }

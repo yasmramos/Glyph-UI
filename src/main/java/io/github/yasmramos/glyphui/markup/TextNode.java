@@ -1,5 +1,7 @@
 package io.github.yasmramos.glyphui.markup;
 
+import java.util.List;
+
 /**
  * A literal text run inside element content.
  *
@@ -9,6 +11,12 @@ package io.github.yasmramos.glyphui.markup;
  * markup-significant braces.</p>
  */
 public final class TextNode extends AstNode {
+
+    /** Leaf node: text runs never contain children. */
+    @Override
+    public List<AstNode> getChildren() {
+        return List.of();
+    }
 
     /** The literal text (escapes resolved). */
     private final String text;

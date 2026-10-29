@@ -25,6 +25,18 @@ public final class Style {
     /** Shared empty style instance. */
     public static final Style EMPTY = new Style(Collections.emptyMap());
 
+    /**
+     * Sentinel raw value for declarations that must be re-parsed at cascade
+     * time by {@link #resolveVars(Map)} even though they parsed successfully
+     * without a variable map — e.g. relative length units (em/rem/vw/vh) whose
+     * reference sizes are seeded by {@code StyleEngine} and therefore unknown
+     * at parse time. Never produced from CSS source text. The original
+     * declaration text is kept in the parallel {@link StyleProperty#RAW_TEXT}
+     * carrier so multi-token shorthands can be re-fed through the pipeline
+     * verbatim.
+     */
+    static final String DEFERRED_PARSE = "\u0000deferred";
+
     private final Map<StyleProperty, Object> values;
 
     private Style(Map<StyleProperty, Object> values) {
@@ -181,12 +193,14 @@ public final class Style {
         }
         EnumMap<StyleProperty, Object> merged = new EnumMap<>(StyleProperty.class);
         for (Map.Entry<StyleProperty, Object> e : parent.values.entrySet()) {
-            if (e.getKey().isInherited() && e.getKey() != StyleProperty.RAW_VALUES) {
+            if (e.getKey().isInherited() && e.getKey() != StyleProperty.RAW_VALUES
+                    && e.getKey() != StyleProperty.RAW_TEXT) {
                 merged.put(e.getKey(), e.getValue());
             }
         }
         merged.putAll(values);
         merged.remove(StyleProperty.RAW_VALUES);
+        merged.remove(StyleProperty.RAW_TEXT);
         return new Style(Collections.unmodifiableMap(merged));
     }
 
@@ -200,7 +214,7 @@ public final class Style {
     java.util.Set<StyleProperty> declaredProperties() {
         EnumSet<StyleProperty> set = EnumSet.noneOf(StyleProperty.class);
         for (Map.Entry<StyleProperty, Object> e : values.entrySet()) {
-            if (e.getKey() != StyleProperty.RAW_VALUES) {
+            if (e.getKey() != StyleProperty.RAW_VALUES && e.getKey() != StyleProperty.RAW_TEXT) {
                 set.add(e.getKey());
             }
         }
@@ -224,6 +238,7 @@ public final class Style {
         merged.putAll(values);
         merged.putAll(other.values);
         merged.remove(StyleProperty.RAW_VALUES);
+        merged.remove(StyleProperty.RAW_TEXT);
         return new Style(Collections.unmodifiableMap(merged));
     }
 
@@ -235,12 +250,14 @@ public final class Style {
      * @return the sanitized style (same instance when no raw values present)
      */
     public Style withoutRawValues() {
-        if (!values.containsKey(StyleProperty.RAW_VALUES)) {
+        if (!values.containsKey(StyleProperty.RAW_VALUES)
+                && !values.containsKey(StyleProperty.RAW_TEXT)) {
             return this;
         }
         EnumMap<StyleProperty, Object> copy = new EnumMap<>(StyleProperty.class);
         copy.putAll(values);
         copy.remove(StyleProperty.RAW_VALUES);
+        copy.remove(StyleProperty.RAW_TEXT);
         return new Style(Collections.unmodifiableMap(copy));
     }
 
@@ -268,19 +285,41 @@ public final class Style {
      */
     @SuppressWarnings("unchecked")
     public Style resolveVars(Map<String, String> variables) {
-        Object raw = values.get(StyleProperty.RAW_VALUES);
-        if (!(raw instanceof Map)) {
+        Object rawValuesMap = values.get(StyleProperty.RAW_VALUES);
+        Object rawText = values.get(StyleProperty.RAW_TEXT);
+        if (!(rawValuesMap instanceof Map) && !(rawText instanceof Map)) {
             return this;
         }
-        Map<StyleProperty, String> rawValues = (Map<StyleProperty, String>) raw;
         Builder builder = builder();
         Map<String, String> vars = variables != null ? variables : Map.of();
         for (Map.Entry<StyleProperty, Object> e : values.entrySet()) {
-            if (e.getKey() != StyleProperty.RAW_VALUES) {
+            if (e.getKey() != StyleProperty.RAW_VALUES && e.getKey() != StyleProperty.RAW_TEXT) {
                 builder.setInternally(e.getKey(), e.getValue());
             }
         }
+        Map<StyleProperty, String> rawValues = rawValuesMap instanceof Map
+                ? (Map<StyleProperty, String>) rawValuesMap : Map.of();
+        Map<StyleProperty, String> deferredTexts = rawText instanceof Map
+                ? (Map<StyleProperty, String>) rawText : Map.of();
         for (Map.Entry<StyleProperty, String> e : rawValues.entrySet()) {
+            // Per-property declaration text being resolved. Deferred
+            // relative-unit declarations (DEFERRED_PARSE sentinel): the
+            // parse-time pass already stored a fallback typed value and the
+            // original text under RAW_TEXT; re-feed it through the pipeline
+            // below with the engine's variable map so em/rem/vw/vh see the
+            // seeded reference sizes (--font-size-base, --root-font-size,
+            // --viewport-*).
+            String raw = e.getValue();
+            if (DEFERRED_PARSE.equals(raw)) {
+                raw = deferredTexts.get(e.getKey());
+                if (raw == null) {
+                    Object existing = values.get(e.getKey());
+                    raw = existing != null ? String.valueOf(existing) : null;
+                }
+                if (raw == null) {
+                    continue;
+                }
+            }
             // Route through the property's canonical CSS name, which may
             // differ from its kebab-case enum name (BACKGROUND is declared as
             // the "background" shorthand but its cssName() is
@@ -289,12 +328,12 @@ public final class Style {
             // a "#rrggbbaa" color routed under "background-color" hits the
             // heuristic branch of CssValues.parse and comes back rotated to
             // #aarrggbb.
-            Object typed = CssValues.parse(pipelineNameFor(e.getKey()), e.getValue(), vars);
+            Object typed = CssValues.parse(pipelineNameFor(e.getKey()), raw, vars);
             if (typed != null) {
                 builder.set(e.getKey(), typed);
             } else {
                 System.err.println("[GlyphUI] Warning: could not resolve CSS value \""
-                        + e.getValue() + "\" for property \"" + pipelineNameFor(e.getKey()) + "\"");
+                        + raw + "\" for property \"" + pipelineNameFor(e.getKey()) + "\"");
             }
         }
         return builder.build();

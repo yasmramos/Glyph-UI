@@ -9,7 +9,7 @@ import java.util.List;
  * (elements, free text and bindings) plus the 1-based position where the
  * document starts.
  */
-public final class Document {
+public final class Document implements AstNode.AstContainer {
 
     /**
      * Top-level children in source order.
