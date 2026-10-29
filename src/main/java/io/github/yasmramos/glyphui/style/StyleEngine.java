@@ -60,6 +60,14 @@ public final class StyleEngine {
     private final Map<Integer, Style> resolvedCache = new HashMap<>();
     /** Last theme identity seen while building variables (change detection). */
     private Theme lastThemeSource;
+    /**
+     * Identity of the stylesheet whose rules populate {@link #resolvedCache}
+     * (Block 5 item 5.24 change detection). The cache is keyed by rule id,
+     * which is only unique <em>within</em> one sheet — two different sheets
+     * both start their ids at 0 — so the engine must know which sheet the
+     * cached entries belong to and drop them as soon as that changes.
+     */
+    private StyleSheet cachedSheetSource;
 
     /**
      * Creates an engine bound to a stylesheet. The active theme
@@ -92,7 +100,13 @@ public final class StyleEngine {
      */
     public void setStyleSheet(StyleSheet styleSheet) {
         this.styleSheet = styleSheet != null ? styleSheet : StyleSheet.empty();
+        // Block 5 item 5.24: drop the per-rule cache eagerly whenever the
+        // sheet reference changes, even when it is set to the very instance
+        // already in use. StyleSheet is immutable today, but a future mutable
+        // sheet could be "replaced" with the same object after edits; without
+        // clearing here the engine would keep serving stale resolved styles.
         this.resolvedCache.clear();
+        this.cachedSheetSource = null;
         // A new sheet changes selector matching for the whole tree.
         io.github.yasmramos.glyphui.ui.Component.invalidateStyle();
     }
@@ -152,6 +166,21 @@ public final class StyleEngine {
         if (root == null) {
             return;
         }
+        // Block 5 item 5.24: the per-rule cache is keyed by StyleSheet#ruleId,
+        // which restarts at 0 for every sheet, so ids from two different sheets
+        // collide. The setStyleSheet() clear alone only covers engines whose
+        // sheet is swapped through that setter — a static apply(root, sheet…)
+        // pass builds a throwaway engine per call, and any future path that
+        // assigns styleSheet directly would leak entries from the previous
+        // sheet under identical ids. Track the sheet identity the cached
+        // entries belong to and drop them whenever it differs from the one
+        // about to be applied. StyleSheet is immutable today, so this is
+        // defense against id collisions across sheets (and against a sheet
+        // being "re-set" as the same mutated instance in the future).
+        if (cachedSheetSource != styleSheet) {
+            resolvedCache.clear();
+            cachedSheetSource = styleSheet;
+        }
         resetComputedStyles(root);
         Map<String, String> variables = buildVariables();
         // Theme-derived variables are not known at parse time, so rules that
@@ -160,7 +189,8 @@ public final class StyleEngine {
         // engine's variable map (results cached per rule identity). The cache
         // is kept across passes and keyed by StyleSheet#ruleId, which is
         // stable for the lifetime of an immutable stylesheet; entries from a
-        // replaced sheet are dropped eagerly on setStyleSheet().
+        // replaced sheet are dropped eagerly on setStyleSheet() and via the
+        // sheet-identity check above.
         applyRecursive(root, null, variables, resolvedCache);
     }
 
