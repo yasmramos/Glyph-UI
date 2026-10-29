@@ -148,6 +148,14 @@ public class Application implements AutoCloseable {
     private final RepaintScheduler repaints = new RepaintScheduler(this);
 
     /**
+     * Frame-loop driving policy of this instance: backend-owned loop vs the
+     * toolkit polling loop, and the idle strategy after clean frames.
+     * Extracted in PR 2 (phase 2); {@link #run()} delegates to it after
+     * setting up thread affinity.
+     */
+    private final FrameLoop frameLoop = new FrameLoop(this);
+
+    /**
      * Optional animation callback. While it returns true, the event loop keeps
      * repainting every frame (continuous animations). May be null.
      */
@@ -1549,35 +1557,22 @@ public class Application implements AutoCloseable {
         // native windowing calls behind it are UI-thread-only.
         window.setThreadCheck(this::checkThread);
 
-        if (window.isAppOwnedLoop()) {
-            // The backend owns the UI thread and its native message loop
-            // (JWM): hand it the frame body, which it invokes on this thread
-            // once per dispatched event batch. This call blocks until the
-            // application shuts down, so there is nothing left to do here.
-            window.enterBackendEventLoop(this::frameStep);
-            return;
-        }
+        // Loop driving (backend-owned vs polling) and the idle strategy are
+        // owned by FrameLoop (PR 2, phase 2); this method only sets up the
+        // thread affinity and global publication before handing over.
+        frameLoop.run();
+    }
 
-        while (!window.shouldClose()) {
-            final boolean painted = frameStep();
-            if (!painted) {
-                if (!isGpuBackend()) {
-                    // Raster backend has no hardware vsync: sleep a short interval
-                    // so the loop does not consume CPU while idle.
-                    try {
-                        Thread.sleep(RepaintScheduler.RASTER_IDLE_SLEEP_MS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                } else {
-                    // GPU backend with a clean frame: block in waitEvents()
-                    // instead of busy-polling. The loop is woken up by real input
-                    // events or by postEmptyEvent() from invokeLater(...).
-                    window.waitEvents();
-                }
-            }
-        }
+    /**
+     * Package-private accessor used by {@link FrameLoop} to drive the loop.
+     * Exposed instead of passing the window through the constructor because
+     * the window is created during {@code init()} after the loop object is
+     * constructed.
+     *
+     * @return the application window (non-null once {@code run()} started)
+     */
+    Window windowForLoop() {
+        return window;
     }
 
     /**
@@ -1588,7 +1583,7 @@ public class Application implements AutoCloseable {
      *
      * @return true when this iteration rendered a frame
      */
-    private boolean frameStep() {
+    boolean frameStep() {
         // Poll events (callbacks may mark paintDirty)
         window.pollEvents();
 
