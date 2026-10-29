@@ -53,18 +53,25 @@ class ApplicationOnDemandTest extends TestBase {
         return field.get(target);
     }
 
-    private static boolean readPaintDirty(Application target) throws Exception {
-        return (boolean) getField(target, "paintDirty");
+    // The paint-dirty flag now lives in RepaintScheduler (extracted from
+    // Application in PR 2); these helpers go through the package-visible
+    // test accessors instead of reflective field access.
+    private static boolean readPaintDirty(Application target) {
+        return target.paintDirtyForTests();
+    }
+
+    private static void writePaintDirty(Application target, boolean value) {
+        target.setPaintDirtyForTests(value);
     }
 
     @Test
-    void newApplicationStartsDirtySoFirstFrameIsPainted() throws Exception {
+    void newApplicationStartsDirtySoFirstFrameIsPainted() {
         assertTrue(readPaintDirty(app), "first frame must always be painted");
     }
 
     @Test
-    void requestRepaintSetsPaintDirtyFlag() throws Exception {
-        setField(app, "paintDirty", false);
+    void requestRepaintSetsPaintDirtyFlag() {
+        writePaintDirty(app, false);
         assertFalse(readPaintDirty(app));
 
         app.requestRepaint();
@@ -83,12 +90,12 @@ class ApplicationOnDemandTest extends TestBase {
 
     @Test
     void setAnimationCallbackRequestsRepaintAndClearingDoesNot() throws Exception {
-        setField(app, "paintDirty", false);
+        writePaintDirty(app, false);
 
         app.setAnimationCallback(() -> { });
         assertTrue(readPaintDirty(app), "registering an animation must schedule a repaint");
 
-        setField(app, "paintDirty", false);
+        writePaintDirty(app, false);
         app.setAnimationCallback(null);
         assertFalse(readPaintDirty(app), "removing the animation must not force a repaint");
     }
@@ -116,7 +123,7 @@ class ApplicationOnDemandTest extends TestBase {
         assertNotNull(canvas);
         setField(app, "canvas", canvas);
         setField(app, "surface", holder[0]);
-        setField(app, "paintDirty", false);
+        writePaintDirty(app, false);
 
         int newSize = 320;
         app.recreateRasterSurface(newSize, newSize);
