@@ -140,22 +140,18 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * On-demand rendering flag: true when something changed (events, component
-     * mutations, resize) and the next loop iteration should repaint.
+     * Repaint plumbing of this instance: the on-demand paint-dirty flag, the
+     * UI-thread wake-up policy and the ownership of the single process-wide
+     * repaint hook. Extracted in PR 2 (phase 1) so {@code Application} keeps
+     * only the delegation shims its public API has always exposed.
      */
-    private volatile boolean paintDirty;
+    private final RepaintScheduler repaints = new RepaintScheduler(this);
 
     /**
      * Optional animation callback. While it returns true, the event loop keeps
      * repainting every frame (continuous animations). May be null.
      */
     private Runnable animationCallback;
-
-    /**
-     * Sleep interval for the raster backend idle wait (no hardware vsync
-     * there).
-     */
-    private static final long RASTER_IDLE_SLEEP_MS = 16;
 
     /**
      * The UI thread: the thread that called {@link #run()}. All widget state
@@ -210,20 +206,6 @@ public class Application implements AutoCloseable {
     private float contentScaleY = 1.0f;
 
     /**
-     * True while this application owns the single static repaint hook
-     * ({@code Component.setGlobalRepaintRequester}, installed by
-     * {@link #init()}). Tracked explicitly because method references have
-     * unstable identity and cannot be compared with {@code ==}. Cleared by
-     * {@link #close()} so a closed instance never lingers through globals,
-     * and never cleared over a foreign requester installed after our init
-     * (e.g. by a unit test) — the old second hook
-     * ({@code Component.setRepaintRequester}) had no such flag at all and
-     * was nulled out unconditionally by every close(); it has been removed
-     * so one flag now protects the only remaining hook.
-     */
-    private boolean globalHookOwnedByThis;
-
-    /**
      * The most recently started application instance, used by widgets to obtain
      * the UI-thread marshalling target lazily (properties are created on first
      * access, which may happen before {@code init()} completes). Cleared when
@@ -263,7 +245,8 @@ public class Application implements AutoCloseable {
     public Application() {
         this.running = false;
         this.forceRasterSurface = false;
-        this.paintDirty = true; // first frame must always be painted
+        // First frame must always be painted — owned by the RepaintScheduler,
+        // which initializes its paint-dirty flag to true.
         this.rootPanel = new Panel(0, 0, 800, 600);
         this.popupLayer = new PopupLayer();
         // NOTE: the repaint hook (Component.setGlobalRepaintRequester) is
@@ -298,15 +281,10 @@ public class Application implements AutoCloseable {
     /**
      * Marks the display dirty so the next loop iteration renders a new frame.
      * Safe to call from other threads (e.g. from {@code invokeLater} tasks).
+     * Delegates to the instance's {@link RepaintScheduler}.
      */
     public void requestRepaint() {
-        synchronized (this) {
-            paintDirty = true;
-            // Wake up the loop if it is blocked waiting for events
-            if (window != null && running) {
-                window.postEmptyEvent();
-            }
-        }
+        repaints.requestRepaint();
     }
 
     /**
@@ -315,7 +293,30 @@ public class Application implements AutoCloseable {
      * @return true when a repaint has been requested but not yet performed
      */
     boolean isPaintDirty() {
-        return paintDirty;
+        return repaints.isPaintDirty();
+    }
+
+    /**
+     * Returns the paint-dirty flag held by this instance's
+     * {@link RepaintScheduler}. Package-visible for tests that used to read
+     * the old {@code Application.paintDirty} field reflectively.
+     *
+     * @return true when a repaint has been requested but not yet performed
+     */
+    boolean paintDirtyForTests() {
+        return repaints.isPaintDirty();
+    }
+
+    /**
+     * Replaces the paint-dirty flag held by this instance's
+     * {@link RepaintScheduler} (test-only state wiring; no wake-up is sent).
+     *
+     * @param value the new dirty state
+     */
+    void setPaintDirtyForTests(boolean value) {
+        synchronized (this) {
+            repaints.setPaintDirty(value);
+        }
     }
 
     /**
@@ -340,9 +341,33 @@ public class Application implements AutoCloseable {
     public void setRepaintRequester(RepaintRequester requester) {
         Component.setGlobalRepaintRequester(requester);
         // Routing through the setter means this instance's owner claims (or,
-        // for null, releases) the static hook — keep the ownership flag in
-        // sync so close() can restore it symmetrically.
-        globalHookOwnedByThis = (requester != null);
+        // for null, releases) the static hook — keep the scheduler ownership
+        // in sync so close() can restore it symmetrically.
+        repaints.setHookOwnership(requester != null);
+    }
+
+    /**
+     * Returns the exact repaint requester installed by {@link RepaintScheduler}
+     * on behalf of this application, or {@code null} when the scheduler owns no
+     * hook. Package-visible for tests that must compare against the installed
+     * reference: method references have unstable identity, so an equal lambda
+     * built elsewhere cannot be matched with {@code ==}.
+     *
+     * @return the scheduler-owned global hook, or null
+     */
+    static RepaintRequester getInstalledGlobalHook() {
+        return RepaintScheduler.globalHook;
+    }
+
+    /**
+     * Replaces the scheduler-owned global hook with the given requester
+     * (used by tests re-pointing the hook). Ownership transfers with the
+     * value: a non-null requester is owned and cleared on close, null is not.
+     *
+     * @param requester the new hook value (may be null)
+     */
+    static void setInstalledGlobalHook(RepaintRequester requester) {
+        RepaintScheduler.globalHook = requester;
     }
 
     /**
@@ -479,9 +504,9 @@ public class Application implements AutoCloseable {
             // There is a single static hook in Component (invalidate() at the
             // tree root invokes it); point it at this application — close()
             // clears it again, but only if this instance still owns it
-            // (method references have unstable identity, hence the flag).
-            Component.setGlobalRepaintRequester(this::requestRepaint);
-            globalHookOwnedByThis = true;
+            // (method references have unstable identity, hence the ownership
+            // flag now tracked inside RepaintScheduler).
+            repaints.installGlobalHook();
 
             // Setup callbacks
             setupCallbacks();
@@ -500,7 +525,8 @@ public class Application implements AutoCloseable {
 
             lastFrameTime = nowSeconds();
             running = true;
-            paintDirty = true; // always paint the first frame
+            // Always paint the first frame (flag owned by RepaintScheduler).
+            requestRepaint();
 
             // Cache the HiDPI content scale factors; render() applies them
             // per frame and the callback below keeps them up to date.
@@ -607,10 +633,26 @@ public class Application implements AutoCloseable {
      * application never lingers through process-wide globals.
      */
     private void releaseRepaintHooks() {
-        if (globalHookOwnedByThis) {
-            Component.setGlobalRepaintRequester(null);
-            globalHookOwnedByThis = false;
-        }
+        // Ownership lives in RepaintScheduler; it only clears the static hook
+        // while this instance still owns it (a foreign requester installed
+        // later must survive our close()).
+        repaints.release();
+    }
+
+    /**
+     * Package-visible accessors used by {@link RepaintScheduler} to reach the
+     * window/running/framebuffer state without widening the public API.
+     */
+    Window windowForScheduler() {
+        return window;
+    }
+
+    boolean runningForScheduler() {
+        return running;
+    }
+
+    boolean framebufferDegenerateForScheduler() {
+        return framebufferDegenerate();
     }
 
     /**
@@ -1230,6 +1272,10 @@ public class Application implements AutoCloseable {
         // still pending for the next real frameStep() (e.g. tests that mix
         // renderFrame() with loop-driven frames). render(true) cascades
         // unconditionally, so leaving the latch set costs nothing.
+        // The paint-dirty flag IS consumed here so direct test renders behave
+        // like loop-driven frames (the flag now lives in RepaintScheduler,
+        // which only frameStep() consumed previously).
+        repaints.consumePaintDirty(false);
         render(true);
     }
 
@@ -1370,18 +1416,10 @@ public class Application implements AutoCloseable {
             return;
         }
         uiTaskQueue.add(task);
-        requestRepaint();
-        if (isUiThread()) {
-            // Already on the UI thread: the queue is drained at the end of
-            // the current frameStep(), so no native wake-up is needed.
-            return;
-        }
-        // Wake the UI thread if it is blocked waiting for events. Only valid
-        // once the window backend is initialized; before that the queue is
-        // drained on the first run() iteration anyway.
-        if (window != null) {
-            window.postEmptyEvent();
-        }
+        repaints.requestRepaint();
+        // Wake-up policy (UI-thread vs blocked native loop) lives in the
+        // RepaintScheduler so every deferred-task path shares it.
+        repaints.wakeUpForPostedTask();
     }
 
     /**
@@ -1527,7 +1565,7 @@ public class Application implements AutoCloseable {
                     // Raster backend has no hardware vsync: sleep a short interval
                     // so the loop does not consume CPU while idle.
                     try {
-                        Thread.sleep(RASTER_IDLE_SLEEP_MS);
+                        Thread.sleep(RepaintScheduler.RASTER_IDLE_SLEEP_MS);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         return;
@@ -1579,15 +1617,15 @@ public class Application implements AutoCloseable {
 
         // Atomically test-and-consume the dirty flag so that a concurrent
         // requestRepaint() landing between the check and render() cannot
-        // be lost (volatile read + write alone has a race window).
+        // be lost (volatile read + write alone has a race window). The
+        // paint-dirty state is owned by RepaintScheduler; the style latch is
+        // consumed here in the same monitor acquisition to keep the two
+        // decisions consistent with each other.
         final boolean needPaint;
         final boolean needCascade;
         synchronized (this) {
-            needPaint = (paintDirty || animating) && !framebufferDegenerate();
+            needPaint = repaints.consumePaintDirty(animating);
             needCascade = styleDirty && needPaint;
-            if (needPaint) {
-                paintDirty = false;
-            }
             if (needCascade) {
                 styleDirty = false;
             }
@@ -1631,9 +1669,9 @@ public class Application implements AutoCloseable {
      *                paints with the last computed styles
      */
     private void render(boolean cascade) {
-        synchronized (this) {
-            paintDirty = false;
-        }
+        // The paint-dirty flag was already consumed by frameStep() under the
+        // same monitor; nothing to clear here anymore (the flag is owned by
+        // RepaintScheduler and only re-armed by explicit requests).
 
         // Re-cascade the stylesheet against the current tree state so that
         // pseudo-classes (:hover, :focus, :disabled, :active) reflect live
