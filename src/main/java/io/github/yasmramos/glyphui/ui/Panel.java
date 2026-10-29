@@ -2,6 +2,7 @@ package io.github.yasmramos.glyphui.ui;
 
 import java.util.ArrayList;
 import java.util.List;
+import io.github.yasmramos.glyphui.layout.AbsoluteLayout;
 import io.github.yasmramos.glyphui.layout.LayoutManager;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Paint;
@@ -543,7 +544,22 @@ public class Panel extends Component {
      * Sets the layout manager for this panel and triggers an immediate relayout
      * if there are children.
      *
-     * @param layoutManager the layout manager to set
+     * <p><strong>Passing {@code null} is allowed but discouraged.</strong> A
+     * null layout means this panel performs no arrangement at all: children
+     * keep whatever {@code setX}/{@code setY}/{@code setWidth}/{@code
+     * setHeight} assigned, exactly like Swing's {@code setLayout(null)} —
+     * historically a beginner trap that produces UIs which break under font,
+     * DPI or locale changes (Swing/AWT lesson #4). If manual positioning is
+     * what you want, install {@link AbsoluteLayout} instead: it makes the
+     * intent explicit in the code, keeps every panel on the uniform layout
+     * pipeline, and lets a future switch to a flow-based layout reposition
+     * children without stale-state surprises. For everything else prefer
+     * {@link io.github.yasmramos.glyphui.layout.FlexLayout} or
+     * {@link io.github.yasmramos.glyphui.layout.FlowLayout}.</p>
+     *
+     * @param layoutManager the layout manager to set, or {@code null} to opt
+     *                      out of automatic layout (see
+     *                      {@link AbsoluteLayout} for the supported way)
      */
     public void setLayoutManager(LayoutManager layoutManager) {
         // Detach the previous manager first so its config setters stop
@@ -746,11 +762,11 @@ public class Panel extends Component {
 
     @Override
     protected void render(io.github.yasmramos.glyphui.graphics.Canvas canvas) {
-        if (!visible) {
-            return;
-        }
-
-        // Ensure layout is applied before rendering children
+        // Ensure layout is applied before rendering children. The framework
+        // template Component.renderInternal() has already checked visibility,
+        // saved the canvas and translated the origin to this panel's top-left
+        // corner (and restores it afterwards), so everything here draws in
+        // local coordinates relative to (0, 0).
         doLayout();
 
         // Draw the effective background when it should be painted. Block 5
@@ -762,14 +778,14 @@ public class Panel extends Component {
         if (shouldPaintBackground()) {
             ensureBgPaint();
             bgPaint.setColor(getBackgroundColor());
-            canvas.drawRect(x, y, width, height, bgPaint);
+            canvas.drawRect(0, 0, width, height, bgPaint);
         }
 
-        // Save the canvas state, translate to the panel's local coordinate
-        // system and clip to its bounds so that children cannot draw outside
-        // the panel. The saved state is restored with restoreToCount().
+        // Clip to the panel's bounds so that children cannot draw outside
+        // the panel. The surrounding save/restore is owned by the framework
+        // template (Swing lesson #7: no widget can forget "super"), so only
+        // the extra clip needs saving here.
         int saveCount = canvas.save();
-        canvas.translate(x, y);
         canvas.clipRect(0, 0, width, height);
 
         try {
@@ -782,7 +798,7 @@ public class Panel extends Component {
                 }
             }
         } finally {
-            // Restore the canvas state
+            // Restore the clip (the template restores the outer state).
             canvas.restoreToCount(saveCount);
         }
     }

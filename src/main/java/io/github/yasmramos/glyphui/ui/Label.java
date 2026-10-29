@@ -366,10 +366,8 @@ public class Label extends Component {
 
     @Override
     protected void render(Canvas canvas) {
-        if (!visible) {
-            return;
-        }
-
+        // Local coordinates: Component.renderInternal() filtered visibility
+        // and translated the origin to (x, y) before calling this method.
         io.github.humbleui.skija.Font f = getFont();
         io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
         String[] lines = textLines();
@@ -384,7 +382,7 @@ public class Label extends Component {
         // descent] (ascent is negative), so centering that box puts the first
         // baseline at top + (height - blockHeight) / 2 - ascent.
         float blockHeight = lineStep * lines.length;
-        float firstBaseline = y + (height - blockHeight) / 2.0f - metrics.getAscent();
+        float firstBaseline = (height - blockHeight) / 2.0f - metrics.getAscent();
 
         // Draw text using the reusable paint field (no per-frame allocations).
         // The disabled path consults the computed style first so
@@ -404,13 +402,13 @@ public class Label extends Component {
             float textX;
             switch (alignment) {
                 case CENTER:
-                    textX = x + (width - lineWidth) / 2.0f;
+                    textX = (width - lineWidth) / 2.0f;
                     break;
                 case RIGHT:
-                    textX = x + width - lineWidth;
+                    textX = width - lineWidth;
                     break;
                 default:
-                    textX = x;
+                    textX = 0;
                     break;
             }
             canvas.drawString(line, textX, firstBaseline + i * lineStep, textPaint, f);

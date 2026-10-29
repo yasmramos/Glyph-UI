@@ -306,9 +306,8 @@ public class MenuItem extends Component {
 
     @Override
     protected void render(Canvas canvas) {
-        if (!visible) {
-            return;
-        }
+        // Local coordinates: Component.renderInternal() filtered visibility
+        // and translated the origin to (x, y) before calling this method.
         ensurePaints();
 
         Theme theme = getTheme();
@@ -318,19 +317,19 @@ public class MenuItem extends Component {
         if (enabled && (state == ComponentState.HOVER || state == ComponentState.PRESSED)) {
             rowPaint.setColor(state == ComponentState.PRESSED
                     ? theme.getControlPressedColor() : theme.getControlHoverColor());
-            canvas.drawRect(x, y, width, height, rowPaint);
+            canvas.drawRect(0, 0, width, height, rowPaint);
         }
 
         io.github.humbleui.skija.Font f = resolveFont(Theme.FontRole.BODY);
         io.github.humbleui.skija.FontMetrics metrics = f.getMetrics();
         float textHeight = metrics.getDescent() - metrics.getAscent();
         // drawString takes a baseline; center the glyph box in the row.
-        float baseline = y + (height - textHeight) / 2.0f - metrics.getAscent();
+        float baseline = (height - textHeight) / 2.0f - metrics.getAscent();
 
         // Leading gutter: the check mark wins over the icon so a checked
         // option never shows two markers at once.
-        float gutterX = x + H_PADDING;
-        float centerY = y + height / 2.0f;
+        float gutterX = H_PADDING;
+        float centerY = height / 2.0f;
         if (checkable && checked) {
             checkPaint.setColor(theme.getAccentColor());
             canvas.drawLine(gutterX + 2.5f, centerY,
@@ -338,14 +337,14 @@ public class MenuItem extends Component {
             canvas.drawLine(gutterX + 6.5f, centerY + 4.0f,
                     gutterX + 13.5f, centerY - 4.0f, checkPaint);
         } else if (icon != null) {
-            float iconY = y + (height - GUTTER) / 2.0f;
+            float iconY = (height - GUTTER) / 2.0f;
             canvas.drawImage(icon, gutterX, iconY, GUTTER, GUTTER);
         }
 
         // Label. Disabled rows use the theme's muted control text colour.
         textPaint.setColor(enabled
                 ? theme.getControlTextColor() : theme.getControlTextDisabledColor());
-        float textX = x + H_PADDING + GUTTER + GUTTER_GAP;
+        float textX = H_PADDING + GUTTER + GUTTER_GAP;
         canvas.drawString(text == null ? "" : text, textX, baseline, textPaint, f);
 
         // Accelerator, right-aligned and always muted.
@@ -353,7 +352,7 @@ public class MenuItem extends Component {
             float accelWidth = canvas.measureText(acceleratorText, f);
             textPaint.setColor(theme.getControlTextDisabledColor());
             canvas.drawString(acceleratorText,
-                    x + width - H_PADDING - accelWidth, baseline, textPaint, f);
+                    width - H_PADDING - accelWidth, baseline, textPaint, f);
         }
     }
 

@@ -267,9 +267,10 @@ public class TitleBar extends Panel {
     }
 
     @Override
-    public void render(Canvas canvas) {
+    protected void render(Canvas canvas) {
         // Keep the chrome colour in step with the active theme (direct field
-        // assignment avoids a repaint request every frame).
+        // assignment avoids a repaint request every frame). Visibility and
+        // canvas isolation are guaranteed by Component.renderInternal().
         this.backgroundColor = getTheme().getTitleBarBackgroundColor();
         super.render(canvas);
     }
@@ -377,11 +378,13 @@ public class TitleBar extends Panel {
         }
 
         @Override
-        public void render(Canvas canvas) {
+        protected void render(Canvas canvas) {
+            // Local coordinates: Component.renderInternal() translated the
+            // origin to this button's top-left corner already.
             int bg = backgroundForState();
             if ((bg >>> 24) != 0) {
                 bgPaint.setColor(bg);
-                canvas.drawRect(x, y, width, height, bgPaint);
+                canvas.drawRect(0, 0, width, height, bgPaint);
             }
             iconPaint.setColor(iconColor());
             drawIcon(canvas);
@@ -408,8 +411,8 @@ public class TitleBar extends Panel {
         }
 
         private void drawIcon(Canvas canvas) {
-            float cx = x + width / 2f;
-            float cy = y + height / 2f;
+            float cx = width / 2f;
+            float cy = height / 2f;
             switch (kind) {
                 case MINIMIZE -> canvas.drawLine(cx - 5, cy, cx + 5, cy, iconPaint);
                 case MAXIMIZE -> {

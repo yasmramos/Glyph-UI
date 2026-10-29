@@ -94,17 +94,15 @@ public class ScrollPane extends Panel {
 
     @Override
     protected void render(Canvas canvas) {
-        if (!visible) {
-            return;
-        }
+        // Component.renderInternal() already translated the origin to the
+        // pane's top-left corner; only the vertical scroll offset is added
+        // here. The clip rectangle is expressed in that translated space,
+        // so it stays anchored to the viewport.
         doLayout();
 
         int saveCount = canvas.save();
         try {
-            // Translate to the pane's local origin, then up by the scroll
-            // offset. The clip rectangle is expressed in that translated
-            // space, so it stays anchored to the viewport.
-            canvas.translate(x, y - scrollY);
+            canvas.translate(0, -scrollY);
             canvas.clipRect(0, scrollY, width, height);
             for (Component child : children) {
                 if (child.isVisible() && !isDisplayNone(child)) {

@@ -918,13 +918,13 @@ public class TextField extends Component
         float cornerRadius = resolveFloatStyle(StyleProperty.BORDER_RADIUS, null,
                 theme.getControlCornerRadius());
         backgroundPaint.setColor(bgColor);
-        canvas.drawRRect(x, y, width, height, cornerRadius, cornerRadius, backgroundPaint);
+        canvas.drawRRect(0, 0, width, height, cornerRadius, cornerRadius, backgroundPaint);
 
         // Border: CSS `border-color` wins over the state-driven theme
         // fallbacks (accent when focused, plain border otherwise).
         int focusBorder = isFocused() ? theme.getAccentColor() : theme.getBorderColor();
         borderPaint.setColor(resolveIntStyle(StyleProperty.BORDER_COLOR, null, focusBorder));
-        canvas.drawRRect(x + 0.5f, y + 0.5f, Math.max(0.0f, width - 1.0f), Math.max(0.0f, height - 1.0f),
+        canvas.drawRRect(0.5f, 0.5f, Math.max(0.0f, width - 1.0f), Math.max(0.0f, height - 1.0f),
                 cornerRadius, cornerRadius, borderPaint);
 
         Font font = getFont();
@@ -934,13 +934,13 @@ public class TextField extends Component
         // Vertically center the glyph box ([baseline+ascent, baseline+descent],
         // ascent negative) in the field. The previous top-anchored
         // "y + padding - ascent" left the text sitting high in taller fields.
-        float baseline = y + (height - lineHeight) / 2.0f - metrics.getAscent();
+        float baseline = (height - lineHeight) / 2.0f - metrics.getAscent();
 
         // Content box: the field keeps its size, so text scrolls horizontally
         // instead of spilling past the border (it also keeps the caret in
         // view while typing). Everything drawn from here is clipped to the
         // box, like a native single-line input.
-        float contentLeft = x + padding;
+        float contentLeft = padding;
         float contentWidth = Math.max(0.0f, width - 2.0f * padding);
         float totalTextWidth = font.measureTextWidth(text);
         if (isFocused()) {
@@ -962,7 +962,7 @@ public class TextField extends Component
         float textX = contentLeft - scrollOffset;
 
         int saveCount = canvas.save();
-        canvas.clipRect(contentLeft, y, contentWidth, height);
+        canvas.clipRect(contentLeft, 0, contentWidth, height);
 
         // Selection highlight
         if (isFocused() && hasSelection()) {

@@ -505,7 +505,7 @@ public class Menu extends Panel {
         }
         int color = theme.getBorderColor();
         borderPaint.setColor((BORDER_ALPHA << 24) | (color & 0x00FFFFFF));
-        canvas.drawRect(x + 0.5f, y + 0.5f, width - 1.0f, height - 1.0f, borderPaint);
+        canvas.drawRect(0.5f, 0.5f, width - 1.0f, height - 1.0f, borderPaint);
     }
 
     /**

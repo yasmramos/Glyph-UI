@@ -328,28 +328,27 @@ public class PopupLayer extends Panel {
 
     @Override
     protected void render(Canvas canvas) {
-        // Drop shadows are painted first, in this layer's parent space, so
-        // the popups rendered by super() cover their own shadow.
-        if (visible) {
-            if (haloPaint == null) {
-                haloPaint = new Paint();
-                haloPaint.setColor(0x38000000);
+        // Drop shadows are painted first, in this layer's LOCAL space (the
+        // framework template already translated the origin), so the popups
+        // rendered by super() cover their own shadow.
+        if (haloPaint == null) {
+            haloPaint = new Paint();
+            haloPaint.setColor(0x38000000);
+        }
+        if (dropPaint == null) {
+            dropPaint = new Paint();
+            dropPaint.setColor(0x50000000);
+        }
+        for (Component child : children) {
+            if (!child.isVisible()) {
+                continue;
             }
-            if (dropPaint == null) {
-                dropPaint = new Paint();
-                dropPaint.setColor(0x50000000);
-            }
-            for (Component child : children) {
-                if (!child.isVisible()) {
-                    continue;
-                }
-                float left = x + child.getX();
-                float top = y + child.getY();
-                canvas.drawRect(left - 3.0f, top - 2.0f,
-                        child.getWidth() + 6.0f, child.getHeight() + 5.0f, haloPaint);
-                canvas.drawRect(left + 2.0f, top + 3.0f,
-                        child.getWidth(), child.getHeight(), dropPaint);
-            }
+            float left = child.getX();
+            float top = child.getY();
+            canvas.drawRect(left - 3.0f, top - 2.0f,
+                    child.getWidth() + 6.0f, child.getHeight() + 5.0f, haloPaint);
+            canvas.drawRect(left + 2.0f, top + 3.0f,
+                    child.getWidth(), child.getHeight(), dropPaint);
         }
         super.render(canvas);
     }
