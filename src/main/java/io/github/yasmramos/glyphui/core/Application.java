@@ -91,6 +91,18 @@ public class Application implements AutoCloseable {
      */
     private SurfaceFactory surfaceFactory;
     private boolean running;
+
+    /**
+     * Lifecycle flag backing the strict idempotency of {@link #close()}.
+     * Starts as {@code true}; the first {@code close()} call flips it to
+     * {@code false} under the instance monitor (the same lock used by the
+     * frame loop's test-and-consume), and any subsequent call is a full
+     * no-op. This prevents repeat closes from re-running global teardown
+     * (font cache release, shared hook clearing) that could damage state
+     * still in use by another live Application instance.
+     */
+    private volatile boolean open = true;
+
     private double lastFrameTime;
     private boolean useRasterSurface;
 
@@ -1674,6 +1686,18 @@ public class Application implements AutoCloseable {
      */
     @Override
     public void close() {
+        // Idempotency guard: a second close() must be a full no-op. Without
+        // it, repeat calls would re-run Fonts.close() and TextField global
+        // hook clearing, which can steal shared/static resources still in
+        // use by another live Application (multi-app processes, sequential
+        // tests with overlapping lifetimes). The test-and-set happens under
+        // the instance monitor so concurrent closers cannot both pass it.
+        synchronized (this) {
+            if (!open) {
+                return;
+            }
+            open = false;
+        }
         running = false;
         if (current == this) {
             current = null;
