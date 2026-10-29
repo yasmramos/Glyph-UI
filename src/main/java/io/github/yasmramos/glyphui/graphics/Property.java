@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.graphics;
 
+import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.Application;
 
 import java.util.List;
@@ -50,7 +51,7 @@ public final class Property<T> {
      * <p>The application reference is resolved <em>dynamically</em>: when
      * {@code application} is {@code null} (headless tests, widgets built
      * before any {@link Application} exists), every {@link #set(Object)}
-     * consults {@link Application#getCurrent()} at call time instead of
+     * consults the {@link AppContext} fallback at call time instead of
      * freezing a capture made here. Marshalling therefore works even for
      * properties constructed outside the UI lifecycle.</p>
      *
@@ -103,12 +104,16 @@ public final class Property<T> {
                 application.invokeLater(() -> set(newValue));
                 return;
             }
-        } else if (Application.getCurrent() != null && !Application.getCurrent().isUiThread()) {
-            // Property created before any application was running: fall back
-            // to the current application's queue so background sets still get
-            // marshalled onto the UI thread.
-            Application.invokeOnCurrent(() -> set(newValue));
-            return;
+        } else {
+            // No captured owner (property built before/independently of any
+            // app): consult the AppContext fallback — the most recently
+            // started live application — at set time so background sets still
+            // get marshalled onto a UI thread.
+            AppContext ctx = AppContext.ofCurrent();
+            if (ctx != null && !ctx.isUiThread()) {
+                ctx.invokeLater(() -> set(newValue));
+                return;
+            }
         }
         applyOnUiThread(newValue);
     }

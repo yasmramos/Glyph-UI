@@ -137,7 +137,7 @@ public class Label extends Component {
      */
     public Property<String> textProperty() {
         if (textProperty == null) {
-            textProperty = new Property<>(null, text, newText -> {
+            textProperty = new Property<>(propertyOwner(), text, newText -> {
                 this.text = newText;
                 // The caption width feeds the preferred size, so ancestors
                 // must re-run their layout managers, not just repaint.

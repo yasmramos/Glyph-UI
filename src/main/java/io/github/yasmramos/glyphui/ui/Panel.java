@@ -7,6 +7,7 @@ import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.LayoutManager;
 import io.github.humbleui.skija.Color;
 import io.github.humbleui.skija.Paint;
+import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.FocusManager;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.MouseEvent;
@@ -32,6 +33,16 @@ public class Panel extends Component {
             new FlexLayout(FlexLayout.Direction.COLUMN);
 
     protected List<Component> children;
+    /**
+     * Application context installed by {@link io.github.yasmramos.glyphui.core.Application}
+     * on the root panel and inherited by every panel that is added to a tree
+     * with a context (see {@link #add(Component)}). {@code null} means "no
+     * application owns this subtree yet" (headless tests, detached trees);
+     * widgets then fall back to {@link AppContext#ofCurrent()} where they
+     * need marshalling. This replaces the process-wide
+     * {@code Application.getCurrent()} lookups inside widgets.
+     */
+    private AppContext context;
     protected LayoutManager layoutManager;
     protected boolean layoutDirty;
     protected int backgroundColor;
@@ -294,6 +305,12 @@ public class Panel extends Component {
         }
         children.add(component);
         component.setParent(this);
+        // Context inheritance: a panel added into an owned tree adopts the
+        // tree's application context so widgets below it resolve their app
+        // by ownership, not through the process-wide fallback.
+        if (component instanceof Panel childPanel && childPanel.getContext() == null) {
+            childPanel.setContext(context);
+        }
         // No eager layout here (historical contract): positions stay exactly
         // as the user left them until the next paint runs doLayout(). Panels
         // that never chose a manager are not frozen in absolute mode either —
@@ -319,6 +336,11 @@ public class Panel extends Component {
     public void remove(Component component) {
         if (children.remove(component)) {
             component.setParent(null);
+            // Detaching clears the inherited context so a moved panel re-adopts
+            // the context of its next tree instead of keeping a stale one.
+            if (component instanceof Panel childPanel) {
+                childPanel.setContext(null);
+            }
         }
         // Same single-invalidation path as add().
         markLayoutDirtyAndInvalidate();
@@ -334,9 +356,41 @@ public class Panel extends Component {
     public void removeAndDispose(Component component) {
         if (children.remove(component)) {
             component.setParent(null);
+            if (component instanceof Panel childPanel) {
+                childPanel.setContext(null);
+            }
             component.dispose();
         }
         markLayoutDirtyAndInvalidate();
+    }
+
+    /**
+     * Gets the application context installed on this panel, or {@code null}
+     * when no application owns this subtree. Set by
+     * {@link io.github.yasmramos.glyphui.core.Application} on the root panel
+     * and inherited by child panels through {@link #add(Component)}.
+     *
+     * @return the owning context, or null
+     */
+    public AppContext getContext() {
+        return context;
+    }
+
+    /**
+     * Installs (or clears, with {@code null}) the application context for
+     * this panel's subtree. Intended for the toolkit core and embedding code
+     * that builds its own root panel: attaching a tree to an application lets
+     * every widget below resolve marshalling, popups and the window through
+     * ownership instead of the process-wide fallback.
+     *
+     * <p>Panels already in this panel's child list are NOT retroactively
+     * updated; only panels added after this call inherit it (they adopt the
+     * context at {@code add} time). Call this before building the tree.</p>
+     *
+     * @param context the context to install (may be null)
+     */
+    public void setContext(AppContext context) {
+        this.context = context;
     }
 
     /**
@@ -346,6 +400,9 @@ public class Panel extends Component {
     public void clear() {
         for (Component child : children) {
             child.setParent(null);
+            if (child instanceof Panel childPanel) {
+                childPanel.setContext(null);
+            }
         }
         children.clear();
         markLayoutDirtyAndInvalidate();
