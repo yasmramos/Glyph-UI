@@ -52,6 +52,9 @@ public enum AccessibleRole {
     /** A mutually-exclusive choice ({@link RadioButton}). */
     RADIO_BUTTON,
 
+    /** A single-choice drop-down list ({@link Dropdown}). */
+    COMBO_BOX,
+
     /** A non-interactive divider between content regions ({@link Separator}). */
     SEPARATOR,
 
