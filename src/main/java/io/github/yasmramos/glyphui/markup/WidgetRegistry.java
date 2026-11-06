@@ -7,9 +7,13 @@ import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.ProgressBar;
+import io.github.yasmramos.glyphui.ui.RadioButton;
 import io.github.yasmramos.glyphui.ui.ScrollPane;
 import io.github.yasmramos.glyphui.ui.Separator;
+import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.TextField;
+import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -83,8 +87,11 @@ public final class WidgetRegistry {
      * <p>Mappings: {@code Box} → flex column {@link Panel}, {@code Stack} →
      * absolutely positioned {@link Panel}, {@code Label}, {@code Button},
      * {@code Field} → {@link TextField}, {@code Checkbox} → {@link CheckBox},
-     * {@code Image} → {@link ImageView}, {@code Separator} and {@code Scroll} →
-     * {@link ScrollPane}. Attribute application stays with the loader.</p>
+     * {@code Image} → {@link ImageView}, {@code Separator}, {@code Scroll} →
+     * {@link ScrollPane}, {@code Progress} → {@link ProgressBar},
+     * {@code Slider}, {@code Switch} → {@link ToggleSwitch} and
+     * {@code Radio} → {@link RadioButton}. Attribute application stays with
+     * the loader.</p>
      *
      * @return a registry with the default tags registered
      */
@@ -106,6 +113,10 @@ public final class WidgetRegistry {
         registry.register("Image", element -> new ImageView());
         registry.register("Separator", element -> new Separator());
         registry.register("Scroll", element -> new ScrollPane());
+        registry.register("Progress", element -> new ProgressBar());
+        registry.register("Slider", element -> new Slider());
+        registry.register("Switch", element -> new ToggleSwitch());
+        registry.register("Radio", element -> new RadioButton());
         return registry;
     }
 

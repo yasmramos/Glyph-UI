@@ -5,11 +5,16 @@ import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.style.StyleProperty;
 import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.ProgressBar;
+import io.github.yasmramos.glyphui.ui.RadioButton;
+import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.TextField;
+import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -247,6 +252,74 @@ class UiLoaderTest {
         assertNotNull(UiLoader.findById(root, "app"));
         assertEquals(1, ((Panel) root).getChildren().size(),
                 "head/title must not become widgets");
+    }
+
+    @Test
+    void newWidgetTagsMapToTheirWidgets() {
+        String glyph = """
+                <body>
+                  <div id="form">
+                    <progress id="p" value="0.25" show-text/>
+                    <slider id="s" min="0" max="100" step="5" value="40"/>
+                    <switch id="w" checked>Wi-Fi</switch>
+                    <radio id="r" selected>Choice</radio>
+                    <checkbox id="c" checked>Agree</checkbox>
+                  </div>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        ProgressBar bar = (ProgressBar) UiLoader.findById(root, "p");
+        assertNotNull(bar);
+        assertEquals(0.25f, bar.getValue(), 1e-6f);
+        assertTrue(bar.isShowText());
+
+        Slider slider = (Slider) UiLoader.findById(root, "s");
+        assertNotNull(slider);
+        assertEquals(0.0f, slider.getMin(), 1e-6f);
+        assertEquals(100.0f, slider.getMax(), 1e-6f);
+        assertEquals(5.0f, slider.getStep(), 1e-6f);
+        assertEquals(40.0f, slider.getValue(), 1e-6f);
+
+        ToggleSwitch sw = (ToggleSwitch) UiLoader.findById(root, "w");
+        assertNotNull(sw);
+        assertTrue(sw.isOn());
+        assertEquals("Wi-Fi", sw.getText());
+
+        RadioButton radio = (RadioButton) UiLoader.findById(root, "r");
+        assertNotNull(radio);
+        assertTrue(radio.isSelected());
+        assertEquals("Choice", radio.getText());
+
+        CheckBox check = (CheckBox) UiLoader.findById(root, "c");
+        assertNotNull(check);
+        assertTrue(check.isChecked());
+    }
+
+    @Test
+    void indeterminateProgressBarAttribute() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><progress id=\"p\" indeterminate/></body>");
+        ProgressBar bar = (ProgressBar) UiLoader.findById(root, "p");
+        assertNotNull(bar);
+        assertTrue(bar.isIndeterminate());
+    }
+
+    @Test
+    void badSliderNumbersWarnAndKeepDefaults() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><slider id=\"s\" min=\"oops\" value=\"nope\"/></body>");
+        Slider slider = (Slider) UiLoader.findById(root, "s");
+        assertNotNull(slider);
+        assertEquals(0.0f, slider.getMin(), 1e-6f, "unparsable min falls back to 0");
+        assertEquals(0.0f, slider.getValue(), 1e-6f, "unparsable value is ignored");
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("min")),
+                "a bad min should warn");
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("value")),
+                "a bad value should warn");
     }
 
     private static int countByType(Component c, Class<?> type) {
