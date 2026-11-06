@@ -88,6 +88,7 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── ToggleSwitch.java     # On/off switch
 │   ├── Slider.java           # Continuous value selector
 │   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
+│   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
 │   ├── ScrollPane.java       # Scrollable container
 │   ├── Separator.java        # One-pixel divider
@@ -278,6 +279,7 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `switch`   | `ToggleSwitch` | `on`/`checked` starts it on                |
 | `slider`   | `Slider`    | `min`, `max`, `step`, `value`                |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
+| `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
 
 Attributes: `class`, `id`, `style="..."` (inline CSS), `layout="flex"` /
 `layout="flow"` on containers, and `onclick`/`onchange` which are resolved by
