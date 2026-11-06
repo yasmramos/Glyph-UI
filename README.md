@@ -94,6 +94,9 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── Alert.java            # Inline status message with a severity level
 │   ├── Avatar.java           # Circular initials or profile image
 │   ├── Accordion.java        # Stack of collapsible sections
+│   ├── Chip.java             # Compact interactive tag/filter
+│   ├── Breadcrumb.java       # Navigation trail of clickable segments
+│   ├── Pagination.java       # Pager over a page-split result set
 │   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
@@ -292,6 +295,9 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `alert`    | `Alert`     | `level`/`type` = `info`/`success`/`warning`/`error`; text from tag body |
 | `avatar`   | `Avatar`    | text from tag body are the initials; `src` through the `ImageProvider` |
 | `accordion` | `Accordion` | `<section>` children; `title`/`label` names each header |
+| `chip`     | `Chip`      | text from tag body; `selected`/`active`, `removable`/`closable` |
+| `breadcrumb` | `Breadcrumb` | children are segments (`text`/body or `label`); `separator` glyph |
+| `pagination` | `Pagination` | `pages` count; `page` (1-based) selects the current page |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
 | `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
 | `scroll`   | `ScrollPane` | scrollable container; takes children       |

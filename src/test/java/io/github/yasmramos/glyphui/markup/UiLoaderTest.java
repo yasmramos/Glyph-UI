@@ -8,13 +8,16 @@ import io.github.yasmramos.glyphui.ui.Accordion;
 import io.github.yasmramos.glyphui.ui.Alert;
 import io.github.yasmramos.glyphui.ui.Avatar;
 import io.github.yasmramos.glyphui.ui.Badge;
+import io.github.yasmramos.glyphui.ui.Breadcrumb;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
+import io.github.yasmramos.glyphui.ui.Chip;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
+import io.github.yasmramos.glyphui.ui.Pagination;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
@@ -384,6 +387,51 @@ class UiLoaderTest {
         assertEquals("First", accordion.getSectionTitle(0));
         assertEquals("Second", accordion.getSectionTitle(1));
         assertEquals(List.of(0), accordion.getOpenIndices());
+    }
+
+    @Test
+    void chipBreadcrumbAndPaginationTagsMapToTheirWidgets() {
+        String glyph = """
+                <body>
+                  <div id="form">
+                    <chip id="c1" selected>Filter</chip>
+                    <chip id="c2" removable>Tag</chip>
+                    <breadcrumb id="bc" separator=">">
+                      <span>Home</span>
+                      <span>Library</span>
+                      <span label="Data"></span>
+                    </breadcrumb>
+                    <pagination id="pg" pages="10" page="4"/>
+                  </div>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        Chip selected = (Chip) UiLoader.findById(root, "c1");
+        assertNotNull(selected);
+        assertEquals("Filter", selected.getText());
+        assertTrue(selected.isSelected());
+        assertFalse(selected.isRemovable());
+
+        Chip removable = (Chip) UiLoader.findById(root, "c2");
+        assertNotNull(removable);
+        assertEquals("Tag", removable.getText());
+        assertTrue(removable.isRemovable());
+        assertFalse(removable.isSelected());
+
+        Breadcrumb breadcrumb = (Breadcrumb) UiLoader.findById(root, "bc");
+        assertNotNull(breadcrumb);
+        assertEquals(">", breadcrumb.getSeparator());
+        assertEquals(3, breadcrumb.getSegmentCount());
+        assertEquals("Home", breadcrumb.getSegment(0));
+        assertEquals("Library", breadcrumb.getSegment(1));
+        assertEquals("Data", breadcrumb.getSegment(2));
+
+        Pagination pagination = (Pagination) UiLoader.findById(root, "pg");
+        assertNotNull(pagination);
+        assertEquals(10, pagination.getPageCount());
+        assertEquals(3, pagination.getCurrentPage());
     }
 
     @Test

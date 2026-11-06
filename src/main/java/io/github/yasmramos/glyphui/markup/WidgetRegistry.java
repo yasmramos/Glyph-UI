@@ -6,13 +6,16 @@ import io.github.yasmramos.glyphui.ui.Accordion;
 import io.github.yasmramos.glyphui.ui.Alert;
 import io.github.yasmramos.glyphui.ui.Avatar;
 import io.github.yasmramos.glyphui.ui.Badge;
+import io.github.yasmramos.glyphui.ui.Breadcrumb;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
+import io.github.yasmramos.glyphui.ui.Chip;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
+import io.github.yasmramos.glyphui.ui.Pagination;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
@@ -116,7 +119,11 @@ public final class WidgetRegistry {
      * {@code progress} → {@link ProgressBar}, {@code select} → {@link Dropdown},
      * {@code scroll} → {@link ScrollPane}, {@code separator} / {@code hr} →
      * {@link Separator}, {@code badge} → {@link Badge}, {@code card} →
-     * {@link Card} and {@code tabs} / {@code tabpanel} → {@link Tabs}.</p>
+     * {@link Card}, {@code tabs} / {@code tabpanel} → {@link Tabs},
+     * {@code alert} → {@link Alert}, {@code avatar} → {@link Avatar},
+     * {@code accordion} → {@link Accordion}, {@code chip} → {@link Chip},
+     * {@code breadcrumb} → {@link Breadcrumb} and {@code pagination} →
+     * {@link Pagination}.</p>
      *
      * @return a registry with the default tags registered
      */
@@ -344,6 +351,40 @@ public final class WidgetRegistry {
         });
 
         registry.register("accordion", (element, ctx) -> new Accordion());
+
+        registry.register("chip", (element, ctx) -> {
+            Chip chip = new Chip(ctx.textOf(element));
+            if (ctx.hasAttr(element, "selected") || ctx.hasAttr(element, "active")) {
+                chip.setSelected(true);
+            }
+            if (ctx.hasAttr(element, "removable") || ctx.hasAttr(element, "closable")) {
+                chip.setRemovable(true);
+            }
+            return chip;
+        });
+
+        registry.register("breadcrumb", (element, ctx) -> {
+            Breadcrumb breadcrumb = new Breadcrumb();
+            String separator = ctx.attr(element, "separator");
+            if (!separator.isEmpty()) {
+                breadcrumb.setSeparator(separator);
+            }
+            return breadcrumb;
+        });
+
+        registry.register("pagination", (element, ctx) -> {
+            Pagination pagination = new Pagination();
+            pagination.setPageCount((int) ctx.parseFloatAttr(element, "pages", 1.0f));
+            String current = ctx.attr(element, "page");
+            if (!current.isEmpty()) {
+                try {
+                    pagination.setCurrentPage(Integer.parseInt(current.trim()) - 1);
+                } catch (NumberFormatException e) {
+                    ctx.warn("Bad page '" + current + "' on <" + element.getTagName() + ">");
+                }
+            }
+            return pagination;
+        });
 
         WidgetFactory separator = (element, ctx) -> {
             Separator line = new Separator();

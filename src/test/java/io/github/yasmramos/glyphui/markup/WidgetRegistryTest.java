@@ -5,13 +5,16 @@ import io.github.yasmramos.glyphui.ui.Accordion;
 import io.github.yasmramos.glyphui.ui.Alert;
 import io.github.yasmramos.glyphui.ui.Avatar;
 import io.github.yasmramos.glyphui.ui.Badge;
+import io.github.yasmramos.glyphui.ui.Breadcrumb;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
+import io.github.yasmramos.glyphui.ui.Chip;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
+import io.github.yasmramos.glyphui.ui.Pagination;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
@@ -92,7 +95,8 @@ class WidgetRegistryTest {
                 "h3", "h4", "h5", "h6", "input", "textarea", "img", "checkbox",
                 "radio", "switch", "slider", "spinner", "number", "progress",
                 "select", "scroll", "scrollpane", "separator", "hr", "badge",
-                "card", "tabs", "tabpanel", "alert", "avatar", "accordion"}) {
+                "card", "tabs", "tabpanel", "alert", "avatar", "accordion",
+                "chip", "breadcrumb", "pagination"}) {
             assertTrue(registry.knows(tag), "missing default tag " + tag);
         }
     }
@@ -128,6 +132,9 @@ class WidgetRegistryTest {
         assertInstanceOf(Alert.class, registry.create("alert", null, context));
         assertInstanceOf(Avatar.class, registry.create("avatar", null, context));
         assertInstanceOf(Accordion.class, registry.create("accordion", null, context));
+        assertInstanceOf(Chip.class, registry.create("chip", null, context));
+        assertInstanceOf(Breadcrumb.class, registry.create("breadcrumb", null, context));
+        assertInstanceOf(Pagination.class, registry.create("pagination", null, context));
     }
 
     @Test
