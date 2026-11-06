@@ -6,17 +6,12 @@ import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleSheet;
 import io.github.yasmramos.glyphui.ui.Button;
-import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
-import io.github.yasmramos.glyphui.ui.ImageView;
-import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
-import io.github.yasmramos.glyphui.ui.ProgressBar;
-import io.github.yasmramos.glyphui.ui.RadioButton;
-import io.github.yasmramos.glyphui.ui.Slider;
+import io.github.yasmramos.glyphui.ui.RadioGroup;
+import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
-import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -27,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -52,29 +48,25 @@ import java.util.logging.Logger;
  * them).</p>
  *
  * <h2>Tag mapping</h2>
- * <ul>
- *   <li>{@code div}, {@code body}, {@code section}, {@code span}, unknown
- *       tags → {@link Panel} (unknown tags log a warning and keep their tag
- *       name as the style tag so type selectors still match)</li>
- *   <li>{@code button} → {@link Button}</li>
- *   <li>{@code label}, {@code p}, {@code h1}..{@code h6} → {@link Label}</li>
- *   <li>{@code input}, {@code textarea} → {@link TextField}</li>
- *   <li>{@code img} → {@link ImageView} (loaded through the optional
- *       {@link ImageProvider})</li>
- *   <li>{@code progress} → {@link ProgressBar} ({@code value},
- *       {@code indeterminate}, {@code show-text} attributes)</li>
- *   <li>{@code slider} → {@link Slider} ({@code min}, {@code max},
- *       {@code step}, {@code value} attributes)</li>
- *   <li>{@code switch} → {@link ToggleSwitch} ({@code on}/{@code checked})</li>
- *   <li>{@code radio} → {@link RadioButton} ({@code selected}/{@code checked})</li>
- *   <li>{@code checkbox} → {@link CheckBox} ({@code checked})</li>
- *   <li>{@code select} → {@link Dropdown} ({@code placeholder}; its
- *       {@code option} children become the list, {@code selected} picks the
- *       initial one)</li>
- *   <li>{@code head}/{@code title}/{@code meta}/{@code link}/{@code style}/
- *       {@code script}/{@code base} are document metadata and never become
- *       widgets</li>
- * </ul>
+ * <p>The vocabulary lives in {@link WidgetRegistry#defaults()}, the single
+ * source of truth for tag → widget. {@code div}/{@code body}/{@code section}/
+ * {@code span} build a {@link Panel}, {@code button} a {@link Button},
+ * {@code label}/{@code p}/{@code h1}..{@code h6} a {@link Label},
+ * {@code input}/{@code textarea} a {@link TextField}, {@code img} an
+ * {@link ImageView}, {@code checkbox}, {@code radio} (radios sharing a
+ * {@code name} join one {@link RadioGroup}, reachable through
+ * {@link #getRadioGroup(String)}), {@code switch}, {@code slider},
+ * {@code progress}, {@code select} (its {@code option} children become the
+ * list), {@code scroll} (a container, so it takes children) and
+ * {@code separator}/{@code hr}. Unknown tags map to a generic
+ * {@link Panel} that keeps its tag name as the style tag so type selectors
+ * still match; {@code head}/{@code title}/{@code meta}/{@code link}/
+ * {@code style}/{@code script}/{@code base} are document metadata and never
+ * become widgets.</p>
+ *
+ * <p>{@link #setWidgetRegistry(WidgetRegistry)} replaces the vocabulary
+ * wholesale, while {@link #registerTag(String, TagFactory)} adds or overrides
+ * a single tag; the latter wins over the registry for the tags it names.</p>
  *
  * <h2>Document root</h2>
  * <p>If the document contains a {@code body} element, it becomes the root
@@ -176,6 +168,16 @@ public final class UiLoader {
     private final Map<String, Component> componentsById = new HashMap<>();
     /** User-registered custom tag factories (lower-cased tag name -> factory). */
     private final Map<String, TagFactory> tagFactories = new HashMap<>();
+    /** The tag vocabulary: the single source of truth for tag -> widget. */
+    private WidgetRegistry widgets = WidgetRegistry.defaults();
+    private final WidgetContext widgetContext = new LoaderWidgetContext();
+
+    /**
+     * Radio groups created while building the tree, keyed by the
+     * {@code name} attribute shared by their buttons. Lets callers reach a
+     * group (to install an {@code onChange}) after a load.
+     */
+    private final Map<String, RadioGroup> radioGroups = new LinkedHashMap<>();
     /** Binding paths already warned about during the current load (dedupe). */
     private final Set<String> warnedBindings = new java.util.HashSet<>();
 
@@ -212,6 +214,28 @@ public final class UiLoader {
      */
     public void setImageProvider(ImageProvider imageProvider) {
         this.imageProvider = imageProvider;
+    }
+
+    /**
+     * Sets the tag vocabulary used to create widgets. Passing a registry with
+     * extra tags is an alternative to {@link #registerTag(String, TagFactory)}
+     * when a caller wants to configure the whole vocabulary up front.
+     *
+     * @param registry the registry to use (must not be null)
+     * @throws IllegalArgumentException when registry is null
+     */
+    public void setWidgetRegistry(WidgetRegistry registry) {
+        if (registry == null) {
+            throw new IllegalArgumentException("WidgetRegistry must not be null");
+        }
+        this.widgets = registry;
+    }
+
+    /**
+     * @return the tag vocabulary in use (never null)
+     */
+    public WidgetRegistry getWidgetRegistry() {
+        return widgets;
     }
 
     /**
@@ -252,6 +276,31 @@ public final class UiLoader {
      */
     public StyleSheet getLastStyleSheet() {
         return lastStyleSheet;
+    }
+
+    /**
+     * Gets a radio group created during the last load.
+     *
+     * <p>{@code <radio>} elements sharing a {@code name} attribute are joined
+     * into one {@link RadioGroup}, so their selection is mutually exclusive.
+     * Use this to reach that group after loading — typically to install a
+     * selection listener.</p>
+     *
+     * @param name the group name (the shared {@code name} attribute)
+     * @return the group, or null when the last load created no such group
+     */
+    public RadioGroup getRadioGroup(String name) {
+        return name == null ? null : radioGroups.get(name);
+    }
+
+    /**
+     * The radio groups created during the last load, keyed by their
+     * {@code name} attribute, in first-appearance order.
+     *
+     * @return unmodifiable map of name to group
+     */
+    public Map<String, RadioGroup> getRadioGroups() {
+        return Collections.unmodifiableMap(radioGroups);
     }
 
     /**
@@ -338,6 +387,7 @@ public final class UiLoader {
         warnedBindings.clear();
         warnings.clear();
         componentsById.clear();
+        radioGroups.clear();
         ParseResult result = new Parser().parse(source);
         for (ParseError error : result.errors()) {
             warn("parse error " + error);
@@ -400,7 +450,9 @@ public final class UiLoader {
             bindClick(button, element);
         }
 
-        if (component instanceof Panel panel) {
+        if (component instanceof Tabs tabs) {
+            buildTabChildren(element, tabs);
+        } else if (component instanceof Panel panel) {
             for (Element child : widgetChildren(element)) {
                 Component c = buildComponent(child);
                 if (c != null) {
@@ -412,6 +464,29 @@ public final class UiLoader {
             buildDropdownOptions(element, dropdown);
         }
         return component;
+    }
+
+    /**
+     * Populates a {@code <tabs>} from its children, one page per child. The
+     * tab label comes from the child's {@code data-tab} attribute, then its
+     * {@code label} attribute, and otherwise falls back to the widget's own
+     * derived label.
+     *
+     * @param element the {@code tabs} element
+     * @param tabs    the container to populate
+     */
+    private void buildTabChildren(Element element, Tabs tabs) {
+        for (Element child : widgetChildren(element)) {
+            Component page = buildComponent(child);
+            if (page == null) {
+                continue;
+            }
+            String label = attr(child, "data-tab");
+            if (label.isEmpty()) {
+                label = attr(child, "label");
+            }
+            tabs.addTab(label, page);
+        }
     }
 
     /**
@@ -442,121 +517,57 @@ public final class UiLoader {
         if (custom != null) {
             return custom.create(element);
         }
-        switch (tag) {
-            case "button" -> {
-                // No hardcoded 120x32: content-sized widget; an explicit
-                // width/height attribute (or inline style) is applied later by
-                // applyCommonAttributes (4.16).
-                return new Button(textOf(element));
-            }
-            case "label", "p", "h1", "h2", "h3", "h4", "h5", "h6" -> {
-                String sizeAttr = attr(element, "font-size");
-                Label l = new Label(textOf(element));
-                if (!sizeAttr.isEmpty()) {
-                    try {
-                        l.setFontSize(Float.valueOf(sizeAttr.replaceAll("[^0-9.]", "")));
-                    } catch (NumberFormatException e) {
-                        warn("Bad font-size '" + sizeAttr + "' on <" + tag + ">");
-                    }
-                }
-                return l;
-            }
-            case "input", "textarea" -> {
-                TextField tf = new TextField();
-                String value = !attr(element, "value").isEmpty()
-                        ? attr(element, "value") : textOf(element);
-                if (!value.isEmpty()) {
-                    tf.setText(value);
-                }
-                return tf;
-            }
-            case "img" -> {
-                ImageView iv = new ImageView();
-                String src = attr(element, "src");
-                if (!src.isEmpty()) {
-                    if (imageProvider != null) {
-                        Image image = imageProvider.load(src);
-                        if (image != null) {
-                            iv.setImage(image);
-                        } else {
-                            warn("ImageProvider returned null for src '" + src + "'");
-                        }
-                    } else {
-                        warn("<img src=\"" + src + "\"> ignored: no ImageProvider set");
-                    }
-                }
-                return iv;
-            }
-            case "div", "body", "section", "span", "panel", "root", "ui" -> {
-                return new Panel(Float.NaN, Float.NaN);
-            }
-            case "progress" -> {
-                ProgressBar bar = new ProgressBar();
-                String value = attr(element, "value");
-                if (!value.isEmpty()) {
-                    try {
-                        bar.setValue(Float.parseFloat(value.trim()));
-                    } catch (NumberFormatException e) {
-                        warn("Bad value '" + value + "' on <progress>");
-                    }
-                }
-                if (hasAttr(element, "indeterminate")) {
-                    bar.setIndeterminate(true);
-                }
-                if (hasAttr(element, "show-text")) {
-                    bar.setShowText(true);
-                }
-                return bar;
-            }
-            case "slider" -> {
-                Slider slider = new Slider();
-                applySliderRange(element, slider);
-                String value = attr(element, "value");
-                if (!value.isEmpty()) {
-                    try {
-                        slider.setValue(Float.parseFloat(value.trim()));
-                    } catch (NumberFormatException e) {
-                        warn("Bad value '" + value + "' on <slider>");
-                    }
-                }
-                return slider;
-            }
-            case "switch" -> {
-                ToggleSwitch sw = new ToggleSwitch(textOf(element));
-                if (hasAttr(element, "on") || hasAttr(element, "checked")) {
-                    sw.setOn(true);
-                }
-                return sw;
-            }
-            case "radio" -> {
-                RadioButton rb = new RadioButton(textOf(element));
-                if (hasAttr(element, "selected") || hasAttr(element, "checked")) {
-                    rb.setSelected(true);
-                }
-                return rb;
-            }
-            case "select" -> {
-                Dropdown dd = new Dropdown();
-                String placeholder = attr(element, "placeholder");
-                if (!placeholder.isEmpty()) {
-                    dd.setPlaceholder(placeholder);
-                }
-                return dd;
-            }
-            case "checkbox" -> {
-                CheckBox cb = new CheckBox(textOf(element));
-                if (hasAttr(element, "checked")) {
-                    cb.setChecked(true);
-                }
-                return cb;
-            }
-            default -> {
-                // Unknown tag: generic panel that still matches its own type selector.
-                warn("Unknown tag <" + tag + ">, mapped to generic Panel");
-                Panel p = new Panel(Float.NaN, Float.NaN);
-                p.setStyleTag(tag);
-                return p;
-            }
+        if (!widgets.knows(tag)) {
+            // Unknown tag: generic panel that still matches its own type selector.
+            warn("Unknown tag <" + tag + ">, mapped to generic Panel");
+            Panel p = new Panel(Float.NaN, Float.NaN);
+            p.setStyleTag(tag);
+            return p;
+        }
+        return widgets.create(tag, element, widgetContext);
+    }
+
+    /**
+     * Bridges the loader services a {@link WidgetFactory} may need. Keeps the
+     * factory contract free of any {@link UiLoader} dependency while still
+     * letting a factory read attributes, resolve images, join radio groups and
+     * record diagnostics.
+     */
+    private final class LoaderWidgetContext implements WidgetContext {
+
+        @Override
+        public String attr(Element element, String name) {
+            return UiLoader.attr(element, name);
+        }
+
+        @Override
+        public boolean hasAttr(Element element, String name) {
+            return UiLoader.hasAttr(element, name);
+        }
+
+        @Override
+        public String textOf(Element element) {
+            return UiLoader.this.textOf(element);
+        }
+
+        @Override
+        public float parseFloatAttr(Element element, String name, float defaultValue) {
+            return UiLoader.this.parseFloatAttr(element, name, defaultValue);
+        }
+
+        @Override
+        public void warn(String message) {
+            UiLoader.this.warn(message);
+        }
+
+        @Override
+        public ImageProvider imageProvider() {
+            return imageProvider;
+        }
+
+        @Override
+        public RadioGroup radioGroup(String name) {
+            return radioGroups.computeIfAbsent(name, key -> new RadioGroup());
         }
     }
 
@@ -813,21 +824,6 @@ public final class UiLoader {
      */
     private static boolean hasAttr(Element element, String name) {
         return element.findAttribute(name) != null;
-    }
-
-    /**
-     * Applies {@code min}, {@code max} and {@code step} attributes to a slider,
-     * warning on unparsable numbers.
-     *
-     * @param element the slider element
-     * @param slider  the widget to configure
-     */
-    private void applySliderRange(Element element, Slider slider) {
-        float min = parseFloatAttr(element, "min", 0.0f);
-        float max = parseFloatAttr(element, "max", 1.0f);
-        float step = parseFloatAttr(element, "step", 0.0f);
-        slider.setRange(min, max);
-        slider.setStep(step);
     }
 
     /**

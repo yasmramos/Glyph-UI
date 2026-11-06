@@ -4,7 +4,9 @@ import io.github.yasmramos.glyphui.markup.UiLoader;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.style.StyleProperty;
+import io.github.yasmramos.glyphui.ui.Badge;
 import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
@@ -13,7 +15,12 @@ import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
+import io.github.yasmramos.glyphui.ui.RadioGroup;
+import io.github.yasmramos.glyphui.ui.ScrollPane;
+import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Slider;
+import io.github.yasmramos.glyphui.ui.Spinner;
+import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 
@@ -263,6 +270,14 @@ class UiLoaderTest {
                   <div id="form">
                     <progress id="p" value="0.25" show-text/>
                     <slider id="s" min="0" max="100" step="5" value="40"/>
+                    <spinner id="sp" min="0" max="10" step="2" value="5"/>
+                    <number id="num" min="1" max="9" value="3"/>
+                    <badge id="b">NEW</badge>
+                    <card id="cd" title="Details"><label>body</label></card>
+                    <tabs id="tb">
+                      <div data-tab="First"><label>one</label></div>
+                      <div data-tab="Second"><label>two</label></div>
+                    </tabs>
                     <switch id="w" checked>Wi-Fi</switch>
                     <radio id="r" selected>Choice</radio>
                     <checkbox id="c" checked>Agree</checkbox>
@@ -283,6 +298,35 @@ class UiLoaderTest {
         assertEquals(100.0f, slider.getMax(), 1e-6f);
         assertEquals(5.0f, slider.getStep(), 1e-6f);
         assertEquals(40.0f, slider.getValue(), 1e-6f);
+
+        Spinner stepper = (Spinner) UiLoader.findById(root, "sp");
+        assertNotNull(stepper);
+        assertEquals(0.0f, stepper.getMin(), 1e-6f);
+        assertEquals(10.0f, stepper.getMax(), 1e-6f);
+        assertEquals(2.0f, stepper.getStep(), 1e-6f);
+        assertEquals(6.0f, stepper.getValue(), 1e-6f);
+
+        Spinner number = (Spinner) UiLoader.findById(root, "num");
+        assertNotNull(number);
+        assertEquals(1.0f, number.getMin(), 1e-6f);
+        assertEquals(9.0f, number.getMax(), 1e-6f);
+        assertEquals(3.0f, number.getValue(), 1e-6f);
+
+        Badge badge = (Badge) UiLoader.findById(root, "b");
+        assertNotNull(badge);
+        assertEquals("NEW", badge.getText());
+
+        Card card = (Card) UiLoader.findById(root, "cd");
+        assertNotNull(card);
+        assertEquals("Details", card.getTitle());
+        assertEquals(1, card.getChildren().size());
+
+        Tabs tabs = (Tabs) UiLoader.findById(root, "tb");
+        assertNotNull(tabs);
+        assertEquals(2, tabs.getTabCount());
+        assertEquals("First", tabs.getTabLabel(0));
+        assertEquals("Second", tabs.getTabLabel(1));
+        assertEquals(0, tabs.getSelectedIndex());
 
         ToggleSwitch sw = (ToggleSwitch) UiLoader.findById(root, "w");
         assertNotNull(sw);
@@ -336,6 +380,173 @@ class UiLoaderTest {
         assertNotNull(dd);
         assertEquals(0, dd.getItemCount());
         assertEquals(-1, dd.getSelectedIndex());
+    }
+
+    @Test
+    void radiosSharingANameJoinOneGroup() {
+        String glyph = """
+                <body>
+                  <div id="form">
+                    <radio id="a" name="size">Small</radio>
+                    <radio id="b" name="size">Medium</radio>
+                    <radio id="c" name="size">Large</radio>
+                    <radio id="loose">Loose</radio>
+                  </div>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        RadioButton a = (RadioButton) UiLoader.findById(root, "a");
+        RadioButton b = (RadioButton) UiLoader.findById(root, "b");
+        RadioButton c = (RadioButton) UiLoader.findById(root, "c");
+        RadioButton loose = (RadioButton) UiLoader.findById(root, "loose");
+
+        RadioGroup size = loader.getRadioGroup("size");
+        assertNotNull(size);
+        assertEquals(3, size.size());
+        assertSame(size, a.getGroup());
+        assertSame(size, b.getGroup());
+        assertSame(size, c.getGroup());
+        // A radio with no `name` stays independent.
+        assertNull(loose.getGroup());
+    }
+
+    @Test
+    void radiosInAGroupAreMutuallyExclusive() {
+        String glyph = """
+                <body>
+                  <radio id="a" name="size">Small</radio>
+                  <radio id="b" name="size" selected>Medium</radio>
+                  <radio id="c" name="size">Large</radio>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        RadioButton a = (RadioButton) UiLoader.findById(root, "a");
+        RadioButton b = (RadioButton) UiLoader.findById(root, "b");
+        RadioButton c = (RadioButton) UiLoader.findById(root, "c");
+
+        // The `selected` attribute picked b; selecting c must clear it.
+        assertFalse(a.isSelected());
+        assertTrue(b.isSelected());
+
+        c.setSelected(true);
+        assertFalse(b.isSelected());
+        assertTrue(c.isSelected());
+
+        RadioGroup size = loader.getRadioGroup("size");
+        assertSame(c, size.getSelected());
+    }
+
+    @Test
+    void twoNamesCreateTwoIndependentGroups() {
+        String glyph = """
+                <body>
+                  <radio id="s" name="size">Small</radio>
+                  <radio id="l" name="size">Large</radio>
+                  <radio id="r" name="colour">Red</radio>
+                  <radio id="g" name="colour">Green</radio>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        assertEquals(2, loader.getRadioGroups().size());
+
+        RadioButton small = (RadioButton) UiLoader.findById(root, "s");
+        RadioButton red = (RadioButton) UiLoader.findById(root, "r");
+
+        small.setSelected(true);
+        red.setSelected(true);
+        // Selecting in one group never disturbs the other.
+        assertTrue(small.isSelected());
+        assertTrue(red.isSelected());
+    }
+
+    @Test
+    void radioGroupsAreResetBetweenLoads() {
+        UiLoader loader = new UiLoader();
+        loader.loadFromString("<body><radio name=\"size\">A</radio></body>");
+        assertNotNull(loader.getRadioGroup("size"));
+
+        loader.loadFromString("<body><radio name=\"colour\">R</radio></body>");
+        assertNull(loader.getRadioGroup("size"));
+        assertNotNull(loader.getRadioGroup("colour"));
+    }
+
+    @Test
+    void scrollTagsMapToAScrollPaneWithChildren() {
+        String glyph = """
+                <body>
+                  <scroll id="sc" width="200" height="100">
+                    <label>Inside</label>
+                  </scroll>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        ScrollPane pane = (ScrollPane) UiLoader.findById(root, "sc");
+        assertNotNull(pane);
+        assertEquals("scroll", pane.getStyleTag());
+        // ScrollPane is a Panel, so its children land inside it.
+        assertTrue(pane.getChildren().stream()
+                .anyMatch(c -> c instanceof Label l && "Inside".equals(l.getText())));
+    }
+
+    @Test
+    void separatorTagDefaultsToHorizontal() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><separator id=\"sep\"/></body>");
+
+        Separator sep = (Separator) UiLoader.findById(root, "sep");
+        assertNotNull(sep);
+        assertEquals(Separator.Orientation.HORIZONTAL, sep.getOrientation());
+        assertEquals("separator", sep.getStyleTag());
+    }
+
+    @Test
+    void separatorOrientationAttributeIsHonoured() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><separator id=\"sep\" orientation=\"vertical\"/></body>");
+
+        Separator sep = (Separator) UiLoader.findById(root, "sep");
+        assertEquals(Separator.Orientation.VERTICAL, sep.getOrientation());
+    }
+
+    @Test
+    void unknownSeparatorOrientationWarnsAndKeepsTheDefault() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><separator id=\"sep\" orientation=\"diagonal\"/></body>");
+
+        Separator sep = (Separator) UiLoader.findById(root, "sep");
+        assertEquals(Separator.Orientation.HORIZONTAL, sep.getOrientation());
+        assertTrue(loader.getWarnings().stream()
+                .anyMatch(w -> w.contains("diagonal")), loader.getWarnings().toString());
+    }
+
+    @Test
+    void hrIsShorthandForASeparator() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString("<body><hr id=\"rule\"/></body>");
+
+        assertInstanceOf(Separator.class, UiLoader.findById(root, "rule"));
+    }
+
+    @Test
+    void progressWidgetMatchesItsMarkupTypeSelector() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><progress id=\"p\" value=\"0.5\"/></body>");
+
+        // The style tag must match the markup tag, so a `progress { ... }`
+        // rule in the sheet reaches the widget.
+        assertEquals("progress", UiLoader.findById(root, "p").getStyleTag());
     }
 
     @Test

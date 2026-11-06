@@ -87,7 +87,7 @@ public class ProgressBar extends Component {
 
     @Override
     protected String defaultStyleTag() {
-        return "progressbar";
+        return "progress";
     }
 
     /**
