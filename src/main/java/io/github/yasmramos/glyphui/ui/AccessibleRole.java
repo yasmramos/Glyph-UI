@@ -80,5 +80,14 @@ public enum AccessibleRole {
     AVATAR,
 
     /** A stack of collapsible sections ({@link Accordion}). */
-    ACCORDION
+    ACCORDION,
+
+    /** A compact interactive tag or filter ({@link Chip}). */
+    CHIP,
+
+    /** A navigation trail of clickable segments ({@link Breadcrumb}). */
+    BREADCRUMB,
+
+    /** A pager over a page-split result set ({@link Pagination}). */
+    PAGINATION
 }

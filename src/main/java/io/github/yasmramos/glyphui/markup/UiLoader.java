@@ -5,8 +5,9 @@ import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleSheet;
-import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Accordion;
+import io.github.yasmramos.glyphui.ui.Breadcrumb;
+import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.Panel;
@@ -455,6 +456,8 @@ public final class UiLoader {
             buildTabChildren(element, tabs);
         } else if (component instanceof Accordion accordion) {
             buildAccordionChildren(element, accordion);
+        } else if (component instanceof Breadcrumb breadcrumb) {
+            buildBreadcrumbChildren(element, breadcrumb);
         } else if (component instanceof Panel panel) {
             for (Element child : widgetChildren(element)) {
                 Component c = buildComponent(child);
@@ -515,6 +518,22 @@ public final class UiLoader {
                 title = attr(child, "label");
             }
             accordion.addSection(title, body);
+        }
+    }
+
+    /**
+     * Populates a {@code <breadcrumb>} from its children, one segment per
+     * child. The segment caption comes from the child's {@code text} / body,
+     * falling back to its {@code label} attribute. A {@code separator}
+     * attribute on the breadcrumb sets the glyph between segments.
+     */
+    private void buildBreadcrumbChildren(Element element, Breadcrumb breadcrumb) {
+        for (Element child : widgetChildren(element)) {
+            String label = textOf(child);
+            if (label.isEmpty()) {
+                label = attr(child, "label");
+            }
+            breadcrumb.addSegment(label);
         }
     }
 
