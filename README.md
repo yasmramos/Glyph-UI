@@ -97,6 +97,14 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── Chip.java             # Compact interactive tag/filter
 │   ├── Breadcrumb.java       # Navigation trail of clickable segments
 │   ├── Pagination.java       # Pager over a page-split result set
+│   ├── Link.java             # Text hyperlink with a visited state
+│   ├── Rating.java           # Star rating control
+│   ├── Skeleton.java         # Loading placeholder block
+│   ├── Stepper.java          # Multi-step flow indicator
+│   ├── Toolbar.java          # Horizontal strip of controls
+│   ├── GroupBox.java         # Titled border grouping controls
+│   ├── ListBox.java          # Scrollable selectable item list
+│   ├── SplitPane.java        # Two panes with a draggable divider
 │   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
@@ -298,6 +306,14 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `chip`     | `Chip`      | text from tag body; `selected`/`active`, `removable`/`closable` |
 | `breadcrumb` | `Breadcrumb` | children are segments (`text`/body or `label`); `separator` glyph |
 | `pagination` | `Pagination` | `pages` count; `page` (1-based) selects the current page |
+| `a`        | `Link`      | `href`/`target`; `visited`, `underline`      |
+| `rating`   | `Rating`    | `max`, `value`; `half`/`allow-half`, `readonly` |
+| `skeleton` | `Skeleton`  | `shape` = `text`/`circle`/`rect`; `static` disables the pulse |
+| `stepper`  | `Stepper`   | `steps` (comma list) or `<step>` children; `current` (1-based), `free`/`non-linear` |
+| `toolbar`  | `Toolbar`   | container; children are laid out in a row   |
+| `groupbox` | `GroupBox`  | `title`/`label`; children below the title strip |
+| `listbox`  | `ListBox`   | `<item>` children (`selected` marks the initial row) |
+| `splitpane` | `SplitPane` | two children; `orientation` = `horizontal`/`vertical`, `ratio` |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
 | `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
 | `scroll`   | `ScrollPane` | scrollable container; takes children       |
