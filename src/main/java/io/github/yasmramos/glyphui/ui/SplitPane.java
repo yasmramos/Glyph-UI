@@ -428,6 +428,9 @@ public class SplitPane extends Panel {
             return;
         }
         ratio = next;
+        if (ratioProperty != null) {
+            ratioProperty.set(ratio);
+        }
         invalidateLayout();
         if (notify && onResize != null) {
             try {

@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.graphics.Property;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -53,6 +54,29 @@ class RatingTest extends TestBase {
         float x = index * slot + Rating.STAR_SIZE / 2.0f;
         rating.onMouseEvent(mouse(MouseEventType.PRESS, x, 12));
         rating.onMouseEvent(mouse(MouseEventType.RELEASE, x, 12));
+    }
+
+    @Test
+    void clickUpdatesTheObservableValueProperty() {
+        Rating rating = sizedRating(5);
+        Property<Float> value = rating.valueProperty();
+
+        clickStar(rating, 2);
+
+        assertEquals(3.0f, rating.getValue());
+        assertEquals(3.0f, value.get());
+    }
+
+    @Test
+    void keyboardUpdatesTheObservableValueProperty() {
+        Rating rating = sizedRating(5);
+        Property<Float> value = rating.valueProperty();
+
+        rating.onKeyEvent(key(GlyphKeys.RIGHT));
+        rating.onKeyEvent(key(GlyphKeys.RIGHT));
+
+        assertEquals(2.0f, rating.getValue());
+        assertEquals(2.0f, value.get());
     }
 
     @Test

@@ -10,7 +10,9 @@ import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Chip;
+import io.github.yasmramos.glyphui.ui.ColorPicker;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Dialog;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
@@ -23,9 +25,11 @@ import io.github.yasmramos.glyphui.ui.ScrollPane;
 import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.Spinner;
+import io.github.yasmramos.glyphui.ui.Table;
 import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
+import io.github.yasmramos.glyphui.ui.TreeView;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -96,7 +100,8 @@ class WidgetRegistryTest {
                 "radio", "switch", "slider", "spinner", "number", "progress",
                 "select", "scroll", "scrollpane", "separator", "hr", "badge",
                 "card", "tabs", "tabpanel", "alert", "avatar", "accordion",
-                "chip", "breadcrumb", "pagination"}) {
+                "chip", "breadcrumb", "pagination", "table", "treeview",
+                "dialog", "colorpicker"}) {
             assertTrue(registry.knows(tag), "missing default tag " + tag);
         }
     }
@@ -135,6 +140,10 @@ class WidgetRegistryTest {
         assertInstanceOf(Chip.class, registry.create("chip", null, context));
         assertInstanceOf(Breadcrumb.class, registry.create("breadcrumb", null, context));
         assertInstanceOf(Pagination.class, registry.create("pagination", null, context));
+        assertInstanceOf(Table.class, registry.create("table", null, context));
+        assertInstanceOf(TreeView.class, registry.create("treeview", null, context));
+        assertInstanceOf(Dialog.class, registry.create("dialog", null, context));
+        assertInstanceOf(ColorPicker.class, registry.create("colorpicker", null, context));
     }
 
     @Test

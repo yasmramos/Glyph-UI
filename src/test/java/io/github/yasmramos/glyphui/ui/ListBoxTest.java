@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.graphics.Property;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +49,44 @@ class ListBoxTest extends TestBase {
         list.setWidth(160.0f);
         list.setHeight(rows * ListBox.ROW_HEIGHT);
         return list;
+    }
+
+    @Test
+    void programmaticSelectionKeepsTheObservablePropertyInSync() {
+        ListBox list = sizedList(5);
+        Property<Integer> selection = list.selectedIndexProperty();
+
+        list.setSelectedIndex(3);
+
+        assertEquals(3, list.getSelectedIndex());
+        assertEquals(3, selection.get());
+    }
+
+    @Test
+    void clickSelectionUpdatesTheObservableProperty() {
+        ListBox list = sizedList(5);
+        // The property is observed from the start: a property created after
+        // the click would capture the already-updated value and hide a stale
+        // write-through.
+        Property<Integer> selection = list.selectedIndexProperty();
+
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 10.0f, 10.0f));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 10.0f, 10.0f));
+
+        assertEquals(0, list.getSelectedIndex());
+        assertEquals(0, selection.get());
+    }
+
+    @Test
+    void keyboardSelectionUpdatesTheObservableProperty() {
+        ListBox list = sizedList(5);
+        Property<Integer> selection = list.selectedIndexProperty();
+
+        list.onKeyEvent(key(GlyphKeys.DOWN));
+        list.onKeyEvent(key(GlyphKeys.DOWN));
+
+        assertEquals(1, list.getSelectedIndex());
+        assertEquals(1, selection.get());
     }
 
     @Test

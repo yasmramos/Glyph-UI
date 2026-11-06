@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.graphics.Property;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -45,6 +46,31 @@ class StepperTest extends TestBase {
         stepper.setWidth(400.0f);
         stepper.setHeight(40.0f);
         return stepper;
+    }
+
+    @Test
+    void clickUpdatesTheObservableCurrentStepProperty() {
+        Stepper stepper = sizedStepper("One", "Two", "Three");
+        stepper.setCurrentStep(2);
+        Property<Integer> current = stepper.currentStepProperty();
+
+        stepper.onMouseEvent(mouse(MouseEventType.PRESS, 5, 20));
+        stepper.onMouseEvent(mouse(MouseEventType.RELEASE, 5, 20));
+
+        assertEquals(0, stepper.getCurrentStep());
+        assertEquals(0, current.get());
+    }
+
+    @Test
+    void keyboardUpdatesTheObservableCurrentStepProperty() {
+        Stepper stepper = sizedStepper("One", "Two", "Three");
+        stepper.setLinear(false);
+        Property<Integer> current = stepper.currentStepProperty();
+
+        stepper.onKeyEvent(key(GlyphKeys.RIGHT));
+
+        assertEquals(1, stepper.getCurrentStep());
+        assertEquals(1, current.get());
     }
 
     @Test

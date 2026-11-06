@@ -131,6 +131,10 @@ public class PopupLayer extends Panel {
         }
         if (top instanceof Menu menu) {
             menu.onKeyEvent(event);
+        } else {
+            // A modal dialog owns the keyboard while it is up, so Enter can
+            // activate its default action.
+            top.onKeyEvent(event);
         }
         return true;
     }

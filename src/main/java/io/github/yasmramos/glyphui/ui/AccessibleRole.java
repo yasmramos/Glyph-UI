@@ -113,5 +113,17 @@ public enum AccessibleRole {
     LIST_BOX,
 
     /** A resizable two-pane splitter ({@link SplitPane}). */
-    SPLIT_PANE
+    SPLIT_PANE,
+
+    /** A grid of rows and columns ({@link Table}). */
+    TABLE,
+
+    /** A hierarchical list of expandable nodes ({@link TreeView}). */
+    TREE,
+
+    /** A modal surface over the rest of the UI ({@link Dialog}). */
+    DIALOG,
+
+    /** A color chooser ({@link ColorPicker}). */
+    COLOR_PICKER
 }

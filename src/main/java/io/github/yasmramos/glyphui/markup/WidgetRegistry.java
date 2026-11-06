@@ -11,7 +11,9 @@ import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Chip;
+import io.github.yasmramos.glyphui.ui.ColorPicker;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Dialog;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.GroupBox;
 import io.github.yasmramos.glyphui.ui.ImageView;
@@ -30,13 +32,17 @@ import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.Spinner;
 import io.github.yasmramos.glyphui.ui.SplitPane;
 import io.github.yasmramos.glyphui.ui.Stepper;
+import io.github.yasmramos.glyphui.ui.Table;
 import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 import io.github.yasmramos.glyphui.ui.Toolbar;
+import io.github.yasmramos.glyphui.ui.TreeView;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -546,6 +552,79 @@ public final class WidgetRegistry {
         };
         registry.register("separator", separator);
         registry.register("hr", separator);
+
+        registry.register("table", (element, ctx) -> {
+            Table table = new Table();
+            String cols = ctx.attr(element, "columns");
+            if (!cols.isEmpty()) {
+                for (String caption : cols.split(",")) {
+                    table.addColumn(caption.trim());
+                }
+            }
+            return table;
+        });
+
+        registry.register("treeview", (element, ctx) -> new TreeView());
+
+        registry.register("dialog", (element, ctx) -> {
+            Dialog dialog = new Dialog(ctx.attr(element, "title"), ctx.textOf(element));
+            String actions = ctx.attr(element, "actions");
+            if (!actions.isEmpty()) {
+                for (String label : actions.split(",")) {
+                    dialog.addAction(label.trim());
+                }
+            }
+            if (ctx.hasAttr(element, "static")
+                    || ctx.hasAttr(element, "non-dismissible")) {
+                dialog.setDismissible(false);
+            }
+            return dialog;
+        });
+
+        registry.register("colorpicker", (element, ctx) -> {
+            ColorPicker picker = new ColorPicker();
+            String palette = ctx.attr(element, "palette");
+            if (!palette.isEmpty()) {
+                List<Integer> parsed = new ArrayList<>();
+                for (String token : palette.split(",")) {
+                    Integer color = ColorPicker.parseHex(token);
+                    if (color == null) {
+                        ctx.warn("Bad palette color '" + token
+                                + "' on <" + element.getTagName() + ">");
+                    } else {
+                        parsed.add(color);
+                    }
+                }
+                if (!parsed.isEmpty()) {
+                    int[] colors = new int[parsed.size()];
+                    for (int i = 0; i < colors.length; i++) {
+                        colors[i] = parsed.get(i);
+                    }
+                    picker.setPalette(colors);
+                }
+            }
+            String value = ctx.attr(element, "value");
+            if (!value.isEmpty()) {
+                if (!picker.setHex(value)) {
+                    ctx.warn("Bad value '" + value + "' on <colorpicker>");
+                }
+            }
+            String columns = ctx.attr(element, "columns");
+            if (!columns.isEmpty()) {
+                try {
+                    picker.setColumns(Integer.parseInt(columns.trim()));
+                } catch (NumberFormatException e) {
+                    ctx.warn("Bad columns '" + columns + "' on <colorpicker>");
+                }
+            }
+            if (ctx.hasAttr(element, "no-preview")) {
+                picker.setShowPreview(false);
+            }
+            if (ctx.hasAttr(element, "no-hex")) {
+                picker.setShowHex(false);
+            }
+            return picker;
+        });
 
         return registry;
     }

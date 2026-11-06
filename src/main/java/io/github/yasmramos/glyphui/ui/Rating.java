@@ -445,6 +445,9 @@ public class Rating extends Component {
         }
         boolean changed = next != value;
         value = next;
+        if (valueProperty != null) {
+            valueProperty.set(value);
+        }
         invalidatePaint();
         if (changed && notify && onChange != null) {
             try {
