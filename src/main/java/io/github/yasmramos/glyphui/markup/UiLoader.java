@@ -15,6 +15,8 @@ import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
 import io.github.yasmramos.glyphui.ui.RadioGroup;
+import io.github.yasmramos.glyphui.ui.ScrollPane;
+import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
@@ -75,6 +77,10 @@ import java.util.logging.Logger;
  *   <li>{@code select} → {@link Dropdown} ({@code placeholder}; its
  *       {@code option} children become the list, {@code selected} picks the
  *       initial one)</li>
+ *   <li>{@code scroll} → {@link ScrollPane} (a container, so it takes
+ *       children)</li>
+ *   <li>{@code separator}, {@code hr} → {@link Separator} ({@code orientation}
+ *       of {@code horizontal} or {@code vertical})</li>
  *   <li>{@code head}/{@code title}/{@code meta}/{@code link}/{@code style}/
  *       {@code script}/{@code base} are document metadata and never become
  *       widgets</li>
@@ -594,6 +600,25 @@ public final class UiLoader {
                     cb.setChecked(true);
                 }
                 return cb;
+            }
+            case "scroll", "scrollpane" -> {
+                return new ScrollPane();
+            }
+            case "separator", "hr" -> {
+                Separator sep = new Separator();
+                String orientation = attr(element, "orientation");
+                if (!orientation.isEmpty()) {
+                    Separator.Orientation parsed = parseEnum(
+                            Separator.Orientation.class,
+                            orientation.trim().toUpperCase(Locale.ROOT));
+                    if (parsed != null) {
+                        sep.setOrientation(parsed);
+                    } else {
+                        warn("Unknown orientation '" + orientation + "' on <"
+                                + element.getTagName() + ">");
+                    }
+                }
+                return sep;
             }
             default -> {
                 // Unknown tag: generic panel that still matches its own type selector.

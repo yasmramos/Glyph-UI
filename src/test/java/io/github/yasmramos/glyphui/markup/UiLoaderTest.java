@@ -14,6 +14,8 @@ import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
 import io.github.yasmramos.glyphui.ui.RadioGroup;
+import io.github.yasmramos.glyphui.ui.ScrollPane;
+import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
@@ -431,6 +433,79 @@ class UiLoaderTest {
         loader.loadFromString("<body><radio name=\"colour\">R</radio></body>");
         assertNull(loader.getRadioGroup("size"));
         assertNotNull(loader.getRadioGroup("colour"));
+    }
+
+    @Test
+    void scrollTagsMapToAScrollPaneWithChildren() {
+        String glyph = """
+                <body>
+                  <scroll id="sc" width="200" height="100">
+                    <label>Inside</label>
+                  </scroll>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        ScrollPane pane = (ScrollPane) UiLoader.findById(root, "sc");
+        assertNotNull(pane);
+        assertEquals("scroll", pane.getStyleTag());
+        // ScrollPane is a Panel, so its children land inside it.
+        assertTrue(pane.getChildren().stream()
+                .anyMatch(c -> c instanceof Label l && "Inside".equals(l.getText())));
+    }
+
+    @Test
+    void separatorTagDefaultsToHorizontal() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><separator id=\"sep\"/></body>");
+
+        Separator sep = (Separator) UiLoader.findById(root, "sep");
+        assertNotNull(sep);
+        assertEquals(Separator.Orientation.HORIZONTAL, sep.getOrientation());
+        assertEquals("separator", sep.getStyleTag());
+    }
+
+    @Test
+    void separatorOrientationAttributeIsHonoured() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><separator id=\"sep\" orientation=\"vertical\"/></body>");
+
+        Separator sep = (Separator) UiLoader.findById(root, "sep");
+        assertEquals(Separator.Orientation.VERTICAL, sep.getOrientation());
+    }
+
+    @Test
+    void unknownSeparatorOrientationWarnsAndKeepsTheDefault() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><separator id=\"sep\" orientation=\"diagonal\"/></body>");
+
+        Separator sep = (Separator) UiLoader.findById(root, "sep");
+        assertEquals(Separator.Orientation.HORIZONTAL, sep.getOrientation());
+        assertTrue(loader.getWarnings().stream()
+                .anyMatch(w -> w.contains("diagonal")), loader.getWarnings().toString());
+    }
+
+    @Test
+    void hrIsShorthandForASeparator() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString("<body><hr id=\"rule\"/></body>");
+
+        assertInstanceOf(Separator.class, UiLoader.findById(root, "rule"));
+    }
+
+    @Test
+    void progressWidgetMatchesItsMarkupTypeSelector() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(
+                "<body><progress id=\"p\" value=\"0.5\"/></body>");
+
+        // The style tag must match the markup tag, so a `progress { ... }`
+        // rule in the sheet reaches the widget.
+        assertEquals("progress", UiLoader.findById(root, "p").getStyleTag());
     }
 
     @Test
