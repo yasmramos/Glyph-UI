@@ -14,6 +14,7 @@ import io.github.yasmramos.glyphui.ui.RadioButton;
 import io.github.yasmramos.glyphui.ui.ScrollPane;
 import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Slider;
+import io.github.yasmramos.glyphui.ui.Spinner;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 
@@ -105,6 +106,7 @@ public final class WidgetRegistry {
      * {@code textarea} → {@link TextField}, {@code img} → {@link ImageView},
      * {@code checkbox} → {@link CheckBox}, {@code radio} → {@link RadioButton},
      * {@code switch} → {@link ToggleSwitch}, {@code slider} → {@link Slider},
+     * {@code spinner} / {@code number} → {@link Spinner},
      * {@code progress} → {@link ProgressBar}, {@code select} → {@link Dropdown},
      * {@code scroll} → {@link ScrollPane} and {@code separator} / {@code hr} →
      * {@link Separator}.</p>
@@ -225,6 +227,24 @@ public final class WidgetRegistry {
             }
             return slider;
         });
+
+        WidgetFactory spinner = (element, ctx) -> {
+            Spinner stepper = new Spinner();
+            stepper.setRange(ctx.parseFloatAttr(element, "min", 0.0f),
+                    ctx.parseFloatAttr(element, "max", 100.0f));
+            stepper.setStep(ctx.parseFloatAttr(element, "step", 1.0f));
+            String value = ctx.attr(element, "value");
+            if (!value.isEmpty()) {
+                try {
+                    stepper.setValue(Float.parseFloat(value.trim()));
+                } catch (NumberFormatException e) {
+                    ctx.warn("Bad value '" + value + "' on <" + element.getTagName() + ">");
+                }
+            }
+            return stepper;
+        };
+        registry.register("spinner", spinner);
+        registry.register("number", spinner);
 
         registry.register("progress", (element, ctx) -> {
             ProgressBar bar = new ProgressBar();

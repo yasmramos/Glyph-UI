@@ -87,6 +87,7 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── RadioButton.java      # Mutually-exclusive choice (with RadioGroup)
 │   ├── ToggleSwitch.java     # On/off switch
 │   ├── Slider.java           # Continuous value selector
+│   ├── Spinner.java          # Numeric stepper with -/+ buttons
 │   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
@@ -278,6 +279,7 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `radio`    | `RadioButton` | `selected`/`checked`; `name` groups radios into a `RadioGroup` |
 | `switch`   | `ToggleSwitch` | `on`/`checked` starts it on                |
 | `slider`   | `Slider`    | `min`, `max`, `step`, `value`                |
+| `spinner`, `number` | `Spinner` | `min`, `max`, `step`, `value`; `-`/`+` steppers |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
 | `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
 | `scroll`   | `ScrollPane` | scrollable container; takes children       |

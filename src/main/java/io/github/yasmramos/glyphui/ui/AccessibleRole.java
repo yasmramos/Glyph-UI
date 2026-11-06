@@ -59,5 +59,8 @@ public enum AccessibleRole {
     SEPARATOR,
 
     /** A scrollable container ({@link ScrollPane}). */
-    SCROLL_PANE
+    SCROLL_PANE,
+
+    /** A numeric stepper over a bounded range ({@link Spinner}). */
+    SPINNER
 }

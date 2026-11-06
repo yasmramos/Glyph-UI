@@ -17,6 +17,7 @@ import io.github.yasmramos.glyphui.ui.RadioGroup;
 import io.github.yasmramos.glyphui.ui.ScrollPane;
 import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Slider;
+import io.github.yasmramos.glyphui.ui.Spinner;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 
@@ -266,6 +267,8 @@ class UiLoaderTest {
                   <div id="form">
                     <progress id="p" value="0.25" show-text/>
                     <slider id="s" min="0" max="100" step="5" value="40"/>
+                    <spinner id="sp" min="0" max="10" step="2" value="5"/>
+                    <number id="num" min="1" max="9" value="3"/>
                     <switch id="w" checked>Wi-Fi</switch>
                     <radio id="r" selected>Choice</radio>
                     <checkbox id="c" checked>Agree</checkbox>
@@ -286,6 +289,19 @@ class UiLoaderTest {
         assertEquals(100.0f, slider.getMax(), 1e-6f);
         assertEquals(5.0f, slider.getStep(), 1e-6f);
         assertEquals(40.0f, slider.getValue(), 1e-6f);
+
+        Spinner stepper = (Spinner) UiLoader.findById(root, "sp");
+        assertNotNull(stepper);
+        assertEquals(0.0f, stepper.getMin(), 1e-6f);
+        assertEquals(10.0f, stepper.getMax(), 1e-6f);
+        assertEquals(2.0f, stepper.getStep(), 1e-6f);
+        assertEquals(6.0f, stepper.getValue(), 1e-6f);
+
+        Spinner number = (Spinner) UiLoader.findById(root, "num");
+        assertNotNull(number);
+        assertEquals(1.0f, number.getMin(), 1e-6f);
+        assertEquals(9.0f, number.getMax(), 1e-6f);
+        assertEquals(3.0f, number.getValue(), 1e-6f);
 
         ToggleSwitch sw = (ToggleSwitch) UiLoader.findById(root, "w");
         assertNotNull(sw);
