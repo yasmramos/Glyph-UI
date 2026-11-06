@@ -4,7 +4,9 @@ import io.github.yasmramos.glyphui.markup.UiLoader;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.style.StyleProperty;
+import io.github.yasmramos.glyphui.ui.Badge;
 import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
@@ -18,6 +20,7 @@ import io.github.yasmramos.glyphui.ui.ScrollPane;
 import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.Spinner;
+import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 
@@ -269,6 +272,12 @@ class UiLoaderTest {
                     <slider id="s" min="0" max="100" step="5" value="40"/>
                     <spinner id="sp" min="0" max="10" step="2" value="5"/>
                     <number id="num" min="1" max="9" value="3"/>
+                    <badge id="b">NEW</badge>
+                    <card id="cd" title="Details"><label>body</label></card>
+                    <tabs id="tb">
+                      <div data-tab="First"><label>one</label></div>
+                      <div data-tab="Second"><label>two</label></div>
+                    </tabs>
                     <switch id="w" checked>Wi-Fi</switch>
                     <radio id="r" selected>Choice</radio>
                     <checkbox id="c" checked>Agree</checkbox>
@@ -302,6 +311,22 @@ class UiLoaderTest {
         assertEquals(1.0f, number.getMin(), 1e-6f);
         assertEquals(9.0f, number.getMax(), 1e-6f);
         assertEquals(3.0f, number.getValue(), 1e-6f);
+
+        Badge badge = (Badge) UiLoader.findById(root, "b");
+        assertNotNull(badge);
+        assertEquals("NEW", badge.getText());
+
+        Card card = (Card) UiLoader.findById(root, "cd");
+        assertNotNull(card);
+        assertEquals("Details", card.getTitle());
+        assertEquals(1, card.getChildren().size());
+
+        Tabs tabs = (Tabs) UiLoader.findById(root, "tb");
+        assertNotNull(tabs);
+        assertEquals(2, tabs.getTabCount());
+        assertEquals("First", tabs.getTabLabel(0));
+        assertEquals("Second", tabs.getTabLabel(1));
+        assertEquals(0, tabs.getSelectedIndex());
 
         ToggleSwitch sw = (ToggleSwitch) UiLoader.findById(root, "w");
         assertNotNull(sw);

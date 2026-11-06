@@ -1,7 +1,9 @@
 package io.github.yasmramos.glyphui.markup;
 
 import io.github.yasmramos.glyphui.layout.FlexLayout;
+import io.github.yasmramos.glyphui.ui.Badge;
 import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
@@ -14,6 +16,8 @@ import io.github.yasmramos.glyphui.ui.RadioGroup;
 import io.github.yasmramos.glyphui.ui.ScrollPane;
 import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Slider;
+import io.github.yasmramos.glyphui.ui.Spinner;
+import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 import org.junit.jupiter.api.Test;
@@ -83,8 +87,9 @@ class WidgetRegistryTest {
         for (String tag : new String[]{"div", "body", "section", "span", "panel",
                 "root", "ui", "box", "stack", "button", "label", "p", "h1", "h2",
                 "h3", "h4", "h5", "h6", "input", "textarea", "img", "checkbox",
-                "radio", "switch", "slider", "progress", "select", "scroll",
-                "scrollpane", "separator", "hr"}) {
+                "radio", "switch", "slider", "spinner", "number", "progress",
+                "select", "scroll", "scrollpane", "separator", "hr", "badge",
+                "card", "tabs", "tabpanel"}) {
             assertTrue(registry.knows(tag), "missing default tag " + tag);
         }
     }
@@ -111,6 +116,12 @@ class WidgetRegistryTest {
         assertInstanceOf(ScrollPane.class, registry.create("scroll", null, context));
         assertInstanceOf(Separator.class, registry.create("separator", null, context));
         assertInstanceOf(Separator.class, registry.create("hr", null, context));
+        assertInstanceOf(Spinner.class, registry.create("spinner", null, context));
+        assertInstanceOf(Spinner.class, registry.create("number", null, context));
+        assertInstanceOf(Badge.class, registry.create("badge", null, context));
+        assertInstanceOf(Card.class, registry.create("card", null, context));
+        assertInstanceOf(Tabs.class, registry.create("tabs", null, context));
+        assertInstanceOf(Tabs.class, registry.create("tabpanel", null, context));
     }
 
     @Test

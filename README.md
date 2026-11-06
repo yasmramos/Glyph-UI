@@ -88,6 +88,9 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── ToggleSwitch.java     # On/off switch
 │   ├── Slider.java           # Continuous value selector
 │   ├── Spinner.java          # Numeric stepper with -/+ buttons
+│   ├── Badge.java            # Compact pill-shaped label
+│   ├── Card.java             # Titled surface grouping content
+│   ├── Tabs.java             # Tabbed container, one page at a time
 │   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
@@ -280,6 +283,9 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `switch`   | `ToggleSwitch` | `on`/`checked` starts it on                |
 | `slider`   | `Slider`    | `min`, `max`, `step`, `value`                |
 | `spinner`, `number` | `Spinner` | `min`, `max`, `step`, `value`; `-`/`+` steppers |
+| `badge`    | `Badge`     | text from tag body                           |
+| `card`     | `Card`      | `title`/`header`; children below the title strip |
+| `tabs`, `tabpanel` | `Tabs` | children are pages; `data-tab`/`label` names each tab |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
 | `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
 | `scroll`   | `ScrollPane` | scrollable container; takes children       |

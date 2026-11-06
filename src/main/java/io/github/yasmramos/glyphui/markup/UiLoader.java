@@ -10,6 +10,7 @@ import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.RadioGroup;
+import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
 
 import java.io.IOException;
@@ -449,7 +450,9 @@ public final class UiLoader {
             bindClick(button, element);
         }
 
-        if (component instanceof Panel panel) {
+        if (component instanceof Tabs tabs) {
+            buildTabChildren(element, tabs);
+        } else if (component instanceof Panel panel) {
             for (Element child : widgetChildren(element)) {
                 Component c = buildComponent(child);
                 if (c != null) {
@@ -461,6 +464,29 @@ public final class UiLoader {
             buildDropdownOptions(element, dropdown);
         }
         return component;
+    }
+
+    /**
+     * Populates a {@code <tabs>} from its children, one page per child. The
+     * tab label comes from the child's {@code data-tab} attribute, then its
+     * {@code label} attribute, and otherwise falls back to the widget's own
+     * derived label.
+     *
+     * @param element the {@code tabs} element
+     * @param tabs    the container to populate
+     */
+    private void buildTabChildren(Element element, Tabs tabs) {
+        for (Element child : widgetChildren(element)) {
+            Component page = buildComponent(child);
+            if (page == null) {
+                continue;
+            }
+            String label = attr(child, "data-tab");
+            if (label.isEmpty()) {
+                label = attr(child, "label");
+            }
+            tabs.addTab(label, page);
+        }
     }
 
     /**

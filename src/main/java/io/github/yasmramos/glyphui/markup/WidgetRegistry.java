@@ -2,7 +2,9 @@ package io.github.yasmramos.glyphui.markup;
 
 import io.github.yasmramos.glyphui.graphics.Image;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
+import io.github.yasmramos.glyphui.ui.Badge;
 import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
@@ -15,6 +17,7 @@ import io.github.yasmramos.glyphui.ui.ScrollPane;
 import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.Spinner;
+import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 
@@ -108,8 +111,9 @@ public final class WidgetRegistry {
      * {@code switch} → {@link ToggleSwitch}, {@code slider} → {@link Slider},
      * {@code spinner} / {@code number} → {@link Spinner},
      * {@code progress} → {@link ProgressBar}, {@code select} → {@link Dropdown},
-     * {@code scroll} → {@link ScrollPane} and {@code separator} / {@code hr} →
-     * {@link Separator}.</p>
+     * {@code scroll} → {@link ScrollPane}, {@code separator} / {@code hr} →
+     * {@link Separator}, {@code badge} → {@link Badge}, {@code card} →
+     * {@link Card} and {@code tabs} / {@code tabpanel} → {@link Tabs}.</p>
      *
      * @return a registry with the default tags registered
      */
@@ -276,6 +280,23 @@ public final class WidgetRegistry {
 
         registry.register("scroll", (element, ctx) -> new ScrollPane());
         registry.register("scrollpane", (element, ctx) -> new ScrollPane());
+
+        registry.register("badge", (element, ctx) -> new Badge(ctx.textOf(element)));
+
+        registry.register("card", (element, ctx) -> {
+            Card card = new Card();
+            String title = ctx.attr(element, "title");
+            if (title.isEmpty()) {
+                title = ctx.attr(element, "header");
+            }
+            if (!title.isEmpty()) {
+                card.setTitle(title);
+            }
+            return card;
+        });
+
+        registry.register("tabs", (element, ctx) -> new Tabs());
+        registry.register("tabpanel", (element, ctx) -> new Tabs());
 
         WidgetFactory separator = (element, ctx) -> {
             Separator line = new Separator();

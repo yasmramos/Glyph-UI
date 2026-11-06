@@ -62,5 +62,14 @@ public enum AccessibleRole {
     SCROLL_PANE,
 
     /** A numeric stepper over a bounded range ({@link Spinner}). */
-    SPINNER
+    SPINNER,
+
+    /** A compact pill-shaped label ({@link Badge}). */
+    BADGE,
+
+    /** A titled surface that groups related content ({@link Card}). */
+    CARD,
+
+    /** A tabbed container showing one panel at a time ({@link Tabs}). */
+    TAB_PANEL
 }
