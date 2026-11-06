@@ -47,7 +47,7 @@ first, then run any example from the examples directory:
 ```bash
 mvn install -DskipTests          # from the repository root (installs glyph-ui)
 cd glyph-ui-examples
-mvn exec:java                    # runs io.github.yasmramos.glyphui.examples.DemoButtons
+mvn exec:java                    # runs io.github.yasmramos.glyphui.examples.App
 ```
 
 On macOS:
@@ -102,7 +102,7 @@ src/main/java/io/github/yasmramos/glyphui/
 glyph-ui-examples/            # Separate Maven project with runnable demos
 ├── pom.xml                   # Depends on the glyph-ui artifact
 └── src/main/
-    ├── java/io/github/yasmramos/glyphui/examples/DemoButtons.java
+    ├── java/io/github/yasmramos/glyphui/examples/App.java
     └── resources/demo/       # ui.glyph + app.css declarative markup demo
 ```
 
