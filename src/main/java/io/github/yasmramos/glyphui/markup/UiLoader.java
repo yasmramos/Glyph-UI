@@ -6,6 +6,7 @@ import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleSheet;
 import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.Accordion;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.Panel;
@@ -452,6 +453,8 @@ public final class UiLoader {
 
         if (component instanceof Tabs tabs) {
             buildTabChildren(element, tabs);
+        } else if (component instanceof Accordion accordion) {
+            buildAccordionChildren(element, accordion);
         } else if (component instanceof Panel panel) {
             for (Element child : widgetChildren(element)) {
                 Component c = buildComponent(child);
@@ -486,6 +489,32 @@ public final class UiLoader {
                 label = attr(child, "label");
             }
             tabs.addTab(label, page);
+        }
+    }
+
+    /**
+     * Populates an {@code <accordion>} from its children, one collapsible
+     * section per {@code <section>} child. The header title comes from the
+     * child's {@code title} attribute, then its {@code label} attribute, and
+     * otherwise falls back to the section's text.
+     *
+     * @param element   the {@code accordion} element
+     * @param accordion the container to populate
+     */
+    private void buildAccordionChildren(Element element, Accordion accordion) {
+        for (Element child : widgetChildren(element)) {
+            if (!"section".equals(child.getTagName().toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            Component body = buildComponent(child);
+            if (body == null) {
+                continue;
+            }
+            String title = attr(child, "title");
+            if (title.isEmpty()) {
+                title = attr(child, "label");
+            }
+            accordion.addSection(title, body);
         }
     }
 

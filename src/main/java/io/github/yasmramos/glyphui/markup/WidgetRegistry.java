@@ -2,6 +2,9 @@ package io.github.yasmramos.glyphui.markup;
 
 import io.github.yasmramos.glyphui.graphics.Image;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
+import io.github.yasmramos.glyphui.ui.Accordion;
+import io.github.yasmramos.glyphui.ui.Alert;
+import io.github.yasmramos.glyphui.ui.Avatar;
 import io.github.yasmramos.glyphui.ui.Badge;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Card;
@@ -297,6 +300,50 @@ public final class WidgetRegistry {
 
         registry.register("tabs", (element, ctx) -> new Tabs());
         registry.register("tabpanel", (element, ctx) -> new Tabs());
+
+        registry.register("alert", (element, ctx) -> {
+            Alert.Level level = Alert.Level.INFO;
+            String raw = ctx.attr(element, "level");
+            if (raw.isEmpty()) {
+                raw = ctx.attr(element, "type");
+            }
+            if (!raw.isEmpty()) {
+                String normalised = raw.trim().toUpperCase(Locale.ROOT);
+                Alert.Level parsed = null;
+                for (Alert.Level candidate : Alert.Level.values()) {
+                    if (candidate.name().equals(normalised)) {
+                        parsed = candidate;
+                    }
+                }
+                if (parsed == null) {
+                    ctx.warn("Unknown level '" + raw + "' on <" + element.getTagName() + ">");
+                } else {
+                    level = parsed;
+                }
+            }
+            return new Alert(level, ctx.textOf(element));
+        });
+
+        registry.register("avatar", (element, ctx) -> {
+            Avatar avatar = new Avatar(ctx.textOf(element));
+            String src = ctx.attr(element, "src");
+            if (!src.isEmpty()) {
+                UiLoader.ImageProvider provider = ctx.imageProvider();
+                if (provider == null) {
+                    ctx.warn("<avatar src=\"" + src + "\"> ignored: no ImageProvider set");
+                } else {
+                    Image image = provider.load(src);
+                    if (image == null) {
+                        ctx.warn("ImageProvider returned null for src '" + src + "'");
+                    } else {
+                        avatar.setImage(image);
+                    }
+                }
+            }
+            return avatar;
+        });
+
+        registry.register("accordion", (element, ctx) -> new Accordion());
 
         WidgetFactory separator = (element, ctx) -> {
             Separator line = new Separator();

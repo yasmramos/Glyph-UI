@@ -1,6 +1,9 @@
 package io.github.yasmramos.glyphui.markup;
 
 import io.github.yasmramos.glyphui.layout.FlexLayout;
+import io.github.yasmramos.glyphui.ui.Accordion;
+import io.github.yasmramos.glyphui.ui.Alert;
+import io.github.yasmramos.glyphui.ui.Avatar;
 import io.github.yasmramos.glyphui.ui.Badge;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Card;
@@ -89,7 +92,7 @@ class WidgetRegistryTest {
                 "h3", "h4", "h5", "h6", "input", "textarea", "img", "checkbox",
                 "radio", "switch", "slider", "spinner", "number", "progress",
                 "select", "scroll", "scrollpane", "separator", "hr", "badge",
-                "card", "tabs", "tabpanel"}) {
+                "card", "tabs", "tabpanel", "alert", "avatar", "accordion"}) {
             assertTrue(registry.knows(tag), "missing default tag " + tag);
         }
     }
@@ -122,6 +125,9 @@ class WidgetRegistryTest {
         assertInstanceOf(Card.class, registry.create("card", null, context));
         assertInstanceOf(Tabs.class, registry.create("tabs", null, context));
         assertInstanceOf(Tabs.class, registry.create("tabpanel", null, context));
+        assertInstanceOf(Alert.class, registry.create("alert", null, context));
+        assertInstanceOf(Avatar.class, registry.create("avatar", null, context));
+        assertInstanceOf(Accordion.class, registry.create("accordion", null, context));
     }
 
     @Test
