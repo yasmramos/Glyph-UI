@@ -14,6 +14,7 @@ import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
+import io.github.yasmramos.glyphui.ui.RadioGroup;
 import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
@@ -27,6 +28,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -66,7 +68,9 @@ import java.util.logging.Logger;
  *   <li>{@code slider} → {@link Slider} ({@code min}, {@code max},
  *       {@code step}, {@code value} attributes)</li>
  *   <li>{@code switch} → {@link ToggleSwitch} ({@code on}/{@code checked})</li>
- *   <li>{@code radio} → {@link RadioButton} ({@code selected}/{@code checked})</li>
+ *   <li>{@code radio} → {@link RadioButton} ({@code selected}/{@code checked};
+ *       radios sharing a {@code name} join one {@link RadioGroup}, reachable
+ *       through {@link #getRadioGroup(String)})</li>
  *   <li>{@code checkbox} → {@link CheckBox} ({@code checked})</li>
  *   <li>{@code select} → {@link Dropdown} ({@code placeholder}; its
  *       {@code option} children become the list, {@code selected} picks the
@@ -176,6 +180,13 @@ public final class UiLoader {
     private final Map<String, Component> componentsById = new HashMap<>();
     /** User-registered custom tag factories (lower-cased tag name -> factory). */
     private final Map<String, TagFactory> tagFactories = new HashMap<>();
+
+    /**
+     * Radio groups created while building the tree, keyed by the
+     * {@code name} attribute shared by their buttons. Lets callers reach a
+     * group (to install an {@code onChange}) after a load.
+     */
+    private final Map<String, RadioGroup> radioGroups = new LinkedHashMap<>();
     /** Binding paths already warned about during the current load (dedupe). */
     private final Set<String> warnedBindings = new java.util.HashSet<>();
 
@@ -252,6 +263,31 @@ public final class UiLoader {
      */
     public StyleSheet getLastStyleSheet() {
         return lastStyleSheet;
+    }
+
+    /**
+     * Gets a radio group created during the last load.
+     *
+     * <p>{@code <radio>} elements sharing a {@code name} attribute are joined
+     * into one {@link RadioGroup}, so their selection is mutually exclusive.
+     * Use this to reach that group after loading — typically to install a
+     * selection listener.</p>
+     *
+     * @param name the group name (the shared {@code name} attribute)
+     * @return the group, or null when the last load created no such group
+     */
+    public RadioGroup getRadioGroup(String name) {
+        return name == null ? null : radioGroups.get(name);
+    }
+
+    /**
+     * The radio groups created during the last load, keyed by their
+     * {@code name} attribute, in first-appearance order.
+     *
+     * @return unmodifiable map of name to group
+     */
+    public Map<String, RadioGroup> getRadioGroups() {
+        return Collections.unmodifiableMap(radioGroups);
     }
 
     /**
@@ -338,6 +374,7 @@ public final class UiLoader {
         warnedBindings.clear();
         warnings.clear();
         componentsById.clear();
+        radioGroups.clear();
         ParseResult result = new Parser().parse(source);
         for (ParseError error : result.errors()) {
             warn("parse error " + error);
@@ -530,6 +567,14 @@ public final class UiLoader {
             }
             case "radio" -> {
                 RadioButton rb = new RadioButton(textOf(element));
+                // A shared `name` makes sibling radios mutually exclusive:
+                // they all join the same RadioGroup (HTML's radio semantics).
+                String groupName = attr(element, "name");
+                if (!groupName.isEmpty()) {
+                    RadioGroup group = radioGroups.computeIfAbsent(
+                            groupName, key -> new RadioGroup());
+                    group.add(rb);
+                }
                 if (hasAttr(element, "selected") || hasAttr(element, "checked")) {
                     rb.setSelected(true);
                 }

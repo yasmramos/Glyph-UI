@@ -13,6 +13,7 @@ import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
+import io.github.yasmramos.glyphui.ui.RadioGroup;
 import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
@@ -336,6 +337,100 @@ class UiLoaderTest {
         assertNotNull(dd);
         assertEquals(0, dd.getItemCount());
         assertEquals(-1, dd.getSelectedIndex());
+    }
+
+    @Test
+    void radiosSharingANameJoinOneGroup() {
+        String glyph = """
+                <body>
+                  <div id="form">
+                    <radio id="a" name="size">Small</radio>
+                    <radio id="b" name="size">Medium</radio>
+                    <radio id="c" name="size">Large</radio>
+                    <radio id="loose">Loose</radio>
+                  </div>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        RadioButton a = (RadioButton) UiLoader.findById(root, "a");
+        RadioButton b = (RadioButton) UiLoader.findById(root, "b");
+        RadioButton c = (RadioButton) UiLoader.findById(root, "c");
+        RadioButton loose = (RadioButton) UiLoader.findById(root, "loose");
+
+        RadioGroup size = loader.getRadioGroup("size");
+        assertNotNull(size);
+        assertEquals(3, size.size());
+        assertSame(size, a.getGroup());
+        assertSame(size, b.getGroup());
+        assertSame(size, c.getGroup());
+        // A radio with no `name` stays independent.
+        assertNull(loose.getGroup());
+    }
+
+    @Test
+    void radiosInAGroupAreMutuallyExclusive() {
+        String glyph = """
+                <body>
+                  <radio id="a" name="size">Small</radio>
+                  <radio id="b" name="size" selected>Medium</radio>
+                  <radio id="c" name="size">Large</radio>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        RadioButton a = (RadioButton) UiLoader.findById(root, "a");
+        RadioButton b = (RadioButton) UiLoader.findById(root, "b");
+        RadioButton c = (RadioButton) UiLoader.findById(root, "c");
+
+        // The `selected` attribute picked b; selecting c must clear it.
+        assertFalse(a.isSelected());
+        assertTrue(b.isSelected());
+
+        c.setSelected(true);
+        assertFalse(b.isSelected());
+        assertTrue(c.isSelected());
+
+        RadioGroup size = loader.getRadioGroup("size");
+        assertSame(c, size.getSelected());
+    }
+
+    @Test
+    void twoNamesCreateTwoIndependentGroups() {
+        String glyph = """
+                <body>
+                  <radio id="s" name="size">Small</radio>
+                  <radio id="l" name="size">Large</radio>
+                  <radio id="r" name="colour">Red</radio>
+                  <radio id="g" name="colour">Green</radio>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        assertEquals(2, loader.getRadioGroups().size());
+
+        RadioButton small = (RadioButton) UiLoader.findById(root, "s");
+        RadioButton red = (RadioButton) UiLoader.findById(root, "r");
+
+        small.setSelected(true);
+        red.setSelected(true);
+        // Selecting in one group never disturbs the other.
+        assertTrue(small.isSelected());
+        assertTrue(red.isSelected());
+    }
+
+    @Test
+    void radioGroupsAreResetBetweenLoads() {
+        UiLoader loader = new UiLoader();
+        loader.loadFromString("<body><radio name=\"size\">A</radio></body>");
+        assertNotNull(loader.getRadioGroup("size"));
+
+        loader.loadFromString("<body><radio name=\"colour\">R</radio></body>");
+        assertNull(loader.getRadioGroup("size"));
+        assertNotNull(loader.getRadioGroup("colour"));
     }
 
     @Test

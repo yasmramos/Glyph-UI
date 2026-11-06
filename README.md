@@ -275,7 +275,7 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `input`    | `TextField` | `value` attribute; `onchange="methodName"`   |
 | `img`      | `ImageView` | `src` resolved through the loader's `ImageProvider` |
 | `checkbox` | `CheckBox`  | `checked` selects it initially               |
-| `radio`    | `RadioButton` | `selected`/`checked`; pair with a `RadioGroup` in code |
+| `radio`    | `RadioButton` | `selected`/`checked`; `name` groups radios into a `RadioGroup` |
 | `switch`   | `ToggleSwitch` | `on`/`checked` starts it on                |
 | `slider`   | `Slider`    | `min`, `max`, `step`, `value`                |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
