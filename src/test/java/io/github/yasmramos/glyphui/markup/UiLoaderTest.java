@@ -7,6 +7,7 @@ import io.github.yasmramos.glyphui.style.StyleProperty;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -295,6 +297,45 @@ class UiLoaderTest {
         CheckBox check = (CheckBox) UiLoader.findById(root, "c");
         assertNotNull(check);
         assertTrue(check.isChecked());
+    }
+
+    @Test
+    void selectTagsMapToADropdownWithOptions() {
+        String glyph = """
+                <body>
+                  <div id="form">
+                    <select id="sel" placeholder="Choose...">
+                      <option>Red</option>
+                      <option value="G">Green</option>
+                      <option selected>Blue</option>
+                    </select>
+                  </div>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        Dropdown dd = (Dropdown) UiLoader.findById(root, "sel");
+        assertNotNull(dd);
+        assertEquals("Choose...", dd.getPlaceholder());
+        assertEquals(List.of("Red", "Green", "Blue"), dd.getItems());
+        // The option carrying `selected` wins over the implicit first option.
+        assertEquals(2, dd.getSelectedIndex());
+        assertEquals("Blue", dd.getSelectedItem());
+    }
+
+    @Test
+    void selectWithoutOptionsOpensNothing() {
+        String glyph = """
+                <body><select id="sel"/></body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        Dropdown dd = (Dropdown) UiLoader.findById(root, "sel");
+        assertNotNull(dd);
+        assertEquals(0, dd.getItemCount());
+        assertEquals(-1, dd.getSelectedIndex());
     }
 
     @Test

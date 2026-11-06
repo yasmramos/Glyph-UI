@@ -4,6 +4,7 @@ import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
@@ -117,6 +118,7 @@ public final class WidgetRegistry {
         registry.register("Slider", element -> new Slider());
         registry.register("Switch", element -> new ToggleSwitch());
         registry.register("Radio", element -> new RadioButton());
+        registry.register("Select", element -> new Dropdown());
         return registry;
     }
 

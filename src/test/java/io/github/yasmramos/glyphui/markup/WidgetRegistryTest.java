@@ -4,6 +4,7 @@ import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
@@ -34,10 +35,10 @@ class WidgetRegistryTest {
 
         for (String tag : new String[]{"Box", "Stack", "Label", "Button", "Field",
                 "Checkbox", "Image", "Separator", "Scroll", "Progress", "Slider",
-                "Switch", "Radio"}) {
+                "Switch", "Radio", "Select"}) {
             assertTrue(registry.knows(tag), "missing default tag " + tag);
         }
-        assertEquals(13, registry.tags().size());
+        assertEquals(14, registry.tags().size());
     }
 
     @Test
@@ -57,6 +58,7 @@ class WidgetRegistryTest {
         assertInstanceOf(Slider.class, registry.create("Slider", null));
         assertInstanceOf(ToggleSwitch.class, registry.create("Switch", null));
         assertInstanceOf(RadioButton.class, registry.create("Radio", null));
+        assertInstanceOf(Dropdown.class, registry.create("Select", null));
     }
 
     @Test

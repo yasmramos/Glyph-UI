@@ -8,6 +8,7 @@ import io.github.yasmramos.glyphui.style.StyleSheet;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
@@ -67,6 +68,9 @@ import java.util.logging.Logger;
  *   <li>{@code switch} → {@link ToggleSwitch} ({@code on}/{@code checked})</li>
  *   <li>{@code radio} → {@link RadioButton} ({@code selected}/{@code checked})</li>
  *   <li>{@code checkbox} → {@link CheckBox} ({@code checked})</li>
+ *   <li>{@code select} → {@link Dropdown} ({@code placeholder}; its
+ *       {@code option} children become the list, {@code selected} picks the
+ *       initial one)</li>
  *   <li>{@code head}/{@code title}/{@code meta}/{@code link}/{@code style}/
  *       {@code script}/{@code base} are document metadata and never become
  *       widgets</li>
@@ -404,7 +408,32 @@ public final class UiLoader {
                 }
             }
         }
+        if (component instanceof Dropdown dropdown) {
+            buildDropdownOptions(element, dropdown);
+        }
         return component;
+    }
+
+    /**
+     * Populates a {@code <select>} from its {@code <option>} children. An
+     * {@code option} with a {@code selected} attribute becomes the initial
+     * selection; otherwise the dropdown keeps its default (the first option).
+     *
+     * @param element  the {@code select} element
+     * @param dropdown the widget to populate
+     */
+    private void buildDropdownOptions(Element element, Dropdown dropdown) {
+        for (Element child : widgetChildren(element)) {
+            if (!"option".equals(child.getTagName().toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            String text = textOf(child);
+            String label = !text.isEmpty() ? text : attr(child, "value");
+            dropdown.addItem(label);
+            if (hasAttr(child, "selected")) {
+                dropdown.setSelectedIndex(dropdown.getItemCount() - 1);
+            }
+        }
     }
 
     private Component createForTag(Element element, String tag) {
@@ -505,6 +534,14 @@ public final class UiLoader {
                     rb.setSelected(true);
                 }
                 return rb;
+            }
+            case "select" -> {
+                Dropdown dd = new Dropdown();
+                String placeholder = attr(element, "placeholder");
+                if (!placeholder.isEmpty()) {
+                    dd.setPlaceholder(placeholder);
+                }
+                return dd;
             }
             case "checkbox" -> {
                 CheckBox cb = new CheckBox(textOf(element));
