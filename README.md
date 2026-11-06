@@ -280,6 +280,8 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `slider`   | `Slider`    | `min`, `max`, `step`, `value`                |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
 | `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
+| `scroll`   | `ScrollPane` | scrollable container; takes children       |
+| `separator`, `hr` | `Separator` | `orientation="horizontal"/"vertical"` |
 
 Attributes: `class`, `id`, `style="..."` (inline CSS), `layout="flex"` /
 `layout="flow"` on containers, and `onclick`/`onchange` which are resolved by
