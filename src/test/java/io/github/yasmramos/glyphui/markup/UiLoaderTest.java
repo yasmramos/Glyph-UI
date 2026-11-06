@@ -4,6 +4,9 @@ import io.github.yasmramos.glyphui.markup.UiLoader;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.style.StyleProperty;
+import io.github.yasmramos.glyphui.ui.Accordion;
+import io.github.yasmramos.glyphui.ui.Alert;
+import io.github.yasmramos.glyphui.ui.Avatar;
 import io.github.yasmramos.glyphui.ui.Badge;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Card;
@@ -341,6 +344,46 @@ class UiLoaderTest {
         CheckBox check = (CheckBox) UiLoader.findById(root, "c");
         assertNotNull(check);
         assertTrue(check.isChecked());
+    }
+
+    @Test
+    void alertAvatarAndAccordionTagsMapToTheirWidgets() {
+        String glyph = """
+                <body>
+                  <div id="form">
+                    <alert id="al" level="warning">Careful</alert>
+                    <alert id="al2" type="error">Boom</alert>
+                    <avatar id="av">JD</avatar>
+                    <accordion id="ac">
+                      <section title="First"><label>one</label></section>
+                      <section label="Second"><label>two</label></section>
+                    </accordion>
+                  </div>
+                </body>
+                """;
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString(glyph);
+
+        Alert alert = (Alert) UiLoader.findById(root, "al");
+        assertNotNull(alert);
+        assertEquals(Alert.Level.WARNING, alert.getLevel());
+        assertEquals("Careful", alert.getText());
+
+        Alert typed = (Alert) UiLoader.findById(root, "al2");
+        assertNotNull(typed);
+        assertEquals(Alert.Level.ERROR, typed.getLevel());
+        assertEquals("Boom", typed.getText());
+
+        Avatar avatar = (Avatar) UiLoader.findById(root, "av");
+        assertNotNull(avatar);
+        assertEquals("JD", avatar.getInitials());
+
+        Accordion accordion = (Accordion) UiLoader.findById(root, "ac");
+        assertNotNull(accordion);
+        assertEquals(2, accordion.getSectionCount());
+        assertEquals("First", accordion.getSectionTitle(0));
+        assertEquals("Second", accordion.getSectionTitle(1));
+        assertEquals(List.of(0), accordion.getOpenIndices());
     }
 
     @Test

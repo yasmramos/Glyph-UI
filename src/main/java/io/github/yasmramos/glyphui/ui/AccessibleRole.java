@@ -71,5 +71,14 @@ public enum AccessibleRole {
     CARD,
 
     /** A tabbed container showing one panel at a time ({@link Tabs}). */
-    TAB_PANEL
+    TAB_PANEL,
+
+    /** An inline status message with a severity level ({@link Alert}). */
+    ALERT,
+
+    /** A circular user image or initials ({@link Avatar}). */
+    AVATAR,
+
+    /** A stack of collapsible sections ({@link Accordion}). */
+    ACCORDION
 }

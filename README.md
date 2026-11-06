@@ -91,6 +91,9 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── Badge.java            # Compact pill-shaped label
 │   ├── Card.java             # Titled surface grouping content
 │   ├── Tabs.java             # Tabbed container, one page at a time
+│   ├── Alert.java            # Inline status message with a severity level
+│   ├── Avatar.java           # Circular initials or profile image
+│   ├── Accordion.java        # Stack of collapsible sections
 │   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
@@ -286,6 +289,9 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `badge`    | `Badge`     | text from tag body                           |
 | `card`     | `Card`      | `title`/`header`; children below the title strip |
 | `tabs`, `tabpanel` | `Tabs` | children are pages; `data-tab`/`label` names each tab |
+| `alert`    | `Alert`     | `level`/`type` = `info`/`success`/`warning`/`error`; text from tag body |
+| `avatar`   | `Avatar`    | text from tag body are the initials; `src` through the `ImageProvider` |
+| `accordion` | `Accordion` | `<section>` children; `title`/`label` names each header |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
 | `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
 | `scroll`   | `ScrollPane` | scrollable container; takes children       |
