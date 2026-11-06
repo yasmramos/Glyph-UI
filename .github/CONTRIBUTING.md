@@ -73,6 +73,27 @@ refactor(core): extract event dispatch into EventRouter
 - Public APIs must have Javadoc (in English).
 - Avoid dead code and unused imports.
 
+## Testing
+
+- Run the full suite with `mvn test`; the coverage gate runs under
+  `mvn verify` (see the JaCoCo thresholds in `pom.xml`).
+- **Phase 1 bug rule:** every bug found must first get a regression test that
+  would have caught it, written *before* the fix. Reproduce the bug in a
+  failing test, apply the minimal fix, confirm the test turns green and the
+  whole suite passes, then commit both together (`fix(ui): <what was broken>`),
+  referencing the issue if one exists.
+
+Test-infrastructure conventions (see `src/test/java/io/github/yasmramos/glyphui/`):
+
+- Extend `TestBase` — its `@AfterEach` clears all process-wide toolkit state
+  (global repaint hook, global focus manager, current `Application`, cached
+  native fonts) so tests cannot leak state into each other.
+- Use `SkijaTestSupport.assumeAvailable()` / `isAvailable()` for any test that
+  renders or measures text natively; such tests are *skipped*, never failed, on
+  hosts without Skija natives.
+- Test real widgets, not mocks: since paints are lazy, `Button` and friends can
+  be constructed and driven through their event handlers headlessly.
+
 ## API Boundary (internal packages)
 
 The public API of this library is defined by a package whitelist — see
