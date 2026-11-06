@@ -10,8 +10,10 @@ import io.github.yasmramos.glyphui.ui.Breadcrumb;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
+import io.github.yasmramos.glyphui.ui.ListBox;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.RadioGroup;
+import io.github.yasmramos.glyphui.ui.Stepper;
 import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
 
@@ -59,8 +61,12 @@ import java.util.logging.Logger;
  * {@code name} join one {@link RadioGroup}, reachable through
  * {@link #getRadioGroup(String)}), {@code switch}, {@code slider},
  * {@code progress}, {@code select} (its {@code option} children become the
- * list), {@code scroll} (a container, so it takes children) and
- * {@code separator}/{@code hr}. Unknown tags map to a generic
+ * list), {@code scroll} (a container, so it takes children),
+ * {@code separator}/{@code hr}, {@code a} (a {@link Link}), {@code rating},
+ * {@code skeleton}, {@code stepper} (its {@code <step>} children become the
+ * steps), {@code toolbar}, {@code groupbox} (a container),
+ * {@code listbox} (its {@code <item>} children become the rows) and
+ * {@code splitpane} (a two-pane container). Unknown tags map to a generic
  * {@link Panel} that keeps its tag name as the style tag so type selectors
  * still match; {@code head}/{@code title}/{@code meta}/{@code link}/
  * {@code style}/{@code script}/{@code base} are document metadata and never
@@ -458,6 +464,10 @@ public final class UiLoader {
             buildAccordionChildren(element, accordion);
         } else if (component instanceof Breadcrumb breadcrumb) {
             buildBreadcrumbChildren(element, breadcrumb);
+        } else if (component instanceof ListBox listBox) {
+            buildListBoxItems(element, listBox);
+        } else if (component instanceof Stepper stepper) {
+            buildStepperSteps(element, stepper);
         } else if (component instanceof Panel panel) {
             for (Element child : widgetChildren(element)) {
                 Component c = buildComponent(child);
@@ -534,6 +544,50 @@ public final class UiLoader {
                 label = attr(child, "label");
             }
             breadcrumb.addSegment(label);
+        }
+    }
+
+    /**
+     * Populates a {@code <listbox>} from its children, one item per child. The
+     * item caption comes from the child's {@code text} / body, falling back to
+     * its {@code label} attribute. An item with a {@code selected} attribute
+     * becomes the initial selection.
+     *
+     * @param element the {@code listbox} element
+     * @param listBox the widget to populate
+     */
+    private void buildListBoxItems(Element element, ListBox listBox) {
+        for (Element child : widgetChildren(element)) {
+            String label = textOf(child);
+            if (label.isEmpty()) {
+                label = attr(child, "label");
+            }
+            listBox.addItem(label);
+            if (hasAttr(child, "selected")) {
+                listBox.setSelectedIndex(listBox.getItemCount() - 1);
+            }
+        }
+    }
+
+    /**
+     * Populates a {@code <stepper>} from its children, one step per child. The
+     * step label comes from the child's {@code text} / body, falling back to
+     * its {@code label} attribute. A child with a {@code current} attribute
+     * becomes the initial step.
+     *
+     * @param element the {@code stepper} element
+     * @param stepper the widget to populate
+     */
+    private void buildStepperSteps(Element element, Stepper stepper) {
+        for (Element child : widgetChildren(element)) {
+            String label = textOf(child);
+            if (label.isEmpty()) {
+                label = attr(child, "label");
+            }
+            stepper.addStep(label);
+            if (hasAttr(child, "current")) {
+                stepper.setCurrentStep(stepper.getStepCount() - 1);
+            }
         }
     }
 

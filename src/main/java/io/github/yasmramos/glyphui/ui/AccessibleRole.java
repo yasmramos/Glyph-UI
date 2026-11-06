@@ -89,5 +89,29 @@ public enum AccessibleRole {
     BREADCRUMB,
 
     /** A pager over a page-split result set ({@link Pagination}). */
-    PAGINATION
+    PAGINATION,
+
+    /** A text hyperlink ({@link Link}). */
+    LINK,
+
+    /** A star rating control ({@link Rating}). */
+    RATING,
+
+    /** A loading placeholder ({@link Skeleton}). */
+    SKELETON,
+
+    /** A multi-step flow indicator ({@link Stepper}). */
+    STEPPER,
+
+    /** A strip of controls ({@link Toolbar}). */
+    TOOLBAR,
+
+    /** A titled group of controls ({@link GroupBox}). */
+    GROUP_BOX,
+
+    /** A selectable list of items ({@link ListBox}). */
+    LIST_BOX,
+
+    /** A resizable two-pane splitter ({@link SplitPane}). */
+    SPLIT_PANE
 }
