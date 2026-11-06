@@ -40,6 +40,18 @@ public enum AccessibleRole {
     /** A check box with a boolean state ({@link CheckBox}). */
     CHECKBOX,
 
+    /** A read-only progress indicator ({@link ProgressBar}). */
+    PROGRESS_BAR,
+
+    /** A continuous value selector ({@link Slider}). */
+    SLIDER,
+
+    /** A two-state on/off switch ({@link ToggleSwitch}). */
+    SWITCH,
+
+    /** A mutually-exclusive choice ({@link RadioButton}). */
+    RADIO_BUTTON,
+
     /** A non-interactive divider between content regions ({@link Separator}). */
     SEPARATOR,
 
