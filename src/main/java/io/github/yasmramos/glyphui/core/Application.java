@@ -128,18 +128,6 @@ public class Application implements AutoCloseable {
     private boolean styleDirty = true;
 
     /**
-     * Test hook: consumes the process-wide style-dirty latch and returns
-     * whether a cascade pass was pending. Used by tests to verify that
-     * style-affecting mutators mark the latch without running a full frame.
-     *
-     * @return true when something invalidated selector matching since the
-     *         last consumption (the latch is cleared by this call)
-     */
-    public static boolean consumePendingStyleInvalidationForTests() {
-        return Component.consumeStyleDirty();
-    }
-
-    /**
      * Repaint plumbing of this instance: the on-demand paint-dirty flag, the
      * UI-thread wake-up policy and the ownership of the single process-wide
      * repaint hook. Extracted in PR 2 (phase 1) so {@code Application} keeps

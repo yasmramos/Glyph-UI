@@ -54,8 +54,10 @@ jobs:
         echo "Created screenshots directory at $(pwd)/screenshots"
         
         echo "Running Maven tests..."
-        mvn -B test || {
-          echo "Tests failed with exit code $?"
+        # `verify` (not `test`) so the JaCoCo coverage gate bound to that
+        # phase actually runs; otherwise the threshold is never enforced.
+        mvn -B verify || {
+          echo "Build failed with exit code $?"
           exit 1
         }
         

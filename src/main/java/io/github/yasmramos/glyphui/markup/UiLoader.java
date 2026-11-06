@@ -6,11 +6,17 @@ import io.github.yasmramos.glyphui.layout.FlowLayout;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleSheet;
 import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.ProgressBar;
+import io.github.yasmramos.glyphui.ui.RadioButton;
+import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.TextField;
+import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -55,6 +61,16 @@ import java.util.logging.Logger;
  *   <li>{@code input}, {@code textarea} → {@link TextField}</li>
  *   <li>{@code img} → {@link ImageView} (loaded through the optional
  *       {@link ImageProvider})</li>
+ *   <li>{@code progress} → {@link ProgressBar} ({@code value},
+ *       {@code indeterminate}, {@code show-text} attributes)</li>
+ *   <li>{@code slider} → {@link Slider} ({@code min}, {@code max},
+ *       {@code step}, {@code value} attributes)</li>
+ *   <li>{@code switch} → {@link ToggleSwitch} ({@code on}/{@code checked})</li>
+ *   <li>{@code radio} → {@link RadioButton} ({@code selected}/{@code checked})</li>
+ *   <li>{@code checkbox} → {@link CheckBox} ({@code checked})</li>
+ *   <li>{@code select} → {@link Dropdown} ({@code placeholder}; its
+ *       {@code option} children become the list, {@code selected} picks the
+ *       initial one)</li>
  *   <li>{@code head}/{@code title}/{@code meta}/{@code link}/{@code style}/
  *       {@code script}/{@code base} are document metadata and never become
  *       widgets</li>
@@ -392,7 +408,32 @@ public final class UiLoader {
                 }
             }
         }
+        if (component instanceof Dropdown dropdown) {
+            buildDropdownOptions(element, dropdown);
+        }
         return component;
+    }
+
+    /**
+     * Populates a {@code <select>} from its {@code <option>} children. An
+     * {@code option} with a {@code selected} attribute becomes the initial
+     * selection; otherwise the dropdown keeps its default (the first option).
+     *
+     * @param element  the {@code select} element
+     * @param dropdown the widget to populate
+     */
+    private void buildDropdownOptions(Element element, Dropdown dropdown) {
+        for (Element child : widgetChildren(element)) {
+            if (!"option".equals(child.getTagName().toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            String text = textOf(child);
+            String label = !text.isEmpty() ? text : attr(child, "value");
+            dropdown.addItem(label);
+            if (hasAttr(child, "selected")) {
+                dropdown.setSelectedIndex(dropdown.getItemCount() - 1);
+            }
+        }
     }
 
     private Component createForTag(Element element, String tag) {
@@ -448,6 +489,66 @@ public final class UiLoader {
             }
             case "div", "body", "section", "span", "panel", "root", "ui" -> {
                 return new Panel(Float.NaN, Float.NaN);
+            }
+            case "progress" -> {
+                ProgressBar bar = new ProgressBar();
+                String value = attr(element, "value");
+                if (!value.isEmpty()) {
+                    try {
+                        bar.setValue(Float.parseFloat(value.trim()));
+                    } catch (NumberFormatException e) {
+                        warn("Bad value '" + value + "' on <progress>");
+                    }
+                }
+                if (hasAttr(element, "indeterminate")) {
+                    bar.setIndeterminate(true);
+                }
+                if (hasAttr(element, "show-text")) {
+                    bar.setShowText(true);
+                }
+                return bar;
+            }
+            case "slider" -> {
+                Slider slider = new Slider();
+                applySliderRange(element, slider);
+                String value = attr(element, "value");
+                if (!value.isEmpty()) {
+                    try {
+                        slider.setValue(Float.parseFloat(value.trim()));
+                    } catch (NumberFormatException e) {
+                        warn("Bad value '" + value + "' on <slider>");
+                    }
+                }
+                return slider;
+            }
+            case "switch" -> {
+                ToggleSwitch sw = new ToggleSwitch(textOf(element));
+                if (hasAttr(element, "on") || hasAttr(element, "checked")) {
+                    sw.setOn(true);
+                }
+                return sw;
+            }
+            case "radio" -> {
+                RadioButton rb = new RadioButton(textOf(element));
+                if (hasAttr(element, "selected") || hasAttr(element, "checked")) {
+                    rb.setSelected(true);
+                }
+                return rb;
+            }
+            case "select" -> {
+                Dropdown dd = new Dropdown();
+                String placeholder = attr(element, "placeholder");
+                if (!placeholder.isEmpty()) {
+                    dd.setPlaceholder(placeholder);
+                }
+                return dd;
+            }
+            case "checkbox" -> {
+                CheckBox cb = new CheckBox(textOf(element));
+                if (hasAttr(element, "checked")) {
+                    cb.setChecked(true);
+                }
+                return cb;
             }
             default -> {
                 // Unknown tag: generic panel that still matches its own type selector.
@@ -700,6 +801,54 @@ public final class UiLoader {
     private static String attr(Element element, String name) {
         Attribute attribute = element.findAttribute(name);
         return attribute == null || attribute.value() == null ? "" : attribute.value();
+    }
+
+    /**
+     * Whether the element carries the named attribute at all (valueless
+     * attributes such as {@code indeterminate} count as present).
+     *
+     * @param element the element to query
+     * @param name    the raw attribute name
+     * @return true when the attribute is present
+     */
+    private static boolean hasAttr(Element element, String name) {
+        return element.findAttribute(name) != null;
+    }
+
+    /**
+     * Applies {@code min}, {@code max} and {@code step} attributes to a slider,
+     * warning on unparsable numbers.
+     *
+     * @param element the slider element
+     * @param slider  the widget to configure
+     */
+    private void applySliderRange(Element element, Slider slider) {
+        float min = parseFloatAttr(element, "min", 0.0f);
+        float max = parseFloatAttr(element, "max", 1.0f);
+        float step = parseFloatAttr(element, "step", 0.0f);
+        slider.setRange(min, max);
+        slider.setStep(step);
+    }
+
+    /**
+     * Reads a numeric attribute, warning and falling back when it is malformed.
+     *
+     * @param element      the element to query
+     * @param name         the attribute name
+     * @param defaultValue the fallback when the attribute is absent or invalid
+     * @return the parsed value or the fallback
+     */
+    private float parseFloatAttr(Element element, String name, float defaultValue) {
+        String raw = attr(element, name);
+        if (raw.isEmpty()) {
+            return defaultValue;
+        }
+        try {
+            return Float.parseFloat(raw.trim());
+        } catch (NumberFormatException e) {
+            warn("Bad " + name + "='" + raw + "' on <" + element.getTagName() + ">");
+            return defaultValue;
+        }
     }
 
     // ------------------------------------------------------------------

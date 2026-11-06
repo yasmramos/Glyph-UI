@@ -4,12 +4,17 @@ import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.ProgressBar;
+import io.github.yasmramos.glyphui.ui.RadioButton;
 import io.github.yasmramos.glyphui.ui.ScrollPane;
 import io.github.yasmramos.glyphui.ui.Separator;
+import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.TextField;
+import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,10 +34,11 @@ class WidgetRegistryTest {
         WidgetRegistry registry = WidgetRegistry.defaults();
 
         for (String tag : new String[]{"Box", "Stack", "Label", "Button", "Field",
-                "Checkbox", "Image", "Separator", "Scroll"}) {
+                "Checkbox", "Image", "Separator", "Scroll", "Progress", "Slider",
+                "Switch", "Radio", "Select"}) {
             assertTrue(registry.knows(tag), "missing default tag " + tag);
         }
-        assertEquals(9, registry.tags().size());
+        assertEquals(14, registry.tags().size());
     }
 
     @Test
@@ -48,6 +54,11 @@ class WidgetRegistryTest {
         assertInstanceOf(ImageView.class, registry.create("Image", null));
         assertInstanceOf(Separator.class, registry.create("Separator", null));
         assertInstanceOf(ScrollPane.class, registry.create("Scroll", null));
+        assertInstanceOf(ProgressBar.class, registry.create("Progress", null));
+        assertInstanceOf(Slider.class, registry.create("Slider", null));
+        assertInstanceOf(ToggleSwitch.class, registry.create("Switch", null));
+        assertInstanceOf(RadioButton.class, registry.create("Radio", null));
+        assertInstanceOf(Dropdown.class, registry.create("Select", null));
     }
 
     @Test

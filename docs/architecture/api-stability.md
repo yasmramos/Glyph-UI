@@ -33,9 +33,10 @@ Skija-native accessors all sat on the same footing as `Button.setText()`.
 A member is part of the frozen surface only if ALL of these hold:
 
 1. It is `public` (or `protected` for subclass extension points).
-2. Its package is one of: `com.glyphui.core`, `com.glyphui.ui`,
-   `com.glyphui.graphics`, `com.glyphui.events`, `com.glyphui.style`,
-   `com.glyphui.layout`.
+2. Its package is one of: `io.github.yasmramos.glyphui.core`,
+   `io.github.yasmramos.glyphui.ui`, `io.github.yasmramos.glyphui.graphics`,
+   `io.github.yasmramos.glyphui.events`, `io.github.yasmramos.glyphui.style`,
+   `io.github.yasmramos.glyphui.layout`.
 3. Its package is NOT `*.internal` (see `internal-boundary.md`).
 4. Its Javadoc does not say **"Not part of the frozen public API"** —
    members kept `public` only for cross-package toolkit plumbing
@@ -45,13 +46,14 @@ A member is part of the frozen surface only if ALL of these hold:
    the JWM window backend. Native handles reachable for diagnostics use the
    `*ForInternalUse()` naming convention and are excluded from the surface.
 
-Everything else — `com.glyphui.core.internal.**`, `com.glyphui.core.backend.**`,
+Everything else — `io.github.yasmramos.glyphui.core.internal.**`,
+`io.github.yasmramos.glyphui.core.backend.**`,
 package-private members, and members excluded under rules 4/5 — is
 implementation detail and may change in any release, including patches.
 
 ### 3. Test/diagnostic hooks
 
-All test-only entry points live behind `com.glyphui.core.internal.TestHooks`
+All test-only entry points live behind `io.github.yasmramos.glyphui.core.internal.TestHooks`
 (reflective facade): `recreateRasterSurfaceForTesting`, `drainUiTasksForTests`,
 `getInvalidateCount`, `resetInvalidateCount`, `disposeStyleFonts`,
 `renderFrame`, `isPaintDirty`. The backing methods on production classes are
@@ -67,7 +69,7 @@ carries the rule-4 exclusion marker in its Javadoc.
 Public API uses toolkit-owned value types (`Color`, `Dimension`, `Insets`,
 `KeyEvent`, ...). Skija/JWM types appear only:
 
-- inside `com.glyphui.core.backend.**` (SPI, not application-facing),
+- inside `io.github.yasmramos.glyphui.core.backend.**` (SPI, not application-facing),
 - inside `*.internal` seams (`ImeTextFieldBridge`),
 - behind `*ForInternalUse()` accessors documented as non-API,
 - in the `Canvas` drawing-primitive facade (constructors, surface rebinding and
@@ -76,7 +78,7 @@ Public API uses toolkit-owned value types (`Color`, `Dimension`, `Insets`,
   native paint/font objects through it, so wrapping every primitive would
   duplicate Skija rather than isolate it. Application code should prefer
   widget/theme APIs over raw `Canvas` calls. The rationale lives in
-  `com.glyphui.graphics.package-info`.
+  `io.github.yasmramos.glyphui.graphics.package-info`.
 
 Regression guard: `ApiSurfaceLeakageTest` scans public signatures of the
 packages in rule 2 (minus exclusions) for `io.github.humbleui` / JWM types.

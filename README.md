@@ -47,7 +47,7 @@ first, then run any example from the examples directory:
 ```bash
 mvn install -DskipTests          # from the repository root (installs glyph-ui)
 cd glyph-ui-examples
-mvn exec:java                    # runs io.github.yasmramos.glyphui.examples.DemoButtons
+mvn exec:java                    # runs io.github.yasmramos.glyphui.examples.App
 ```
 
 On macOS:
@@ -83,6 +83,15 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── Panel.java            # Container for components
 │   ├── Button.java           # Clickable button component
 │   ├── Label.java            # Text label component
+│   ├── CheckBox.java         # Boolean check box
+│   ├── RadioButton.java      # Mutually-exclusive choice (with RadioGroup)
+│   ├── ToggleSwitch.java     # On/off switch
+│   ├── Slider.java           # Continuous value selector
+│   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
+│   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
+│   ├── TextField.java        # Editable single-line text input
+│   ├── ScrollPane.java       # Scrollable container
+│   ├── Separator.java        # One-pixel divider
 │   └── ComponentState.java   # Component state enum
 ├── events/
 │   ├── MouseEvent.java       # Mouse event class
@@ -102,7 +111,7 @@ src/main/java/io/github/yasmramos/glyphui/
 glyph-ui-examples/            # Separate Maven project with runnable demos
 ├── pom.xml                   # Depends on the glyph-ui artifact
 └── src/main/
-    ├── java/io/github/yasmramos/glyphui/examples/DemoButtons.java
+    ├── java/io/github/yasmramos/glyphui/examples/App.java
     └── resources/demo/       # ui.glyph + app.css declarative markup demo
 ```
 
@@ -265,6 +274,12 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `label`, `p` | `Label`   | text from tag body                           |
 | `input`    | `TextField` | `value` attribute; `onchange="methodName"`   |
 | `img`      | `ImageView` | `src` resolved through the loader's `ImageProvider` |
+| `checkbox` | `CheckBox`  | `checked` selects it initially               |
+| `radio`    | `RadioButton` | `selected`/`checked`; pair with a `RadioGroup` in code |
+| `switch`   | `ToggleSwitch` | `on`/`checked` starts it on                |
+| `slider`   | `Slider`    | `min`, `max`, `step`, `value`                |
+| `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
+| `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
 
 Attributes: `class`, `id`, `style="..."` (inline CSS), `layout="flex"` /
 `layout="flow"` on containers, and `onclick`/`onchange` which are resolved by

@@ -41,7 +41,7 @@ mvn exec:java -Dexec.vmArgs="-XstartOnFirstThread"
 
 ## Adding new examples
 
-1. Create a class under `src/main/java/com/glyphui/examples/`.
+1. Create a class under `src/main/java/io/github/yasmramos/glyphui/examples/`.
 2. Put any markup/CSS assets under `src/main/resources/`.
 3. All code, comments and documentation in this project must be written in
    English.

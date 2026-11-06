@@ -18,7 +18,7 @@ Glyph UI renders text through Skija typefaces. Two questions were open:
 
 ### 1. Font registration API (contract)
 
-`com.glyphui.graphics.FontManager` is the single, application-facing entry
+`io.github.yasmramos.glyphui.graphics.FontManager` is the single, application-facing entry
 point for fonts. Its public surface is:
 
 - `registerFromFile(String path)` → registers a `.ttf/.otf` shipped alongside
@@ -64,7 +64,7 @@ invalidation of measure caches (Button does exactly this).
 
 ### 3. Other resources
 
-Images follow the same model: `com.glyphui.graphics.Image` loads from file or
+Images follow the same model: `io.github.yasmramos.glyphui.graphics.Image` loads from file or
 classpath resource; the toolkit bundles none. Native handles stay behind
 `nativeImageForInternalUse()`.
 

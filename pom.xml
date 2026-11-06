@@ -185,14 +185,14 @@
                                         <limit>
                                             <counter>LINE</counter>
                                             <value>COVEREDRATIO</value>
-                                            <!-- Real coverage: ~47.9% lines; raise as tests grow -->
-                                            <minimum>0.45</minimum>
+                                            <!-- Real coverage: ~76% lines; ratchet just below it -->
+                                            <minimum>0.70</minimum>
                                         </limit>
                                         <limit>
                                             <counter>BRANCH</counter>
                                             <value>COVEREDRATIO</value>
-                                            <!-- Real coverage: ~38.6% branches; raise as tests grow -->
-                                            <minimum>0.35</minimum>
+                                            <!-- Real coverage: ~64% branches; ratchet just below it -->
+                                            <minimum>0.55</minimum>
                                         </limit>
                                     </limits>
                                 </rule>
