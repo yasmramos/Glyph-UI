@@ -166,11 +166,15 @@ public class PopupLayer extends Panel {
         return topVisiblePopup() != null;
     }
 
-    /** The newest visible popup, i.e. the one painted on top. */
+    /**
+     * The newest visible popup that owns input, i.e. the one painted on top.
+     * {@link PassiveOverlay} children (tooltips, toasts) are skipped: they
+     * are decoration and must not take the keyboard from the page.
+     */
     private Component topVisiblePopup() {
         for (int i = children.size() - 1; i >= 0; i--) {
             Component child = children.get(i);
-            if (child.isVisible()) {
+            if (child.isVisible() && !(child instanceof PassiveOverlay)) {
                 return child;
             }
         }
@@ -235,7 +239,10 @@ public class PopupLayer extends Panel {
     public boolean closeOnEscape() {
         for (int i = children.size() - 1; i >= 0; i--) {
             Component child = children.get(i);
-            if (child.isVisible()) {
+            // Passive overlays are decoration: ESC belongs to the page, so a
+            // tooltip on screen must not swallow it (or the close-window
+            // opt-in behind it).
+            if (child.isVisible() && !(child instanceof PassiveOverlay)) {
                 closeChild(child);
                 return true;
             }
@@ -270,21 +277,35 @@ public class PopupLayer extends Panel {
     }
 
     /**
-     * Hit-tests the popups in window coordinates.
+     * Hit-tests the popups in window coordinates. {@link PassiveOverlay}
+     * children (tooltips, toasts) are skipped: they are decoration, so hover
+     * must reach the widget underneath them.
      *
      * @param windowX the x-coordinate in window space
      * @param windowY the y-coordinate in window space
-     * @return the top-most popup component under the point, or null when the
-     *         pointer is not over any popup
+     * @return the top-most interactive popup component under the point, or
+     *         null when the pointer is not over one
      */
     public Component hitTest(float windowX, float windowY) {
-        Component hit = getComponentAt(windowX, windowY);
-        return hit == this ? null : hit;
+        float localX = windowX - x;
+        float localY = windowY - y;
+        for (int i = children.size() - 1; i >= 0; i--) {
+            Component child = children.get(i);
+            if (child instanceof PassiveOverlay) {
+                continue;
+            }
+            Component hit = child.getComponentAt(localX, localY);
+            if (hit != null) {
+                return hit;
+            }
+        }
+        return null;
     }
 
     /**
      * Whether the point, in window coordinates, lies over the top-most
-     * visible popup.
+     * interactive popup. Passive overlays are skipped so they never swallow
+     * a click meant for the page.
      *
      * @param windowX the x-coordinate in window space
      * @param windowY the y-coordinate in window space
@@ -295,7 +316,8 @@ public class PopupLayer extends Panel {
         float localY = windowY - y;
         for (int i = children.size() - 1; i >= 0; i--) {
             Component child = children.get(i);
-            if (child.isVisible() && child.contains(localX, localY)) {
+            if (child.isVisible() && !(child instanceof PassiveOverlay)
+                    && child.contains(localX, localY)) {
                 return child;
             }
         }

@@ -407,4 +407,51 @@ public class PopupLayerTest extends TestBase {
                 "an empty layer never intercepts input");
         assertNull(layer.hitTest(5.0f, 5.0f));
     }
+
+    @Test
+    public void aPassiveOverlayNeverSwallowsAPress() {
+        PopupLayer layer = new PopupLayer();
+        layer.setWidth(400.0f);
+        layer.setHeight(300.0f);
+        Toast toast = new Toast(Toast.Level.INFO, "Saved");
+        toast.setX(0);
+        toast.setY(0);
+        toast.setWidth(200);
+        toast.setHeight(40);
+        toast.setVisible(true);
+        layer.add(toast);
+
+        assertFalse(layer.onMouseEvent(ev(MouseEventType.PRESS, 20, 20)),
+                "a toast must not block a click on the control it covers");
+    }
+
+    @Test
+    public void aPassiveOverlayIsSkippedByHoverHitTesting() {
+        PopupLayer layer = new PopupLayer();
+        layer.setWidth(400.0f);
+        layer.setHeight(300.0f);
+        Toast toast = new Toast(Toast.Level.INFO, "Saved");
+        toast.setX(0);
+        toast.setY(0);
+        toast.setWidth(200);
+        toast.setHeight(40);
+        toast.setVisible(true);
+        layer.add(toast);
+
+        assertNull(layer.hitTest(20.0f, 20.0f),
+                "hover must reach the page underneath a toast");
+    }
+
+    @Test
+    public void aPassiveOverlayDoesNotSwallowEscape() {
+        PopupLayer layer = new PopupLayer();
+        layer.setWidth(400.0f);
+        layer.setHeight(300.0f);
+        Tooltip tooltip = new Tooltip("Help");
+        tooltip.setVisible(true);
+        layer.add(tooltip);
+
+        assertFalse(layer.closeOnEscape(),
+                "ESC belongs to the page while only a tooltip is showing");
+    }
 }
