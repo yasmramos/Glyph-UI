@@ -13,6 +13,7 @@ import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Chip;
 import io.github.yasmramos.glyphui.ui.ColorPicker;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.ContextMenu;
 import io.github.yasmramos.glyphui.ui.Dialog;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.GroupBox;
@@ -20,23 +21,31 @@ import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Link;
 import io.github.yasmramos.glyphui.ui.ListBox;
+import io.github.yasmramos.glyphui.ui.MenuBar;
 import io.github.yasmramos.glyphui.ui.Pagination;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
+import io.github.yasmramos.glyphui.ui.ProgressRing;
 import io.github.yasmramos.glyphui.ui.RadioButton;
+import io.github.yasmramos.glyphui.ui.RangeSlider;
 import io.github.yasmramos.glyphui.ui.Rating;
 import io.github.yasmramos.glyphui.ui.ScrollPane;
+import io.github.yasmramos.glyphui.ui.SegmentedControl;
 import io.github.yasmramos.glyphui.ui.Separator;
 import io.github.yasmramos.glyphui.ui.Skeleton;
 import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.Spinner;
 import io.github.yasmramos.glyphui.ui.SplitPane;
+import io.github.yasmramos.glyphui.ui.StatusBar;
 import io.github.yasmramos.glyphui.ui.Stepper;
 import io.github.yasmramos.glyphui.ui.Table;
 import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
+import io.github.yasmramos.glyphui.ui.Toast;
+import io.github.yasmramos.glyphui.ui.ToggleButton;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 import io.github.yasmramos.glyphui.ui.Toolbar;
+import io.github.yasmramos.glyphui.ui.Tooltip;
 import io.github.yasmramos.glyphui.ui.TreeView;
 
 import java.util.ArrayList;
@@ -493,6 +502,110 @@ public final class WidgetRegistry {
 
         registry.register("toolbar", (element, ctx) -> new Toolbar());
 
+        registry.register("menubar", (element, ctx) -> new MenuBar());
+
+        registry.register("statusbar", (element, ctx) -> new StatusBar());
+
+        registry.register("togglebutton", (element, ctx) -> {
+            ToggleButton toggle = new ToggleButton(ctx.textOf(element));
+            if (ctx.hasAttr(element, "on") || ctx.hasAttr(element, "checked")
+                    || ctx.hasAttr(element, "selected")) {
+                toggle.setOn(true);
+            }
+            return toggle;
+        });
+
+        registry.register("tooltip", (element, ctx) -> {
+            Tooltip tooltip = new Tooltip(ctx.textOf(element));
+            tooltip.setDelaySeconds(ctx.parseFloatAttr(element, "delay", Tooltip.DEFAULT_DELAY));
+            return tooltip;
+        });
+
+        registry.register("toast", (element, ctx) -> {
+            Toast toast = new Toast(Toast.Level.INFO, ctx.textOf(element));
+            String level = ctx.attr(element, "level");
+            if (level.isEmpty()) {
+                level = ctx.attr(element, "type");
+            }
+            if (!level.isEmpty()) {
+                toast.setLevel(parseToastLevel(level));
+            }
+            String duration = ctx.attr(element, "duration");
+            if (!duration.isEmpty()) {
+                toast.setDurationSeconds(ctx.parseFloatAttr(element, "duration",
+                        Toast.DEFAULT_DURATION));
+            }
+            return toast;
+        });
+
+        registry.register("contextmenu", (element, ctx) -> new ContextMenu());
+
+        registry.register("segmented", (element, ctx) -> {
+            SegmentedControl control = new SegmentedControl();
+            String options = ctx.attr(element, "options");
+            if (!options.isEmpty()) {
+                for (String label : options.split(",")) {
+                    control.addSegment(label.trim());
+                }
+            }
+            String selected = ctx.attr(element, "selected");
+            if (!selected.isEmpty()) {
+                try {
+                    control.setSelectedIndex(Integer.parseInt(selected.trim()));
+                } catch (NumberFormatException e) {
+                    ctx.warn("Bad selected '" + selected + "' on <segmented>");
+                }
+            }
+            return control;
+        });
+        registry.register("segmentedcontrol", (element, ctx) -> {
+            SegmentedControl control = new SegmentedControl();
+            String options = ctx.attr(element, "options");
+            if (!options.isEmpty()) {
+                for (String label : options.split(",")) {
+                    control.addSegment(label.trim());
+                }
+            }
+            String selected = ctx.attr(element, "selected");
+            if (!selected.isEmpty()) {
+                try {
+                    control.setSelectedIndex(Integer.parseInt(selected.trim()));
+                } catch (NumberFormatException e) {
+                    ctx.warn("Bad selected '" + selected + "' on <segmentedcontrol>");
+                }
+            }
+            return control;
+        });
+
+        registry.register("progressring", (element, ctx) -> {
+            ProgressRing ring = new ProgressRing();
+            ring.setValue(ctx.parseFloatAttr(element, "value", 0.0f));
+            if (ctx.hasAttr(element, "indeterminate")) {
+                ring.setIndeterminate(true);
+            }
+            if (ctx.hasAttr(element, "text") || ctx.hasAttr(element, "show-text")) {
+                ring.setShowText(true);
+            }
+            String size = ctx.attr(element, "size");
+            if (!size.isEmpty()) {
+                float side = ctx.parseFloatAttr(element, "size", ProgressRing.DEFAULT_SIZE);
+                ring.setWidth(side);
+                ring.setHeight(side);
+            }
+            return ring;
+        });
+
+        registry.register("rangeslider", (element, ctx) -> {
+            float min = ctx.parseFloatAttr(element, "min", 0.0f);
+            float max = ctx.parseFloatAttr(element, "max", 100.0f);
+            RangeSlider slider = new RangeSlider(min, max);
+            slider.setStep(ctx.parseFloatAttr(element, "step", 0.0f));
+            slider.setValues(
+                    ctx.parseFloatAttr(element, "lower", min),
+                    ctx.parseFloatAttr(element, "upper", max));
+            return slider;
+        });
+
         registry.register("groupbox", (element, ctx) -> {
             GroupBox box = new GroupBox();
             String title = ctx.attr(element, "title");
@@ -639,5 +752,19 @@ public final class WidgetRegistry {
      */
     public Component create(String tag, Element element, WidgetContext context) {
         return get(tag).create(element, context);
+    }
+
+    /**
+     * Resolves a {@link Toast.Level} from a case-insensitive attribute value.
+     * Unknown values fall back to {@link Toast.Level#INFO}.
+     */
+    private static Toast.Level parseToastLevel(String raw) {
+        String normalised = raw.trim().toUpperCase(Locale.ROOT);
+        for (Toast.Level candidate : Toast.Level.values()) {
+            if (candidate.name().equals(normalised)) {
+                return candidate;
+            }
+        }
+        return Toast.Level.INFO;
     }
 }

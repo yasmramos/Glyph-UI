@@ -812,6 +812,16 @@ public class Application implements AutoCloseable {
             // hold the previous cursor-move location (or (0,0) when no move
             // arrived yet), so clicks landed on the wrong widget.
             MouseEvent event = new MouseEvent(type, (int) x, (int) y, glyphButton, 1);
+
+            // A right-press first gives the page a chance to open a context
+            // menu; when some component claims it the press is consumed and
+            // never reaches the widget's own click handling.
+            if (type == MouseEventType.PRESS && glyphButton == MouseButton.RIGHT
+                    && routeContextMenu((float) x, (float) y)) {
+                requestRepaint();
+                return;
+            }
+
             // Popups (menus) sit above everything: they see the event first
             // and swallow it when it lands on popup chrome. What they do not
             // consume falls through to the page; a press outside every popup
@@ -1136,10 +1146,40 @@ public class Application implements AutoCloseable {
         if (target == hovered) {
             return;
         }
-        if (hovered != null && hovered.getState() == ComponentState.HOVER) {
-            hovered.setState(ComponentState.IDLE);
+        Component previous = hovered;
+        if (previous != null && previous.getState() == ComponentState.HOVER) {
+            previous.setState(ComponentState.IDLE);
         }
         hovered = target;
+        // Notify the widgets that gained and lost the pointer. The callbacks
+        // run after the state swap so a listener observes the final hover
+        // state of both components (a tooltip can show itself on enter and a
+        // context menu can close on exit without ordering surprises).
+        if (previous != null) {
+            previous.firePointerExit();
+        }
+        if (target != null) {
+            target.firePointerEnter();
+        }
+    }
+
+    /**
+     * Routes a right-press to the deepest component under the pointer that
+     * has a context-menu listener, walking up the parent chain so a container
+     * can serve right-clicks for its whole subtree.
+     *
+     * @param windowX the x-coordinate in window space
+     * @param windowY the y-coordinate in window space
+     * @return true when a listener claimed the request
+     */
+    private boolean routeContextMenu(float windowX, float windowY) {
+        Component hit = rootPanel.getComponentAt(windowX, windowY);
+        for (Component c = hit; c != null; c = c.getParent()) {
+            if (c.fireContextMenuRequested(windowX, windowY)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

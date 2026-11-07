@@ -349,6 +349,25 @@ public abstract class Component implements StyleNode, Disposable {
     private String accessibleDescription;
 
     /**
+     * Invoked when the pointer enters this component (see
+     * {@link #setOnPointerEnter(Runnable)}). Null means "no listener".
+     */
+    private Runnable onPointerEnter;
+
+    /**
+     * Invoked when the pointer leaves this component (see
+     * {@link #setOnPointerExit(Runnable)}). Null means "no listener".
+     */
+    private Runnable onPointerExit;
+
+    /**
+     * Invoked when a right-click lands on this component (see
+     * {@link #setOnContextMenuRequested(ContextMenuListener)}). Null means
+     * "no listener".
+     */
+    private ContextMenuListener onContextMenuRequested;
+
+    /**
      * Global repaint hook. When set (typically by {@code Application}), any
      * component mutation that calls {@link #invalidate()} propagates up the
      * parent chain until it reaches this requester, marking the application
@@ -1343,6 +1362,89 @@ public abstract class Component implements StyleNode, Disposable {
             // frame, since :hover/:active rules may carry lengths.
             invalidateStyleAndRelayout();
         }
+    }
+
+    /**
+     * Registers a callback invoked when the pointer enters this component.
+     *
+     * <p>{@code Application} drives this from its hover tracking: whenever the
+     * deepest component under the cursor changes, the component being left
+     * gets {@link #setOnPointerExit(Runnable)} and the one being entered gets
+     * this callback. Components created and used without an application (unit
+     * tests) never fire it, which keeps the hook side-effect free.</p>
+     *
+     * @param onPointerEnter the callback, or null to clear it
+     */
+    public void setOnPointerEnter(Runnable onPointerEnter) {
+        this.onPointerEnter = onPointerEnter;
+    }
+
+    /**
+     * Registers a callback invoked when the pointer leaves this component.
+     *
+     * @param onPointerExit the callback, or null to clear it
+     */
+    public void setOnPointerExit(Runnable onPointerExit) {
+        this.onPointerExit = onPointerExit;
+    }
+
+    /**
+     * Fires the pointer-enter callback. Called by {@code Application}'s hover
+     * tracking; widget authors normally do not invoke it themselves.
+     */
+    public void firePointerEnter() {
+        if (onPointerEnter != null) {
+            onPointerEnter.run();
+        }
+    }
+
+    /**
+     * Fires the pointer-exit callback. Called by {@code Application}'s hover
+     * tracking; widget authors normally do not invoke it themselves.
+     */
+    public void firePointerExit() {
+        if (onPointerExit != null) {
+            onPointerExit.run();
+        }
+    }
+
+    /**
+     * Registers a callback invoked when a right-click requests a context menu
+     * on this component.
+     *
+     * <p>{@code Application} resolves the deepest component under the pointer
+     * on a right-press and walks up the parent chain until it finds one with a
+     * listener, so a container can serve right-clicks for its whole subtree.
+     * Coordinates passed to the listener are in window space, which is what a
+     * {@link ContextMenu} needs to anchor itself.</p>
+     *
+     * @param onContextMenuRequested the callback, or null to clear it
+     */
+    public void setOnContextMenuRequested(ContextMenuListener onContextMenuRequested) {
+        this.onContextMenuRequested = onContextMenuRequested;
+    }
+
+    /**
+     * @return the context-menu listener, or null when none is set
+     */
+    public ContextMenuListener getOnContextMenuRequested() {
+        return onContextMenuRequested;
+    }
+
+    /**
+     * Fires the context-menu callback. Called by {@code Application}'s
+     * right-click routing.
+     *
+     * @param x the x-coordinate in window space
+     * @param y the y-coordinate in window space
+     * @return true when a listener was installed and ran
+     */
+    public boolean fireContextMenuRequested(float x, float y) {
+        if (onContextMenuRequested == null) {
+            return false;
+        }
+        onContextMenuRequested.onContextMenuRequested(x, y);
+        return true;
     }
 
     /**

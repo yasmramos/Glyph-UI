@@ -110,6 +110,15 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── ColorPicker.java      # Swatch grid color chooser
 │   ├── SplitPane.java        # Two panes with a draggable divider
 │   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
+│   ├── ProgressRing.java     # Circular determinate/indeterminate indicator
+│   ├── RangeSlider.java      # Two-thumb slider selecting a range
+│   ├── SegmentedControl.java # Row of mutually exclusive options
+│   ├── ToggleButton.java     # Button that latches on and off
+│   ├── Tooltip.java          # Hover bubble describing a component
+│   ├── Toast.java            # Transient notification, hosted by ToastHost
+│   ├── MenuBar.java          # Horizontal strip of drop-down menus
+│   ├── ContextMenu.java      # Menu opened at an arbitrary point
+│   ├── StatusBar.java        # Thin information strip along a window edge
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
 │   ├── ScrollPane.java       # Scrollable container
@@ -323,6 +332,15 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `colorpicker` | `ColorPicker` | `palette` (comma list of hex colors), `value` (hex), `columns`, `no-preview`, `no-hex` |
 | `splitpane` | `SplitPane` | two children; `orientation` = `horizontal`/`vertical`, `ratio` |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
+| `progressring` | `ProgressRing` | `value`, `indeterminate`, `text`/`show-text`; `size` |
+| `rangeslider` | `RangeSlider` | `min`, `max`, `step`, `lower`, `upper` |
+| `segmented`, `segmentedcontrol` | `SegmentedControl` | `options` (comma list), `selected` (0-based) |
+| `togglebutton` | `ToggleButton` | text from tag body; `on`/`checked`/`selected` starts it on |
+| `tooltip` | `Tooltip` | `text`/body; `delay` before it appears |
+| `toast` | `Toast` | `text`/body; `level`/`type` = `info`/`success`/`warning`/`error`; `duration` |
+| `menubar` | `MenuBar` | container; `<menu label="...">` children hold the rows |
+| `contextmenu` | `ContextMenu` | closed on load; `<item>`/`<separator>` children |
+| `statusbar` | `StatusBar` | container; `<span>` children become segments |
 | `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
 | `scroll`   | `ScrollPane` | scrollable container; takes children       |
 | `separator`, `hr` | `Separator` | `orientation="horizontal"/"vertical"` |
