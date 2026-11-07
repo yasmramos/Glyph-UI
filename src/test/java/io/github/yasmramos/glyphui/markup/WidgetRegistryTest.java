@@ -95,7 +95,8 @@ class WidgetRegistryTest {
         WidgetRegistry registry = WidgetRegistry.defaults();
 
         for (String tag : new String[]{"div", "body", "section", "span", "panel",
-                "root", "ui", "box", "stack", "button", "label", "p", "h1", "h2",
+                "root", "ui", "box", "stack", "column", "row", "text", "textfield",
+                "button", "label", "p", "h1", "h2",
                 "h3", "h4", "h5", "h6", "input", "textarea", "img", "checkbox",
                 "radio", "switch", "slider", "spinner", "number", "progress",
                 "select", "scroll", "scrollpane", "separator", "hr", "badge",
@@ -113,6 +114,10 @@ class WidgetRegistryTest {
         assertInstanceOf(Panel.class, registry.create("div", null, context));
         assertInstanceOf(Panel.class, registry.create("body", null, context));
         assertInstanceOf(Panel.class, registry.create("box", null, context));
+        assertInstanceOf(Panel.class, registry.create("column", null, context));
+        assertInstanceOf(Panel.class, registry.create("row", null, context));
+        assertInstanceOf(Label.class, registry.create("text", null, context));
+        assertInstanceOf(TextField.class, registry.create("textfield", null, context));
         assertInstanceOf(Button.class, registry.create("button", null, context));
         assertInstanceOf(Label.class, registry.create("label", null, context));
         assertInstanceOf(Label.class, registry.create("h1", null, context));

@@ -10,11 +10,16 @@
  *       It understands text runs, {@code &#123;path&#125;} interpolations,
  *       {@code &#123;&#123;}/{@code &#125;&#125;} literal-brace escapes,
  *       {@code &lt;!-- ... --&gt;} comments, tags with attributes and
- *       self-closing tags.</li>
- *   <li>{@link io.github.yasmramos.glyphui.markup.Parser} — consumes the token stream and
+ *       self-closing tags. It feeds {@link io.github.yasmramos.glyphui.markup.Parser}
+ *       only; the DSL front-end scans its own source.</li>
+ *   <li>{@link io.github.yasmramos.glyphui.markup.Parser} — consumes the XML token stream and
  *       builds a raw AST: {@link io.github.yasmramos.glyphui.markup.Document} root with
  *       {@link io.github.yasmramos.glyphui.markup.Element}, {@link io.github.yasmramos.glyphui.markup.TextNode}
  *       and {@link io.github.yasmramos.glyphui.markup.BindingNode} children in source order.</li>
+ *   <li>{@link io.github.yasmramos.glyphui.markup.GlyphDslParser} — an alternative front-end for
+ *       the Compose-style {@code .glyph} DSL ({@code Component(args) { children }});
+ *       it builds the same {@link io.github.yasmramos.glyphui.markup.Document} shape, so
+ *       everything downstream is shared.</li>
  * </ol>
  *
  * <h2>Error strategy (documented choice)</h2>

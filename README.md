@@ -143,7 +143,7 @@ glyph-ui-examples/            # Separate Maven project with runnable demos
 ├── pom.xml                   # Depends on the glyph-ui artifact
 └── src/main/
     ├── java/io/github/yasmramos/glyphui/examples/App.java
-    └── resources/demo/       # ui.glyph + app.css declarative markup demo
+    └── resources/demo/       # ui.glyph + app.css declarative DSL demo
 ```
 
 ## Usage Example
@@ -249,31 +249,73 @@ of waiting for the next poll tick.
 
 This project is open source. See the LICENSE file for details.
 
-## Declarative UI: `.glyph` markup + CSS subset
+## Declarative UI: `.glyph` DSL + CSS subset
 
-Glyph-UI lets you declare interfaces in a `.glyph` markup file and style them
-with a CSS subset, resolved against the live widget tree. `.glyph` is scanned
-by the built-in `Tokenizer`/`Parser` (no third-party HTML parser) into a raw
-AST that `UiLoader` maps onto widgets.
+Glyph-UI lets you declare interfaces in a `.glyph` file and style them with a
+CSS subset, resolved against the live widget tree. `.glyph` is scanned by the
+built-in parsers (no third-party HTML parser) into a raw AST that `UiLoader`
+maps onto widgets.
+
+Two front-ends produce the same AST, so everything downstream (widget
+vocabulary, CSS engine, event binding) is shared:
+
+- **Compose-style DSL** (default for new files) — `Component(args) { children }`,
+  closer to Kotlin UI toolkits than to HTML.
+- **XML-style markup** (legacy) — `<Component attr="value">children</Component>`.
+
+The loader picks the front-end automatically: a document whose first
+significant character is `<` is parsed as XML, anything else as the DSL.
 
 > **This is NOT a browser.** There is no JavaScript engine, no DOM, and only a
 > documented subset of CSS is supported. Unknown properties/selectors are
 > ignored with a warning.
 
-### Markup (`UiLoader`)
+### DSL syntax
+
+```glyph
+Stylesheet("app.css")
+
+Column(id = "root", class = "page", gap = 12, padding = 24) {
+    Text("Glyph-UI", class = "title")
+
+    Row(class = "card", gap = 8) {
+        TextField(id = "name", placeholder = "Your name")
+        Button("Greet", id = "greet", class = "btn-primary", onClick = sayHello)
+    }
+
+    Text(id = "status", class = "muted", "Ready.")
+}
+```
+
+- Every widget is a **call**: `Name(...)` with an optional argument list and a
+  trailing `{ ... }` block of children. Containers may omit the parentheses
+  (`Column { ... }`); leaf widgets without a block are self-closing
+  (`TextField(id = "name")`).
+- A **positional string or bare word** becomes the widget's text content, so
+  `Text("Hello")` and `Chip(NEW)` both work. A positional `{path}` becomes a
+  binding node.
+- A **named argument** becomes an attribute: `id = "root"`, `class = "page"`.
+  camelCase is normalised to the loader's canonical spelling
+  (`fontSize = 20` → `font-size`, `textColor` → `text-color`) and event
+  handlers collapse to the `on` form (`onClick = sayHello` → `onclick`).
+- `flag = true` is a valueless presence flag (e.g. `indeterminate = true`);
+  `flag = false` is dropped.
+- `Stylesheet("app.css")` links an external sheet; inline CSS is not supported
+  (the `{` delimiter collides with bindings).
+- Comments use `//` or `/* ... */`.
 
 ```java
 UiLoader loader = new UiLoader();
 Panel root = (Panel) loader.load("/demo/ui.glyph", new MyController());
 
-// A <link rel="stylesheet" href="app.css"/> found while parsing is exposed here:
+// The Stylesheet("app.css") header is exposed here:
 StyleSheet sheet = loader.getLastStyleSheet();
 if (sheet != null) {
     StyleEngine.apply(root, sheet);
 }
 ```
 
-`.glyph` syntax is XML-like:
+### XML markup syntax (legacy)
 
 ```glyph
 <!-- comments use the HTML form -->
@@ -289,17 +331,24 @@ if (sheet != null) {
 - Elements use `<Tag attr="value">children</Tag>` or the self-closing
   `<Tag/>` form; unquoted values (`layout=flex`) are accepted.
 - Content may contain `{path.to.value}` interpolations and the literal-brace
-  escapes `{{` / `}}`. The parser captures interpolations as `BindingNode`s,
-  but wiring them to reactive properties is not implemented yet, so
-  `UiLoader` reports them as warnings.
+  escapes `{{` / `}}`. Both front-ends capture interpolations as
+  `BindingNode`s, but wiring them to reactive properties is not implemented
+  yet, so `UiLoader` reports them as warnings.
 - Inline `<style>` blocks are **not** supported (the `{` delimiter collides
   with interpolations). Link an external sheet with
   `<link rel="stylesheet" href="app.css"/>` instead.
 
-Supported tags (unknown tags become a generic `Panel` with a warning):
+Supported tags (unknown tags become a generic `Panel` with a warning). The
+Compose-style spellings in the first rows are the preferred vocabulary; the
+HTML-ish aliases remain for compatibility:
 
 | Tag        | Widget      | Notes                                        |
 |------------|-------------|----------------------------------------------|
+| `Column`   | `Panel`     | vertical flex container; `gap`, `padding`    |
+| `Row`      | `Panel`     | horizontal flex container; `gap`, `padding`  |
+| `Text`     | `Label`     | text from the first positional argument      |
+| `TextField` | `TextField` | `placeholder`, `value`; `onchange`          |
+| `box`      | `Panel`     | vertical flex container (legacy spelling)    |
 | `div`      | `Panel`     | container; supports `layout="flex"/"flow"`   |
 | `button`   | `Button`    | text from tag body; `onclick="methodName"`   |
 | `label`, `p` | `Label`   | text from tag body                           |
