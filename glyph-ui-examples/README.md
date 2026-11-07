@@ -10,7 +10,7 @@ class, no demo resources).
 | Example | Entry point | Description |
 |---------|-------------|-------------|
 | Widgets tour | `io.github.yasmramos.glyphui.examples.App` | Labelled sections of controls, custom title bar, click handlers |
-| Declarative markup demo | `src/main/resources/demo/ui.glyph` + `app.css` | `.glyph` markup + CSS subset loaded by `UiLoader` |
+| Declarative DSL demo | `src/main/resources/demo/ui.glyph` + `app.css` | Compose-style `.glyph` DSL + CSS subset loaded by `UiLoader` |
 
 ## Requirements
 

@@ -39,22 +39,24 @@ import java.util.Set;
 import java.util.logging.Logger;
 
 /**
- * Builds a {@link Component} tree from a {@code .glyph} declarative markup
- * document.
+ * Builds a {@link Component} tree from a {@code .glyph} declarative document.
  *
- * <p>This is the declarative front-end of Glyph-UI. The document is scanned
- * by {@link Tokenizer} and turned into a {@link Document} AST by {@link Parser}
- * (no third-party HTML parser is involved), then this loader maps the AST onto
- * widgets and styling comes from CSS (see {@link io.github.yasmramos.glyphui.style}).</p>
+ * <p>This is the declarative front-end of Glyph-UI. Two parsers produce the
+ * same {@link Document} AST — {@link Parser} for XML-style markup and
+ * {@link GlyphDslParser} for the Compose-style DSL (no third-party HTML parser
+ * is involved) — and this loader maps that AST onto widgets, with styling
+ * coming from CSS (see {@link io.github.yasmramos.glyphui.style}).</p>
  *
  * <h2>Syntax</h2>
- * <p>{@code .glyph} markup looks like XML: {@code <Tag attr="value">children
- * </Tag>} or the self-closing {@code <Tag/>} form. Comments use
- * {@code <!-- ... -->}. Content may contain {@code {path}} interpolations and
- * the literal brace escapes {@code &#123;&#123;} / {@code &#125;&#125;}; the
- * parser keeps those as {@link BindingNode} children, but this loader does not
- * yet wire them to reactive properties (it records a warning and ignores
- * them).</p>
+ * <p>The front-end is chosen automatically: a document whose first
+ * significant character is {@code &lt;} is read as XML markup
+ * ({@code <Tag attr="value">children</Tag>} or the self-closing
+ * {@code <Tag/>} form, comments in {@code <!-- ... -->}), anything else as the
+ * Compose-style DSL ({@code Component(args) { children }}, comments in
+ * {@code //} or {@code /* ... *}{@code /}). Both accept {@code {path}}
+ * interpolations in content; the parser keeps those as {@link BindingNode}
+ * children, but this loader does not yet wire them to reactive properties (it
+ * records a warning and ignores them).</p>
  *
  * <h2>Tag mapping</h2>
  * <p>The vocabulary lives in {@link WidgetRegistry#defaults()}, the single
@@ -404,23 +406,30 @@ public final class UiLoader {
         warnings.clear();
         componentsById.clear();
         radioGroups.clear();
-        ParseResult result = new Parser().parse(source);
+        boolean dsl = GlyphDslParser.looksLikeDsl(source);
+        ParseResult result = dsl
+                ? GlyphDslParser.parse(source)
+                : Parser.parseSource(source);
         for (ParseError error : result.errors()) {
             warn("parse error " + error);
         }
-        return loadDocument(result.document(), baseDir);
+        return loadDocument(result.document(), baseDir, dsl);
     }
 
     // ------------------------------------------------------------------
     // Tree construction
     // ------------------------------------------------------------------
 
-    private Component loadDocument(Document doc, Path baseDir) {
+    private Component loadDocument(Document doc, Path baseDir, boolean dsl) {
         lastDocument = doc;
         lastStyleSheet = extractStyleSheet(doc, baseDir);
 
         Panel rootPanel = new Panel(0, 0, Float.NaN, Float.NaN);
-        Element container = findContainer(doc);
+        // The DSL has no implicit container element, so every top-level
+        // statement is built through the registry (its factory sets up the
+        // Row/Column layout). Promoting a top-level statement to the root
+        // panel would bypass that factory and drop the layout.
+        Element container = dsl ? null : findContainer(doc);
         if (container != null) {
             rootPanel.setStyleTag(container.getTagName());
             applyCommonAttributes(container, rootPanel);

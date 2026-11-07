@@ -168,6 +168,14 @@ public final class WidgetRegistry {
                     FlexLayout.Justify.FLEX_START, FlexLayout.Align.STRETCH));
             return panel;
         });
+        // Compose-style container names: the DSL reads better with Row/Column
+        // than with the HTML-ish div. The layout is set on the panel itself so
+        // `gap`/`padding` work even though the factory runs before the loader
+        // applies common attributes and layout.
+        registry.register("column", (element, ctx) -> flexPanel(
+                FlexLayout.Direction.COLUMN, ctx, element));
+        registry.register("row", (element, ctx) -> flexPanel(
+                FlexLayout.Direction.ROW, ctx, element));
         // A stack has no layout manager: children keep their explicit x/y and
         // are painted in insertion order (last one on top).
         registry.register("stack", (element, ctx) -> new Panel());
@@ -188,7 +196,7 @@ public final class WidgetRegistry {
             return label;
         };
         for (String tag : new String[]{"label", "p", "h1", "h2", "h3", "h4",
-                "h5", "h6", "item"}) {
+                "h5", "h6", "item", "text"}) {
             registry.register(tag, labelled);
         }
 
@@ -199,10 +207,16 @@ public final class WidgetRegistry {
             if (!text.isEmpty()) {
                 field.setText(text);
             }
+            String placeholder = ctx.attr(element, "placeholder");
+            if (!placeholder.isEmpty()) {
+                field.setPlaceholder(placeholder);
+            }
             return field;
         };
         registry.register("input", textField);
         registry.register("textarea", textField);
+        // Compose-style spelling of the single-line text input.
+        registry.register("textfield", textField);
 
         registry.register("img", (element, ctx) -> {
             ImageView view = new ImageView();
@@ -752,6 +766,37 @@ public final class WidgetRegistry {
      */
     public Component create(String tag, Element element, WidgetContext context) {
         return get(tag).create(element, context);
+    }
+
+    /**
+     * Builds a flex panel for the Compose-style {@code Row}/{@code Column}
+     * container tags, honouring the {@code gap} and {@code padding} arguments
+     * directly.
+     *
+     * <p>The loader applies {@code layout="flex"}-style spacing only when the
+     * markup asks for it explicitly, so the DSL container reads its own
+     * spacing here to stay declarative without an extra attribute.</p>
+     *
+     * @param direction the main axis
+     * @param ctx       the loader services (for attribute reads)
+     * @param element   the element being built
+     * @return the configured panel
+     */
+    private static Panel flexPanel(FlexLayout.Direction direction,
+            WidgetContext ctx, Element element) {
+        FlexLayout flex = new FlexLayout(direction,
+                FlexLayout.Justify.FLEX_START, FlexLayout.Align.STRETCH);
+        float gap = ctx.parseFloatAttr(element, "gap", -1.0f);
+        if (gap >= 0.0f) {
+            flex.setGap(gap);
+        }
+        float padding = ctx.parseFloatAttr(element, "padding", -1.0f);
+        if (padding >= 0.0f) {
+            flex.setPadding(padding);
+        }
+        Panel panel = new Panel();
+        panel.setLayoutManager(flex);
+        return panel;
     }
 
     /**
