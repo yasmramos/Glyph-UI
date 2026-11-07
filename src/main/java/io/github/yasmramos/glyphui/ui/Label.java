@@ -12,7 +12,7 @@ import io.github.humbleui.skija.*;
 /**
  * A label component for displaying text.
  */
-public class Label extends Component {
+public class Label extends Component implements Textual {
     private String text;
     // Optional per-label color override; null means "use the Theme"
     private Integer textColorOverride;

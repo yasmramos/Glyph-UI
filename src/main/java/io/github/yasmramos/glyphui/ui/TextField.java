@@ -33,7 +33,7 @@ import java.util.Objects;
  * through {@link #insertText(String)} (also fed by the char callback).</p>
  */
 public class TextField extends Component
-        implements io.github.yasmramos.glyphui.core.internal.ImeTextFieldBridge {
+        implements io.github.yasmramos.glyphui.core.internal.ImeTextFieldBridge, Textual {
 
     @Override
     protected String defaultStyleTag() {
