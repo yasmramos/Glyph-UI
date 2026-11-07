@@ -11,24 +11,38 @@ import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Card;
 import io.github.yasmramos.glyphui.ui.CheckBox;
 import io.github.yasmramos.glyphui.ui.Chip;
+import io.github.yasmramos.glyphui.ui.ColorPicker;
 import io.github.yasmramos.glyphui.ui.Component;
+import io.github.yasmramos.glyphui.ui.Dialog;
 import io.github.yasmramos.glyphui.ui.Dropdown;
+import io.github.yasmramos.glyphui.ui.GroupBox;
 import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
+import io.github.yasmramos.glyphui.ui.Link;
+import io.github.yasmramos.glyphui.ui.ListBox;
 import io.github.yasmramos.glyphui.ui.Pagination;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
+import io.github.yasmramos.glyphui.ui.Rating;
 import io.github.yasmramos.glyphui.ui.ScrollPane;
 import io.github.yasmramos.glyphui.ui.Separator;
+import io.github.yasmramos.glyphui.ui.Skeleton;
 import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.Spinner;
+import io.github.yasmramos.glyphui.ui.SplitPane;
+import io.github.yasmramos.glyphui.ui.Stepper;
+import io.github.yasmramos.glyphui.ui.Table;
 import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
+import io.github.yasmramos.glyphui.ui.Toolbar;
+import io.github.yasmramos.glyphui.ui.TreeView;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -123,7 +137,11 @@ public final class WidgetRegistry {
      * {@code alert} → {@link Alert}, {@code avatar} → {@link Avatar},
      * {@code accordion} → {@link Accordion}, {@code chip} → {@link Chip},
      * {@code breadcrumb} → {@link Breadcrumb} and {@code pagination} →
-     * {@link Pagination}.</p>
+     * {@link Pagination}, {@code a} → {@link Link}, {@code rating} →
+     * {@link Rating}, {@code skeleton} → {@link Skeleton}, {@code stepper} →
+     * {@link Stepper}, {@code toolbar} → {@link Toolbar}, {@code groupbox} →
+     * {@link GroupBox}, {@code listbox} → {@link ListBox} and
+     * {@code splitpane} → {@link SplitPane}.</p>
      *
      * @return a registry with the default tags registered
      */
@@ -161,7 +179,7 @@ public final class WidgetRegistry {
             return label;
         };
         for (String tag : new String[]{"label", "p", "h1", "h2", "h3", "h4",
-                "h5", "h6"}) {
+                "h5", "h6", "item"}) {
             registry.register(tag, labelled);
         }
 
@@ -386,6 +404,132 @@ public final class WidgetRegistry {
             return pagination;
         });
 
+        // "link" is reserved for document metadata (<link rel=...>), so the
+        // hyperlink widget takes the classic "a" anchor tag.
+        registry.register("a", (element, ctx) -> {
+            Link link = new Link(ctx.textOf(element));
+            String target = ctx.attr(element, "href");
+            if (target.isEmpty()) {
+                target = ctx.attr(element, "target");
+            }
+            if (!target.isEmpty()) {
+                link.setTarget(target);
+            }
+            if (ctx.hasAttr(element, "visited")) {
+                link.setVisited(true);
+            }
+            if (ctx.hasAttr(element, "underline")) {
+                link.setAlwaysUnderline(true);
+            }
+            return link;
+        });
+
+        registry.register("rating", (element, ctx) -> {
+            Rating rating = new Rating((int) ctx.parseFloatAttr(element, "max", 5.0f));
+            // Half-star granularity must be enabled before the value is set:
+            // otherwise a value like 2.5 snaps to the whole-star grid.
+            if (ctx.hasAttr(element, "half") || ctx.hasAttr(element, "allow-half")) {
+                rating.setAllowHalf(true);
+            }
+            String value = ctx.attr(element, "value");
+            if (!value.isEmpty()) {
+                try {
+                    rating.setValue(Float.parseFloat(value.trim()));
+                } catch (NumberFormatException e) {
+                    ctx.warn("Bad value '" + value + "' on <rating>");
+                }
+            }
+            if (ctx.hasAttr(element, "readonly") || ctx.hasAttr(element, "read-only")) {
+                rating.setReadOnly(true);
+            }
+            return rating;
+        });
+
+        registry.register("skeleton", (element, ctx) -> {
+            Skeleton.Shape shape = Skeleton.Shape.TEXT;
+            String raw = ctx.attr(element, "shape");
+            if (!raw.isEmpty()) {
+                String normalised = raw.trim().toUpperCase(Locale.ROOT);
+                Skeleton.Shape parsed = null;
+                for (Skeleton.Shape candidate : Skeleton.Shape.values()) {
+                    if (candidate.name().equals(normalised)) {
+                        parsed = candidate;
+                    }
+                }
+                if (parsed == null) {
+                    ctx.warn("Unknown shape '" + raw + "' on <" + element.getTagName() + ">");
+                } else {
+                    shape = parsed;
+                }
+            }
+            Skeleton skeleton = new Skeleton(shape);
+            if (ctx.hasAttr(element, "static")) {
+                skeleton.setAnimated(false);
+            }
+            return skeleton;
+        });
+
+        registry.register("stepper", (element, ctx) -> {
+            Stepper stepper = new Stepper();
+            String steps = ctx.attr(element, "steps");
+            if (!steps.isEmpty()) {
+                for (String label : steps.split(",")) {
+                    stepper.addStep(label.trim());
+                }
+            }
+            String current = ctx.attr(element, "current");
+            if (!current.isEmpty()) {
+                try {
+                    stepper.setCurrentStep(Integer.parseInt(current.trim()) - 1);
+                } catch (NumberFormatException e) {
+                    ctx.warn("Bad current '" + current + "' on <stepper>");
+                }
+            }
+            if (ctx.hasAttr(element, "free") || ctx.hasAttr(element, "non-linear")) {
+                stepper.setLinear(false);
+            }
+            return stepper;
+        });
+
+        registry.register("toolbar", (element, ctx) -> new Toolbar());
+
+        registry.register("groupbox", (element, ctx) -> {
+            GroupBox box = new GroupBox();
+            String title = ctx.attr(element, "title");
+            if (title.isEmpty()) {
+                title = ctx.attr(element, "label");
+            }
+            if (!title.isEmpty()) {
+                box.setTitle(title);
+            }
+            return box;
+        });
+
+        registry.register("listbox", (element, ctx) -> new ListBox());
+
+        registry.register("splitpane", (element, ctx) -> {
+            SplitPane pane = new SplitPane();
+            String orientation = ctx.attr(element, "orientation");
+            if (!orientation.isEmpty()) {
+                String normalised = orientation.trim().toUpperCase(Locale.ROOT);
+                if ("VERTICAL".equals(normalised)) {
+                    pane.setOrientation(SplitPane.Orientation.VERTICAL);
+                } else if (!"HORIZONTAL".equals(normalised)) {
+                    ctx.warn("Unknown orientation '" + orientation
+                            + "' on <splitpane>");
+                }
+            }
+            String ratio = ctx.attr(element, "ratio");
+            if (!ratio.isEmpty()) {
+                try {
+                    pane.setRatio(Float.parseFloat(ratio.trim()));
+                } catch (NumberFormatException e) {
+                    ctx.warn("Bad ratio '" + ratio + "' on <splitpane>");
+                }
+            }
+            return pane;
+        });
+
         WidgetFactory separator = (element, ctx) -> {
             Separator line = new Separator();
             String orientation = ctx.attr(element, "orientation");
@@ -408,6 +552,79 @@ public final class WidgetRegistry {
         };
         registry.register("separator", separator);
         registry.register("hr", separator);
+
+        registry.register("table", (element, ctx) -> {
+            Table table = new Table();
+            String cols = ctx.attr(element, "columns");
+            if (!cols.isEmpty()) {
+                for (String caption : cols.split(",")) {
+                    table.addColumn(caption.trim());
+                }
+            }
+            return table;
+        });
+
+        registry.register("treeview", (element, ctx) -> new TreeView());
+
+        registry.register("dialog", (element, ctx) -> {
+            Dialog dialog = new Dialog(ctx.attr(element, "title"), ctx.textOf(element));
+            String actions = ctx.attr(element, "actions");
+            if (!actions.isEmpty()) {
+                for (String label : actions.split(",")) {
+                    dialog.addAction(label.trim());
+                }
+            }
+            if (ctx.hasAttr(element, "static")
+                    || ctx.hasAttr(element, "non-dismissible")) {
+                dialog.setDismissible(false);
+            }
+            return dialog;
+        });
+
+        registry.register("colorpicker", (element, ctx) -> {
+            ColorPicker picker = new ColorPicker();
+            String palette = ctx.attr(element, "palette");
+            if (!palette.isEmpty()) {
+                List<Integer> parsed = new ArrayList<>();
+                for (String token : palette.split(",")) {
+                    Integer color = ColorPicker.parseHex(token);
+                    if (color == null) {
+                        ctx.warn("Bad palette color '" + token
+                                + "' on <" + element.getTagName() + ">");
+                    } else {
+                        parsed.add(color);
+                    }
+                }
+                if (!parsed.isEmpty()) {
+                    int[] colors = new int[parsed.size()];
+                    for (int i = 0; i < colors.length; i++) {
+                        colors[i] = parsed.get(i);
+                    }
+                    picker.setPalette(colors);
+                }
+            }
+            String value = ctx.attr(element, "value");
+            if (!value.isEmpty()) {
+                if (!picker.setHex(value)) {
+                    ctx.warn("Bad value '" + value + "' on <colorpicker>");
+                }
+            }
+            String columns = ctx.attr(element, "columns");
+            if (!columns.isEmpty()) {
+                try {
+                    picker.setColumns(Integer.parseInt(columns.trim()));
+                } catch (NumberFormatException e) {
+                    ctx.warn("Bad columns '" + columns + "' on <colorpicker>");
+                }
+            }
+            if (ctx.hasAttr(element, "no-preview")) {
+                picker.setShowPreview(false);
+            }
+            if (ctx.hasAttr(element, "no-hex")) {
+                picker.setShowHex(false);
+            }
+            return picker;
+        });
 
         return registry;
     }

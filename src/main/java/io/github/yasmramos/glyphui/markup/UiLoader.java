@@ -10,10 +10,14 @@ import io.github.yasmramos.glyphui.ui.Breadcrumb;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
+import io.github.yasmramos.glyphui.ui.ListBox;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.RadioGroup;
+import io.github.yasmramos.glyphui.ui.Stepper;
 import io.github.yasmramos.glyphui.ui.Tabs;
+import io.github.yasmramos.glyphui.ui.Table;
 import io.github.yasmramos.glyphui.ui.TextField;
+import io.github.yasmramos.glyphui.ui.TreeView;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -59,8 +63,15 @@ import java.util.logging.Logger;
  * {@code name} join one {@link RadioGroup}, reachable through
  * {@link #getRadioGroup(String)}), {@code switch}, {@code slider},
  * {@code progress}, {@code select} (its {@code option} children become the
- * list), {@code scroll} (a container, so it takes children) and
- * {@code separator}/{@code hr}. Unknown tags map to a generic
+ * list), {@code scroll} (a container, so it takes children),
+ * {@code separator}/{@code hr}, {@code a} (a {@link Link}), {@code rating},
+ * {@code skeleton}, {@code stepper} (its {@code <step>} children become the
+ * steps), {@code toolbar}, {@code groupbox} (a container),
+ * {@code listbox} (its {@code <item>} children become the rows),
+ * {@code table} (its {@code <row>}/{@code <cell>} children become the data),
+ * {@code treeview} (nested {@code <node>} children become the tree),
+ * {@code dialog} and {@code colorpicker}, and
+ * {@code splitpane} (a two-pane container). Unknown tags map to a generic
  * {@link Panel} that keeps its tag name as the style tag so type selectors
  * still match; {@code head}/{@code title}/{@code meta}/{@code link}/
  * {@code style}/{@code script}/{@code base} are document metadata and never
@@ -458,6 +469,14 @@ public final class UiLoader {
             buildAccordionChildren(element, accordion);
         } else if (component instanceof Breadcrumb breadcrumb) {
             buildBreadcrumbChildren(element, breadcrumb);
+        } else if (component instanceof ListBox listBox) {
+            buildListBoxItems(element, listBox);
+        } else if (component instanceof Stepper stepper) {
+            buildStepperSteps(element, stepper);
+        } else if (component instanceof Table table) {
+            buildTableRows(element, table);
+        } else if (component instanceof TreeView tree) {
+            buildTreeNodes(element, tree);
         } else if (component instanceof Panel panel) {
             for (Element child : widgetChildren(element)) {
                 Component c = buildComponent(child);
@@ -538,6 +557,50 @@ public final class UiLoader {
     }
 
     /**
+     * Populates a {@code <listbox>} from its children, one item per child. The
+     * item caption comes from the child's {@code text} / body, falling back to
+     * its {@code label} attribute. An item with a {@code selected} attribute
+     * becomes the initial selection.
+     *
+     * @param element the {@code listbox} element
+     * @param listBox the widget to populate
+     */
+    private void buildListBoxItems(Element element, ListBox listBox) {
+        for (Element child : widgetChildren(element)) {
+            String label = textOf(child);
+            if (label.isEmpty()) {
+                label = attr(child, "label");
+            }
+            listBox.addItem(label);
+            if (hasAttr(child, "selected")) {
+                listBox.setSelectedIndex(listBox.getItemCount() - 1);
+            }
+        }
+    }
+
+    /**
+     * Populates a {@code <stepper>} from its children, one step per child. The
+     * step label comes from the child's {@code text} / body, falling back to
+     * its {@code label} attribute. A child with a {@code current} attribute
+     * becomes the initial step.
+     *
+     * @param element the {@code stepper} element
+     * @param stepper the widget to populate
+     */
+    private void buildStepperSteps(Element element, Stepper stepper) {
+        for (Element child : widgetChildren(element)) {
+            String label = textOf(child);
+            if (label.isEmpty()) {
+                label = attr(child, "label");
+            }
+            stepper.addStep(label);
+            if (hasAttr(child, "current")) {
+                stepper.setCurrentStep(stepper.getStepCount() - 1);
+            }
+        }
+    }
+
+    /**
      * Populates a {@code <select>} from its {@code <option>} children. An
      * {@code option} with a {@code selected} attribute becomes the initial
      * selection; otherwise the dropdown keeps its default (the first option).
@@ -556,6 +619,67 @@ public final class UiLoader {
             if (hasAttr(child, "selected")) {
                 dropdown.setSelectedIndex(dropdown.getItemCount() - 1);
             }
+        }
+    }
+
+    /**
+     * Populates a {@code <table>} from its {@code <row>} children. Each cell
+     * text comes from the child element's body, falling back to its
+     * {@code value} attribute, so both {@code <cell>A</cell>} and
+     * {@code <cell value="A"/>} work.
+     *
+     * @param element the {@code table} element
+     * @param table   the widget to populate
+     */
+    private void buildTableRows(Element element, Table table) {
+        for (Element row : widgetChildren(element)) {
+            if (!"row".equals(row.getTagName().toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            List<String> cells = new ArrayList<>();
+            for (Element cell : widgetChildren(row)) {
+                String text = textOf(cell);
+                if (text.isEmpty()) {
+                    text = attr(cell, "value");
+                }
+                cells.add(text);
+            }
+            table.addRow(cells.toArray(new String[0]));
+        }
+    }
+
+    /**
+     * Populates a {@code <treeview>} from its children, one root per child,
+     * recursing into nested children. A node label comes from the element body,
+     * falling back to its {@code label} attribute; an {@code expanded} (or
+     * {@code open}) attribute starts the node expanded.
+     *
+     * @param element the {@code treeview} element
+     * @param tree    the widget to populate
+     */
+    private void buildTreeNodes(Element element, TreeView tree) {
+        for (Element child : widgetChildren(element)) {
+            addTreeNode(child, tree, null);
+        }
+        // addRoot rebuilds the flattened rows, but children added below a root
+        // do not, so one refresh after the whole tree is built picks them up.
+        tree.refresh();
+    }
+
+    private void addTreeNode(Element element, TreeView tree, TreeView.Node parent) {
+        String label = directTextOf(element);
+        if (label.isEmpty()) {
+            label = attr(element, "label");
+        }
+        TreeView.Node node = parent == null ? tree.addRoot(label)
+                : parent.addChild(label);
+        for (Element child : widgetChildren(element)) {
+            addTreeNode(child, tree, node);
+        }
+        // The expanded flag must be applied after the children exist: a leaf
+        // ignores it, so setting it earlier would be silently dropped.
+        if (hasAttr(element, "expanded") || hasAttr(element, "open")) {
+            node.setExpanded(true);
         }
     }
 
@@ -956,6 +1080,22 @@ public final class UiLoader {
         }
         StringBuilder sb = new StringBuilder();
         collectText(element, sb);
+        return sb.toString().trim();
+    }
+
+    /**
+     * Collects only the element's own text (direct text nodes), ignoring text
+     * inside nested elements. Used where children are structural rather than
+     * inline, such as a {@code <node>}'s label, so a nested node's caption
+     * never leaks into its parent's.
+     */
+    private static String directTextOf(Element element) {
+        StringBuilder sb = new StringBuilder();
+        for (AstNode child : element.getChildren()) {
+            if (child instanceof TextNode textNode) {
+                sb.append(textNode.getText());
+            }
+        }
         return sb.toString().trim();
     }
 

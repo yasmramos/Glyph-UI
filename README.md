@@ -97,6 +97,18 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── Chip.java             # Compact interactive tag/filter
 │   ├── Breadcrumb.java       # Navigation trail of clickable segments
 │   ├── Pagination.java       # Pager over a page-split result set
+│   ├── Link.java             # Text hyperlink with a visited state
+│   ├── Rating.java           # Star rating control
+│   ├── Skeleton.java         # Loading placeholder block
+│   ├── Stepper.java          # Multi-step flow indicator
+│   ├── Toolbar.java          # Horizontal strip of controls
+│   ├── GroupBox.java         # Titled border grouping controls
+│   ├── ListBox.java          # Scrollable selectable item list
+│   ├── Table.java            # Grid of columns and selectable rows
+│   ├── TreeView.java         # Hierarchical list of expandable nodes
+│   ├── Dialog.java           # Modal surface with a title and actions
+│   ├── ColorPicker.java      # Swatch grid color chooser
+│   ├── SplitPane.java        # Two panes with a draggable divider
 │   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
@@ -298,6 +310,18 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `chip`     | `Chip`      | text from tag body; `selected`/`active`, `removable`/`closable` |
 | `breadcrumb` | `Breadcrumb` | children are segments (`text`/body or `label`); `separator` glyph |
 | `pagination` | `Pagination` | `pages` count; `page` (1-based) selects the current page |
+| `a`        | `Link`      | `href`/`target`; `visited`, `underline`      |
+| `rating`   | `Rating`    | `max`, `value`; `half`/`allow-half`, `readonly` |
+| `skeleton` | `Skeleton`  | `shape` = `text`/`circle`/`rect`; `static` disables the pulse |
+| `stepper`  | `Stepper`   | `steps` (comma list) or `<step>` children; `current` (1-based), `free`/`non-linear` |
+| `toolbar`  | `Toolbar`   | container; children are laid out in a row   |
+| `groupbox` | `GroupBox`  | `title`/`label`; children below the title strip |
+| `listbox`  | `ListBox`   | `<item>` children (`selected` marks the initial row) |
+| `table`    | `Table`     | `columns` (comma list); `<row>` children with `<cell>` bodies/`value` |
+| `treeview` | `TreeView`  | nested `<node>` children; `label`, `expanded`/`open` |
+| `dialog`   | `Dialog`    | `title`, `actions` (comma list); body is the message; `static`/`non-dismissible` |
+| `colorpicker` | `ColorPicker` | `palette` (comma list of hex colors), `value` (hex), `columns`, `no-preview`, `no-hex` |
+| `splitpane` | `SplitPane` | two children; `orientation` = `horizontal`/`vertical`, `ratio` |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
 | `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |
 | `scroll`   | `ScrollPane` | scrollable container; takes children       |
