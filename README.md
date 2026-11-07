@@ -332,8 +332,8 @@ if (sheet != null) {
   `<Tag/>` form; unquoted values (`layout=flex`) are accepted.
 - Content may contain `{path.to.value}` interpolations and the literal-brace
   escapes `{{` / `}}`. Both front-ends capture interpolations as
-  `BindingNode`s, but wiring them to reactive properties is not implemented
-  yet, so `UiLoader` reports them as warnings.
+  `BindingNode`s and `UiLoader` resolves them reactively (see
+  [Bindings and control flow](#bindings-and-control-flow)).
 - Inline `<style>` blocks are **not** supported (the `{` delimiter collides
   with interpolations). Link an external sheet with
   `<link rel="stylesheet" href="app.css"/>` instead.
@@ -394,12 +394,61 @@ HTML-ish aliases remain for compatibility:
 | `scroll`   | `ScrollPane` | scrollable container; takes children       |
 | `separator`, `hr` | `Separator` | `orientation="horizontal"/"vertical"` |
 
+Tag names are matched case-insensitively, so the Compose-style spellings
+`Button`, `Label`, `ImageView`, `ProgressBar`, `Dropdown`, `RadioButton`,
+`ToggleSwitch` and `Hyperlink` all resolve to the same widgets as the
+lower-case aliases above.
+
 Attributes: `class`, `id`, `style="..."` (inline CSS), `layout="flex"` /
 `layout="flow"` on containers, and `onclick`/`onchange` which are resolved by
 name against a registered controller object via reflection (no-arg or
 component-arg public methods). `head`, `title`, `meta`, `link`, `style`,
 `script` and `base` are document metadata and never become widgets; a `body`
 element, when present, becomes the root container.
+
+### Bindings and control flow
+
+Register the values your markup references, then use `{path}` interpolations,
+`for-each` and `if`/`elif`/`else`:
+
+```java
+UiLoader loader = new UiLoader();
+Signal<String> title = new Signal<>("Glyph-UI");
+SignalList<Task> tasks = new SignalList<>();
+Signal<Boolean> loading = new Signal<>(true);
+
+loader.registerBinding("view.title", title);
+loader.registerBinding("tasks", tasks);
+loader.registerBinding("view.loading", loading);
+
+Panel root = (Panel) loader.load("/demo/ui.glyph");
+```
+
+```glyph
+Column {
+    Text("Welcome to {view.title}", class = "title")
+
+    Row(forEach = "tasks") {
+        Text("{index}. {item.name}")
+    }
+
+    Text("Loading…", if = "view.loading")
+    Text("Ready", else)
+}
+```
+
+- A `{path}` interpolation in content is resolved through the registered
+  `Bindings` and pushed to the widget caption through the `Textual` interface;
+  static text and interpolations can be mixed in one string. The `bind:text`
+  (XML) / `bindText` (DSL) attribute binds a caption without a placeholder.
+  Widgets without a caption warn and ignore the binding, and an unknown path
+  warns once per load.
+- `for-each="items"` builds the element once per list element; each copy sees
+  `item` and `index`, and map entries also expose `item.<key>`. Lists come from
+  `SignalList`, `List` or any `Iterable`.
+- `if`, `elif` and `else` form one chain: the first branch whose condition is
+  truthy is shown, otherwise the `else` branch (if any) is. Branches toggle
+  reactively — no rebuild. A bare `else` is the flag spelling.
 
 ### CSS subset
 
