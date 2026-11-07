@@ -35,7 +35,7 @@ import java.util.logging.Logger;
  * accent behind white text; an unselected one paints the control surface
  * behind the foreground color.</p>
  */
-public class Chip extends Component {
+public class Chip extends Component implements Textual {
 
     /** Logger for click-handler failures (never swallowed silently). */
     private static final Logger LOG = Logger.getLogger(Chip.class.getName());
