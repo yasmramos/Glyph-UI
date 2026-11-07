@@ -16,6 +16,9 @@ public enum AccessibleRole {
     /** A push button ({@link Button}). */
     BUTTON,
 
+    /** A button that latches on and off ({@link ToggleButton}). */
+    TOGGLE_BUTTON,
+
     /** A static text label ({@link Label}). */
     LABEL,
 
@@ -125,5 +128,29 @@ public enum AccessibleRole {
     DIALOG,
 
     /** A color chooser ({@link ColorPicker}). */
-    COLOR_PICKER
+    COLOR_PICKER,
+
+    /** A transient text bubble ({@link Tooltip}). */
+    TOOLTIP,
+
+    /** A transient notification ({@link Toast}). */
+    TOAST,
+
+    /** A horizontal strip of drop-down menus ({@link MenuBar}). */
+    MENU_BAR,
+
+    /** A menu opened at an arbitrary point ({@link ContextMenu}). */
+    CONTEXT_MENU,
+
+    /** A circular progress indicator ({@link ProgressRing}). */
+    PROGRESS_RING,
+
+    /** A row of mutually exclusive options ({@link SegmentedControl}). */
+    SEGMENTED_CONTROL,
+
+    /** A two-thumb slider selecting a range ({@link RangeSlider}). */
+    RANGE_SLIDER,
+
+    /** A thin information strip along a window edge ({@link StatusBar}). */
+    STATUS_BAR
 }

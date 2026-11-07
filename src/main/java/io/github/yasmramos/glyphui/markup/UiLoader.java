@@ -11,8 +11,11 @@ import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Dropdown;
 import io.github.yasmramos.glyphui.ui.ListBox;
+import io.github.yasmramos.glyphui.ui.Menu;
+import io.github.yasmramos.glyphui.ui.MenuBar;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.RadioGroup;
+import io.github.yasmramos.glyphui.ui.StatusBar;
 import io.github.yasmramos.glyphui.ui.Stepper;
 import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.Table;
@@ -477,6 +480,10 @@ public final class UiLoader {
             buildTableRows(element, table);
         } else if (component instanceof TreeView tree) {
             buildTreeNodes(element, tree);
+        } else if (component instanceof MenuBar menuBar) {
+            buildMenuBarChildren(element, menuBar);
+        } else if (component instanceof StatusBar statusBar) {
+            buildStatusBarChildren(element, statusBar);
         } else if (component instanceof Panel panel) {
             for (Element child : widgetChildren(element)) {
                 Component c = buildComponent(child);
@@ -537,6 +544,54 @@ public final class UiLoader {
                 title = attr(child, "label");
             }
             accordion.addSection(title, body);
+        }
+    }
+
+    /**
+     * Populates a {@code <menubar>} from its children: each {@code <menu>}
+     * child becomes a trigger button carrying the child's text, and the
+     * nested {@code <item>} children become the drop-down rows.
+     *
+     * @param element the {@code menubar} element
+     * @param menuBar the menu bar to populate
+     */
+    private void buildMenuBarChildren(Element element, MenuBar menuBar) {
+        for (Element child : widgetChildren(element)) {
+            // A <menu> wraps its rows, so its text content is the rows
+            // concatenated; the caption must come from the label attribute.
+            String title = attr(child, "label");
+            if (title.isEmpty()) {
+                title = textOf(child);
+            }
+            Menu menu = menuBar.addMenu(title);
+            for (Element row : widgetChildren(child)) {
+                String label = textOf(row);
+                if (label.isEmpty()) {
+                    label = attr(row, "label");
+                }
+                if ("separator".equalsIgnoreCase(row.getTagName())) {
+                    menu.addSeparator();
+                } else {
+                    menu.addItem(label);
+                }
+            }
+        }
+    }
+
+    /**
+     * Populates a {@code <statusbar>} from its children: each child's text
+     * becomes one segment.
+     *
+     * @param element   the {@code statusbar} element
+     * @param statusBar the status bar to populate
+     */
+    private void buildStatusBarChildren(Element element, StatusBar statusBar) {
+        for (Element child : widgetChildren(element)) {
+            String label = textOf(child);
+            if (label.isEmpty()) {
+                label = attr(child, "label");
+            }
+            statusBar.addSegment(label);
         }
     }
 

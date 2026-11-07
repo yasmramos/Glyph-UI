@@ -174,11 +174,7 @@ public class Menu extends Panel {
         if (getParent() instanceof PopupLayer layer) {
             attachToLayer(layer);
         }
-        // Every open starts with no selection: the first arrow key chooses
-        // the first (Down) or last (Up) enabled row.
-        clearHighlight();
-        setWidth(getPreferredWidth());
-        setHeight(getPreferredHeight());
+        prepareForShow();
         positionNearTrigger();
         setVisible(true);
         // Lay the rows out immediately: Panel.render() would do it on the next
@@ -187,6 +183,19 @@ public class Menu extends Panel {
         // would be swallowed by the popup chrome and the menu would ignore it).
         doLayout();
         requestRepaint();
+    }
+
+    /**
+     * Resets the per-open state and sizes the popup to its rows. Shared by
+     * {@link #open()} and by subclasses that position the menu themselves
+     * (see {@code ContextMenu}).
+     */
+    protected void prepareForShow() {
+        // Every open starts with no selection: the first arrow key chooses
+        // the first (Down) or last (Up) enabled row.
+        clearHighlight();
+        setWidth(getPreferredWidth());
+        setHeight(getPreferredHeight());
     }
 
     /**
