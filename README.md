@@ -104,6 +104,10 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── Toolbar.java          # Horizontal strip of controls
 │   ├── GroupBox.java         # Titled border grouping controls
 │   ├── ListBox.java          # Scrollable selectable item list
+│   ├── Table.java            # Grid of columns and selectable rows
+│   ├── TreeView.java         # Hierarchical list of expandable nodes
+│   ├── Dialog.java           # Modal surface with a title and actions
+│   ├── ColorPicker.java      # Swatch grid color chooser
 │   ├── SplitPane.java        # Two panes with a draggable divider
 │   ├── ProgressBar.java      # Determinate/indeterminate progress indicator
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
@@ -313,6 +317,10 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `toolbar`  | `Toolbar`   | container; children are laid out in a row   |
 | `groupbox` | `GroupBox`  | `title`/`label`; children below the title strip |
 | `listbox`  | `ListBox`   | `<item>` children (`selected` marks the initial row) |
+| `table`    | `Table`     | `columns` (comma list); `<row>` children with `<cell>` bodies/`value` |
+| `treeview` | `TreeView`  | nested `<node>` children; `label`, `expanded`/`open` |
+| `dialog`   | `Dialog`    | `title`, `actions` (comma list); body is the message; `static`/`non-dismissible` |
+| `colorpicker` | `ColorPicker` | `palette` (comma list of hex colors), `value` (hex), `columns`, `no-preview`, `no-hex` |
 | `splitpane` | `SplitPane` | two children; `orientation` = `horizontal`/`vertical`, `ratio` |
 | `progress` | `ProgressBar` | `value`, `indeterminate`, `show-text`      |
 | `select`   | `Dropdown`  | `placeholder`; `<option>` children (`value`, `selected`) |

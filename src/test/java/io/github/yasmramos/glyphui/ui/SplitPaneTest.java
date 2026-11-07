@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.graphics.Property;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +48,19 @@ class SplitPaneTest extends TestBase {
         pane.setWidth(200.0f);
         pane.setHeight(100.0f);
         return pane;
+    }
+
+    @Test
+    void draggingUpdatesTheObservableRatioProperty() {
+        SplitPane pane = sizedPane();
+        Property<Float> ratio = pane.ratioProperty();
+
+        pane.onMouseEvent(mouse(MouseEventType.PRESS, 99, 50));
+        pane.onMouseEvent(mouse(MouseEventType.DRAG, 150, 50));
+        pane.onMouseEvent(mouse(MouseEventType.RELEASE, 150, 50));
+
+        assertEquals(pane.getRatio(), ratio.get(), 1e-6);
+        assertTrue(ratio.get() > 0.5f);
     }
 
     @Test

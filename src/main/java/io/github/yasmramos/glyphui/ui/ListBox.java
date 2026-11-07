@@ -499,6 +499,9 @@ public class ListBox extends Component {
             return;
         }
         selectedIndex = target;
+        if (selectedIndexProperty != null) {
+            selectedIndexProperty.set(selectedIndex);
+        }
         ensureSelectionVisible();
         invalidatePaint();
         if (notify && onSelect != null) {

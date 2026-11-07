@@ -488,6 +488,9 @@ public class Stepper extends Component {
             return;
         }
         currentStep = target;
+        if (currentStepProperty != null) {
+            currentStepProperty.set(currentStep);
+        }
         invalidatePaint();
         if (notify && onStepChange != null) {
             try {

@@ -240,6 +240,93 @@ class ClassicWidgetsRasterTest extends TestBase {
     }
 
     @Test
+    @DisplayName("Table paints its header and grid")
+    void tableRenders() {
+        canvas.clear(OPAQUE_BLUE);
+        Table table = new Table("Name", "Value");
+        table.addRow("Alpha", "1");
+        table.addRow("Beta", "2");
+        table.setX(0);
+        table.setY(0);
+        table.setWidth(200);
+        table.setHeight(120);
+        table.setHeaderColor(OPAQUE_RED);
+        try {
+            table.renderInternal(canvas);
+            canvas.flush();
+            assertTrue(anyPixelInRegion(OPAQUE_RED, 0, 0, 200, 30),
+                    "table header pixels expected");
+        } finally {
+            table.dispose();
+        }
+    }
+
+    @Test
+    @DisplayName("TreeView paints its rows and selection")
+    void treeViewRenders() {
+        canvas.clear(OPAQUE_BLUE);
+        TreeView tree = new TreeView();
+        TreeView.Node root = tree.addRoot("Root");
+        root.addChild("Child");
+        tree.refresh();
+        tree.setX(0);
+        tree.setY(0);
+        tree.setWidth(180);
+        tree.setHeight(120);
+        tree.setSelectedColor(OPAQUE_RED);
+        tree.setSelectedNode(root);
+        try {
+            tree.renderInternal(canvas);
+            canvas.flush();
+            assertTrue(anyPixelInRegion(OPAQUE_RED, 0, 0, 180, 40),
+                    "tree selection pixels expected");
+        } finally {
+            tree.dispose();
+        }
+    }
+
+    @Test
+    @DisplayName("Dialog paints its scrim and surface")
+    void dialogRenders() {
+        canvas.clear(OPAQUE_BLUE);
+        Dialog dialog = new Dialog("Title", "Message");
+        dialog.setVisible(true);
+        dialog.setX(0);
+        dialog.setY(0);
+        dialog.setWidth(240);
+        dialog.setHeight(160);
+        dialog.setScrimColor(OPAQUE_RED);
+        dialog.setSurfaceColor(OPAQUE_RED);
+        try {
+            dialog.renderInternal(canvas);
+            canvas.flush();
+            assertTrue(anyPixelInRegion(OPAQUE_RED, 0, 0, 240, 160),
+                    "dialog scrim/surface pixels expected");
+        } finally {
+            dialog.dispose();
+        }
+    }
+
+    @Test
+    @DisplayName("ColorPicker paints its swatches")
+    void colorPickerRenders() {
+        canvas.clear(OPAQUE_BLUE);
+        ColorPicker picker = new ColorPicker(OPAQUE_RED, OPAQUE_RED);
+        picker.setX(0);
+        picker.setY(0);
+        picker.setWidth(200);
+        picker.setHeight(120);
+        try {
+            picker.renderInternal(canvas);
+            canvas.flush();
+            assertTrue(anyPixelInRegion(OPAQUE_RED, 0, 0, 200, 120),
+                    "color picker swatch pixels expected");
+        } finally {
+            picker.dispose();
+        }
+    }
+
+    @Test
     @DisplayName("invisible classic widgets paint nothing")
     void invisibleWidgetsAreNoOps() {
         canvas.clear(OPAQUE_BLUE);
