@@ -191,6 +191,37 @@ class TextAreaTest extends TestBase {
     }
 
     @Test
+    void draggingFromAPressExtendsTheSelection() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText("hello\nworld");
+
+        area.onMouseEvent(new MouseEvent(MouseEventType.PRESS, 8, 20, MouseButton.LEFT, 1));
+        area.onMouseEvent(new MouseEvent(MouseEventType.DRAG, 195, 75, MouseButton.LEFT, 1));
+
+        assertTrue(area.hasSelection(),
+                "dragging with the button held must extend a selection");
+        area.insertText("X");
+        assertTrue(area.getText().startsWith("X"),
+                "typing over the selection must replace the selected prefix");
+    }
+
+    @Test
+    void releasingEndsTheSelectionGesture() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText("hello\nworld");
+
+        area.onMouseEvent(new MouseEvent(MouseEventType.PRESS, 8, 20, MouseButton.LEFT, 1));
+        area.onMouseEvent(new MouseEvent(MouseEventType.RELEASE, 8, 20, MouseButton.LEFT, 0));
+        // A drag after release must not extend the selection.
+        area.onMouseEvent(new MouseEvent(MouseEventType.DRAG, 195, 75, MouseButton.LEFT, 0));
+
+        assertFalse(area.hasSelection(),
+                "a drag after release must not extend the selection");
+    }
+
+    @Test
     void mousePressOnALowerLineMovesTheCaretThere() {
         assumeTrue(RasterCanvasTestFactory.isAvailable(),
                 "Skija native library not loadable on this host; skipping font-metric test");

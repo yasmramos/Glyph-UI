@@ -6,6 +6,8 @@ import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.PasswordField;
+import io.github.yasmramos.glyphui.ui.TextArea;
 import io.github.yasmramos.glyphui.ui.TextField;
 import org.junit.jupiter.api.Test;
 
@@ -164,5 +166,27 @@ class GlyphDslLoaderTest {
                 }
                 """);
         assertInstanceOf(TextField.class, UiLoader.findById(root, "t"));
+    }
+
+    @Test
+    void dslBuildsMaskedAndMultiLineInputs() {
+        UiLoader loader = new UiLoader();
+        Component root = loader.loadFromString("""
+                Column(id = "root", gap = 8) {
+                    PasswordField(id = "password", placeholder = "Password")
+                    TextArea(id = "notes", placeholder = "Notes…")
+                }
+                """);
+
+        assertTrue(loader.getWarnings().isEmpty(),
+                () -> "unexpected warnings: " + loader.getWarnings());
+
+        PasswordField password = (PasswordField) UiLoader.findById(root, "password");
+        assertNotNull(password, "PasswordField must build from the DSL");
+        assertEquals("Password", password.getPlaceholder());
+
+        TextArea notes = (TextArea) UiLoader.findById(root, "notes");
+        assertNotNull(notes, "TextArea must build from the DSL");
+        assertEquals("Notes…", notes.getPlaceholder());
     }
 }

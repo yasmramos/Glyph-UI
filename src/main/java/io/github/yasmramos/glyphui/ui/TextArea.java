@@ -19,10 +19,10 @@ import io.github.humbleui.skija.Paint;
  * <p>Editing reuses the {@link TextField} model (single {@code String} buffer,
  * caret + selection anchor, clipboard and IME) and adds the behaviour that a
  * multi-line field needs: Enter inserts a newline instead of submitting,
- * Up/Down/Home/End move the caret by visual line, and the content scrolls
- * vertically so the caret stays in view. The value is exposed through the
- * inherited {@link #getText()} / {@link #setText(String)} pair, newlines
- * included.</p>
+ * Up/Down/Home/End move the caret by visual line, pressing and dragging with
+ * the mouse extends the selection, and the content scrolls (both axes) so the
+ * caret stays in view. The value is exposed through the inherited
+ * {@link #getText()} / {@link #setText(String)} pair, newlines included.</p>
  *
  * <p>Unlike the single-line field, this widget keeps a stable size driven by
  * the style/layout (a text area is normally given a width and height by CSS or
@@ -59,6 +59,12 @@ public class TextArea extends TextField {
 
     /** Vertical scroll, in pixels, keeping the caret line inside the box. */
     private float verticalScrollOffset = 0.0f;
+
+    /** Horizontal scroll, in pixels, keeping the caret column inside the box. */
+    private float horizontalScrollOffset = 0.0f;
+
+    /** True between a press that began a selection and its end. */
+    private boolean selecting = false;
 
     /**
      * Creates a text area.
@@ -178,14 +184,28 @@ public class TextArea extends TextField {
             case PRESS:
                 if (event.getButton() == MouseButton.LEFT && contains(event.getX(), event.getY())) {
                     requestFocus();
+                    selecting = true;
                     setCaret(positionAt(event.getX(), event.getY()), false);
                     return true;
                 }
                 return false;
+            case DRAG:
+                // Application reports DRAG only while a button is held; extend
+                // the selection from the press anchor out to the pointer.
+                if (selecting && event.getButton() == MouseButton.LEFT) {
+                    setCaret(positionAt(event.getX(), event.getY()), true);
+                    return true;
+                }
+                return false;
+            case MOVE:
+                // Hover with no button down: any in-progress selection gesture
+                // has ended, even if the RELEASE landed outside this widget.
+                selecting = false;
+                return false;
+            case RELEASE:
+                selecting = false;
+                return false;
             default:
-                // Dragging/selection extension is not supported yet; only the
-                // caret is repositioned on press. Return false so the event
-                // can bubble as usual.
                 return false;
         }
     }
@@ -512,6 +532,18 @@ public class TextArea extends TextField {
         float maxScroll = Math.max(0.0f, lineCount * lineHeight - contentHeight);
         verticalScrollOffset = Math.max(0.0f, Math.min(verticalScrollOffset, maxScroll));
 
+        // Keep the caret column inside the box as well.
+        float caretX = font.measureTextWidth(text.substring(lineStartAt(text, caret), caret));
+        if (caretX - horizontalScrollOffset < 0.0f) {
+            horizontalScrollOffset = caretX;
+        } else if (caretX + CARET_WIDTH - horizontalScrollOffset > contentWidth) {
+            horizontalScrollOffset = caretX + CARET_WIDTH - contentWidth;
+        }
+        float maxHScroll = Math.max(0.0f,
+                font.measureTextWidth(longestLine(text)) - contentWidth);
+        horizontalScrollOffset = Math.max(0.0f, Math.min(horizontalScrollOffset, maxHScroll));
+        float lineOriginX = contentLeft - horizontalScrollOffset;
+
         int saveCount = canvas.save();
         canvas.clipRect(contentLeft, contentTop, contentWidth, contentHeight);
 
@@ -542,28 +574,28 @@ public class TextArea extends TextField {
                 int selStart = Math.max(selLo, lineStart);
                 int selEnd = Math.min(selHi, lineEnd);
                 if (selEnd > selStart) {
-                    float sx = contentLeft + font.measureTextWidth(text.substring(lineStart, selStart));
-                    float ex = contentLeft + font.measureTextWidth(text.substring(lineStart, selEnd));
+                    float sx = lineOriginX + font.measureTextWidth(text.substring(lineStart, selStart));
+                    float ex = lineOriginX + font.measureTextWidth(text.substring(lineStart, selEnd));
                     canvas.drawRect(sx, lineY, Math.max(0.0f, ex - sx), lineHeight, selectionPaint);
                 }
                 if (selHi > lineEnd && selLo <= lineEnd) {
                     // The selection crosses this line's break: paint a block
                     // for the newline itself so the highlight looks continuous.
-                    float nx = contentLeft + font.measureTextWidth(lineText);
+                    float nx = lineOriginX + font.measureTextWidth(lineText);
                     canvas.drawRect(nx, lineY, font.measureTextWidth(" "), lineHeight, selectionPaint);
                 }
             }
 
             if (!lineText.isEmpty()) {
-                canvas.drawString(lineText, contentLeft, baseline, textPaint, font);
+                canvas.drawString(lineText, lineOriginX, baseline, textPaint, font);
             }
 
             if (isFocused() && enabled && caretLine == lineIndex
                     && caret >= lineStart && caret <= lineEnd) {
-                float caretX = contentLeft + font.measureTextWidth(text.substring(lineStart, caret));
+                float caretPixelX = lineOriginX + font.measureTextWidth(text.substring(lineStart, caret));
                 cursorPaint.setColor(resolveIntStyle(StyleProperty.ACCENT_COLOR, null,
                         theme.getAccentColor()));
-                canvas.drawRect(caretX, lineY, CARET_WIDTH, lineHeight, cursorPaint);
+                canvas.drawRect(caretPixelX, lineY, CARET_WIDTH, lineHeight, cursorPaint);
             }
 
             if (lineEnd == text.length()) {
@@ -598,7 +630,7 @@ public class TextArea extends TextField {
             lineStart = next + 1;
         }
         int lineEnd = lineEndAt(text, lineStart);
-        float local = mouseX - x - padding;
+        float local = mouseX - x - padding + horizontalScrollOffset;
         float pos = 0.0f;
         for (int i = lineStart; i < lineEnd; i++) {
             String cp = text.substring(i, i + 1);
