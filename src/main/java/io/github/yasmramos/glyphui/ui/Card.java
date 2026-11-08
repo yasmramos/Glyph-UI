@@ -220,6 +220,9 @@ public class Card extends Panel {
         ensurePaints();
 
         float radius = getTheme().getControlCornerRadius();
+        // A card is an in-flow raised surface: a subtle lift separates it from
+        // the page without the heavier depth of a dialog or popup.
+        canvas.drawShadow(0, 0, width, height, radius, Canvas.Elevation.LOW);
         bgPaint.setColor(getBackgroundColor());
         canvas.drawRRect(0, 0, width, height, radius, radius, bgPaint);
         borderPaint.setColor(getBorderColor());

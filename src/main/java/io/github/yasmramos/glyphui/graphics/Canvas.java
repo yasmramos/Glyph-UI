@@ -349,6 +349,108 @@ public class Canvas {
     }
 
     /**
+     * Elevation levels for raised surfaces, in the spirit of Material's
+     * elevation scale. Each level pairs a downward offset with a blur sigma;
+     * larger values read as "further from the page".
+     *
+     * <p>Widgets pass a level to {@link #drawShadow} instead of hand-rolling
+     * offsets, so cards, dialogs, popups and tooltips share one consistent
+     * depth language (and a single theme token).</p>
+     */
+    public enum Elevation {
+        /** No shadow; the surface sits flat on the page. */
+        NONE(0.0f, 0.0f, 0.0f),
+        /** A subtle lift, for cards and other in-flow surfaces. */
+        LOW(0.0f, 1.0f, 2.5f),
+        /** A clear lift, for dropdowns and popup menus. */
+        MEDIUM(0.0f, 3.0f, 6.0f),
+        /** The strongest lift, for modal dialogs and floating tooltips. */
+        HIGH(0.0f, 6.0f, 12.0f);
+
+        private final float offsetX;
+        private final float offsetY;
+        private final float sigma;
+
+        Elevation(float offsetX, float offsetY, float sigma) {
+            this.offsetX = offsetX;
+            this.offsetY = offsetY;
+            this.sigma = sigma;
+        }
+
+        /** @return horizontal shadow offset, logical units */
+        public float getOffsetX() {
+            return offsetX;
+        }
+
+        /** @return vertical shadow offset, logical units */
+        public float getOffsetY() {
+            return offsetY;
+        }
+
+        /** @return Gaussian blur sigma, logical units */
+        public float getSigma() {
+            return sigma;
+        }
+    }
+
+    /**
+     * Draws the drop shadow for a rounded surface of the given bounds and
+     * corner radius, at the requested {@link Elevation}. Call this immediately
+     * before painting the surface itself: the shadow is offset downward and
+     * blurred, and the opaque surface drawn on top hides the part of the blur
+     * that would fall inside the shape.
+     *
+     * <p>The colour comes from {@link Theme#getShadowColor()}, so one call
+     * works over any page background. Blur filters are cached per sigma and
+     * shared for the process lifetime (like the focus-ring dash effect); the
+     * temporary paint is closed before returning.</p>
+     *
+     * @param x        left edge of the surface, logical units
+     * @param y        top edge of the surface, logical units
+     * @param width    surface width, logical units
+     * @param height   surface height, logical units
+     * @param radius   corner radius of the surface, logical units
+     * @param elevation the elevation level (null and {@code NONE} draw nothing)
+     */
+    public void drawShadow(float x, float y, float width, float height,
+                           float radius, Elevation elevation) {
+        checkUiThread();
+        if (elevation == null || elevation == Elevation.NONE
+                || width <= 0.0f || height <= 0.0f) {
+            return;
+        }
+        Paint paint = new Paint();
+        try {
+            paint.setAntiAlias(true);
+            paint.setColor(Theme.current().getShadowColor());
+            paint.setMaskFilter(blurFilterFor(elevation.getSigma()));
+            RRect rrect = RRect.makeXYWH(
+                    x + elevation.getOffsetX(), y + elevation.getOffsetY(),
+                    width, height, radius, radius);
+            canvas.drawRRect(rrect, paint);
+        } finally {
+            // The paint is per-call; the shared MaskFilter is not owned by it
+            // and must survive (see blurFilterFor).
+            paint.close();
+        }
+    }
+
+    /**
+     * Cache of blur {@link MaskFilter}s keyed by sigma. Mask filters are
+     * immutable and thread-confined to the UI thread, so sharing them is safe
+     * and avoids allocating a native filter on every frame. They are never
+     * closed: they live for the process lifetime, exactly like the shared
+     * focus-ring {@code PathEffect}.
+     */
+    private static final java.util.Map<Float, MaskFilter> BLUR_FILTERS =
+            new java.util.HashMap<>();
+
+    private static MaskFilter blurFilterFor(float sigma) {
+        return BLUR_FILTERS.computeIfAbsent(sigma, s ->
+                MaskFilter.makeBlur(FilterBlurMode.NORMAL, s));
+    }
+
+    /**
      * Draws a string of text.
      *
      * @param text   the text to draw
