@@ -33,7 +33,7 @@ import java.util.logging.Logger;
  * Colors resolve like every other widget: a CSS declaration wins, then a
  * per-instance override, then the theme.</p>
  */
-public class Link extends Component {
+public class Link extends Component implements Textual {
 
     /** Logger for click-handler failures (never swallowed silently). */
     private static final Logger LOG = Logger.getLogger(Link.class.getName());

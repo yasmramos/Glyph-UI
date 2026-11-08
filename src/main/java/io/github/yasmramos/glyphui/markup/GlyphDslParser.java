@@ -224,12 +224,15 @@ public final class GlyphDslParser {
                     advance(); // '='
                     skipTrivia();
                     parseNamedValue(element, ident, l, c);
+                } else if ("else".equals(ident)) {
+                    // Bare `else` is the control-flow flag, not literal text.
+                    element.addAttribute(new Attribute("else", null, false, l, c));
                 } else {
                     // Bare positional word: treated as the widget's text.
                     element.addChild(new TextNode(ident, l, c));
                 }
             } else if (ch == '"') {
-                element.addChild(new TextNode(readString(), l, c));
+                addInterpolatedText(element, readString(), l, c);
             } else if (ch == '{') {
                 element.addChild(readBinding());
             } else if (ch == ')') {
@@ -442,6 +445,61 @@ public final class GlyphDslParser {
             advance();
         }
         throw new MarkupException("unterminated string", l, c);
+    }
+
+    /**
+     * Splits a string literal into alternating {@link TextNode} and
+     * {@link BindingNode} children so {@code "Hi {name}"} behaves like the XML
+     * front-end's content interpolation. Escaped braces ({@code &#92;{}) stay
+     * literal.
+     */
+    private void addInterpolatedText(Element element, String text, int l, int c) {
+        int i = 0;
+        while (i < text.length()) {
+            int open = indexOfUnescaped(text, '{', i);
+            if (open < 0) {
+                addTextIfPresent(element, text.substring(i), l, c);
+                return;
+            }
+            int close = indexOfUnescaped(text, '}', open + 1);
+            if (close < 0) {
+                addTextIfPresent(element, text.substring(i), l, c);
+                return;
+            }
+            addTextIfPresent(element, text.substring(i, open), l, c);
+            String path = text.substring(open + 1, close).trim();
+            List<String> segments = new ArrayList<>();
+            for (String segment : path.split("\\.")) {
+                if (!segment.isEmpty()) {
+                    segments.add(segment);
+                }
+            }
+            if (segments.isEmpty()) {
+                addTextIfPresent(element, text.substring(open, close + 1), l, c);
+            } else {
+                element.addChild(new BindingNode(segments, path, l, c));
+            }
+            i = close + 1;
+        }
+    }
+
+    private static void addTextIfPresent(Element element, String text, int l, int c) {
+        if (!text.isEmpty()) {
+            element.addChild(new TextNode(text, l, c));
+        }
+    }
+
+    /** @return the index of {@code target} at or after {@code from}, or -1 */
+    private static int indexOfUnescaped(String text, char target, int from) {
+        for (int i = from; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (ch == '\\') {
+                i++;
+            } else if (ch == target) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** Lexes a run of bare value characters (numbers, {@code #hex}, keywords). */

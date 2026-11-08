@@ -23,7 +23,7 @@ import java.util.function.Consumer;
  * safe in headless unit tests. Clicking or pressing Space toggles
  * {@link #isChecked()} and notifies the optional change listener.</p>
  */
-public class CheckBox extends Component {
+public class CheckBox extends Component implements Textual {
 
     /** Edge length of the square indicator. */
     public static final float BOX_SIZE = 18.0f;

@@ -25,7 +25,7 @@ import io.github.humbleui.skija.Paint;
  * the theme accent color behind white text, the conventional "attention"
  * treatment.</p>
  */
-public class Badge extends Component {
+public class Badge extends Component implements Textual {
 
     /** Horizontal inner padding, logical units. */
     public static final float PADDING_HORIZONTAL = 8.0f;

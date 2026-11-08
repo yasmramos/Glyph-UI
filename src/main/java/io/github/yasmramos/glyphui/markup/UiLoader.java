@@ -3,6 +3,11 @@ package io.github.yasmramos.glyphui.markup;
 import io.github.yasmramos.glyphui.graphics.Image;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.FlowLayout;
+import io.github.yasmramos.glyphui.reactive.Binding;
+import io.github.yasmramos.glyphui.reactive.Computed;
+import io.github.yasmramos.glyphui.reactive.Observer;
+import io.github.yasmramos.glyphui.reactive.SignalList;
+import io.github.yasmramos.glyphui.reactive.Trackable;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleSheet;
 import io.github.yasmramos.glyphui.ui.Accordion;
@@ -20,6 +25,7 @@ import io.github.yasmramos.glyphui.ui.Stepper;
 import io.github.yasmramos.glyphui.ui.Tabs;
 import io.github.yasmramos.glyphui.ui.Table;
 import io.github.yasmramos.glyphui.ui.TextField;
+import io.github.yasmramos.glyphui.ui.Textual;
 import io.github.yasmramos.glyphui.ui.TreeView;
 
 import java.io.IOException;
@@ -54,9 +60,8 @@ import java.util.logging.Logger;
  * {@code <Tag/>} form, comments in {@code <!-- ... -->}), anything else as the
  * Compose-style DSL ({@code Component(args) { children }}, comments in
  * {@code //} or {@code /* ... *}{@code /}). Both accept {@code {path}}
- * interpolations in content; the parser keeps those as {@link BindingNode}
- * children, but this loader does not yet wire them to reactive properties (it
- * records a warning and ignores them).</p>
+ * interpolations in content; the loader resolves them against the registered
+ * {@link Bindings} and drives the widget caption reactively.</p>
  *
  * <h2>Tag mapping</h2>
  * <p>The vocabulary lives in {@link WidgetRegistry#defaults()}, the single
@@ -126,12 +131,16 @@ import java.util.logging.Logger;
  * the manager default. Equivalent CSS properties via style classes also work
  * once the sheet is applied.</p>
  *
- * <p><b>Bindings and control flow:</b> there is no Binder or Validator yet.
- * Markup supports {@code {path}} interpolations in element content only —
- * they are parsed into {@link BindingNode}s but this loader records a warning
- * (once per distinct path per load) and ignores them. Interpolations inside
- * attribute values, {@code bind:} prefixes and {@code if}/{@code for-each}
- * control-flow attributes are not part of the current feature set.</p>
+ * <p><b>Bindings and control flow:</b> {@code {path}} interpolations in
+ * element content (mixed with static text) and a {@code bind:text} /
+ * {@code bind-text} attribute are resolved against the registered
+ * {@link Bindings} (see {@link #registerBinding(String, Trackable)}) and drive
+ * the widget's caption through {@link io.github.yasmramos.glyphui.ui.Textual}.
+ * An unknown path warns once per load. The control-flow attributes
+ * {@code for-each="items"} (expanded per list element under a scope exposing
+ * {@code item} and {@code index}) and {@code if} / {@code elif} / {@code else}
+ * (visibility driven by reactive conditions) are supported in both front-ends.
+ * Interpolations inside attribute values are not supported.</p>
  *
  * <p><b>Not a browser:</b> there is no JavaScript engine and no DOM — this
  * is a structural loader for a fixed tag subset; custom widgets can be added
@@ -198,6 +207,10 @@ public final class UiLoader {
     private final Map<String, RadioGroup> radioGroups = new LinkedHashMap<>();
     /** Binding paths already warned about during the current load (dedupe). */
     private final Set<String> warnedBindings = new java.util.HashSet<>();
+    /** Global binding paths visible to {@code {path}} interpolations. */
+    private Bindings bindings = new Bindings();
+    /** Active binding scope while building (a {@code for-each} row adds locals). */
+    private Bindings scope;
 
     /**
      * Creates a loader without a controller.
@@ -222,6 +235,38 @@ public final class UiLoader {
      */
     public void setController(Object controller) {
         this.controller = controller;
+    }
+
+    /**
+     * Registers a global binding path for {@code {path}} interpolations. The
+     * path is resolved against the value on every load, and the widget's text
+     * follows it: each change is pushed onto the widget's caption property.
+     *
+     * @param path  the dotted path, e.g. {@code "viewModel.title"}
+     * @param value the observable source (never null)
+     */
+    public void registerBinding(String path, Trackable<?> value) {
+        bindings.register(path, value);
+    }
+
+    /**
+     * Returns the root bindings map, so callers can register several paths or
+     * keep a reference for {@code for-each} scopes.
+     *
+     * @return the root bindings (never null)
+     */
+    public Bindings getBindings() {
+        return bindings;
+    }
+
+    /**
+     * Replaces the root bindings map. Call before loading; a load resolves
+     * every {@code {path}} against the current map.
+     *
+     * @param bindings the new root bindings (never null)
+     */
+    public void setBindings(Bindings bindings) {
+        this.bindings = bindings != null ? bindings : new Bindings();
     }
 
     /**
@@ -406,6 +451,7 @@ public final class UiLoader {
         warnings.clear();
         componentsById.clear();
         radioGroups.clear();
+        scope = null;
         boolean dsl = GlyphDslParser.looksLikeDsl(source);
         ParseResult result = dsl
                 ? GlyphDslParser.parse(source)
@@ -434,22 +480,16 @@ public final class UiLoader {
             rootPanel.setStyleTag(container.getTagName());
             applyCommonAttributes(container, rootPanel);
             applyLayout(container, rootPanel);
-            for (Element child : widgetChildren(container)) {
-                Component c = buildComponent(child);
-                if (c != null) {
-                    rootPanel.add(c);
-                }
-            }
+            addBuiltChildren(widgetChildren(container), rootPanel::add);
         } else {
             rootPanel.setStyleTag("body");
+            List<Element> roots = new ArrayList<>();
             for (AstNode node : doc.getChildren()) {
                 if (node instanceof Element element && !isMetadata(element)) {
-                    Component c = buildComponent(element);
-                    if (c != null) {
-                        rootPanel.add(c);
-                    }
+                    roots.add(element);
                 }
             }
+            addBuiltChildren(roots, rootPanel::add);
         }
         return rootPanel;
     }
@@ -470,6 +510,7 @@ public final class UiLoader {
 
         applyCommonAttributes(element, component);
         applyLayout(element, component);
+        applyTextBinding(element, component);
         bindHandlers(element, component);
         if (component instanceof Button button) {
             bindClick(button, element);
@@ -494,17 +535,364 @@ public final class UiLoader {
         } else if (component instanceof StatusBar statusBar) {
             buildStatusBarChildren(element, statusBar);
         } else if (component instanceof Panel panel) {
-            for (Element child : widgetChildren(element)) {
-                Component c = buildComponent(child);
-                if (c != null) {
-                    panel.add(c);
-                }
-            }
+            addBuiltChildren(element, panel::add);
         }
         if (component instanceof Dropdown dropdown) {
             buildDropdownOptions(element, dropdown);
         }
         return component;
+    }
+
+    // ------------------------------------------------------------------
+    // Reactive bindings and control flow
+    // ------------------------------------------------------------------
+
+    /**
+     * Builds the container children, honouring the control-flow directives
+     * {@code for-each}, {@code if}, {@code elif} and {@code else}.
+     *
+     * <p>A {@code for-each="items"} element is expanded once per list element,
+     * each copy built under a child {@link Bindings} scope that exposes the
+     * current {@code item} and {@code index}; a following {@code if}/{@code
+     * elif}/{@code else} chain is built once and its members' visibility is
+     * driven reactively by the conditions, so no rebuild is needed when the
+     * data changes.</p>
+     *
+     * @param parent the element whose children are built
+     * @param sink   receives each built component, in document order
+     */
+    private void addBuiltChildren(Element parent,
+            java.util.function.Consumer<Component> sink) {
+        addBuiltChildren(widgetChildren(parent), sink);
+    }
+
+    /**
+     * Expands a list of child elements honouring {@code for-each}, {@code if},
+     * {@code elif} and {@code else}, feeding each built component to {@code sink}.
+     */
+    private void addBuiltChildren(List<Element> kids,
+            java.util.function.Consumer<Component> sink) {
+        int i = 0;
+        while (i < kids.size()) {
+            Element child = kids.get(i);
+            String each = attr(child, "for-each");
+            if (!each.isEmpty()) {
+                expandForEach(child, each, sink);
+                i++;
+                continue;
+            }
+            if (!attr(child, "if").isEmpty()) {
+                i = buildConditionalChain(kids, i, sink);
+                continue;
+            }
+            if (!attr(child, "elif").isEmpty() || hasAttr(child, "else")) {
+                warn("'" + (hasAttr(child, "else") ? "else" : "elif")
+                        + "' without a preceding 'if' on <" + child.getTagName() + ">");
+                i++;
+                continue;
+            }
+            Component c = buildComponent(child);
+            if (c != null) {
+                sink.accept(c);
+            }
+            i++;
+        }
+    }
+
+    /**
+     * Builds one {@code if}/{@code elif}/{@code else} chain starting at
+     * {@code start}, binding each member's visibility to its condition. Later
+     * members are only visible when no earlier one matched.
+     *
+     * @return the index just past the chain
+     */
+    private int buildConditionalChain(List<Element> kids, int start,
+            java.util.function.Consumer<Component> sink) {
+        List<Element> chain = new ArrayList<>();
+        List<String> conditions = new ArrayList<>();
+        int i = start;
+        while (i < kids.size()) {
+            Element e = kids.get(i);
+            if (i == start) {
+                chain.add(e);
+                conditions.add(attr(e, "if"));
+                i++;
+            } else if (!attr(e, "elif").isEmpty()) {
+                chain.add(e);
+                conditions.add(attr(e, "elif"));
+                i++;
+            } else if (hasAttr(e, "else")) {
+                chain.add(e);
+                conditions.add(null);
+                i++;
+                break;
+            } else {
+                break;
+            }
+        }
+
+        List<Component> built = new ArrayList<>();
+        for (Element e : chain) {
+            built.add(buildComponent(e));
+        }
+        // The shared "a previous branch matched" flag is threaded through a
+        // fresh Computed per step so each member subscribes to the ones before
+        // it and re-evaluates only when its own condition or a predecessor
+        // changes. The Computeds are owned by the first component that built,
+        // so they are disposed with the tree.
+        Component owner = null;
+        for (Component c : built) {
+            if (c != null) {
+                owner = c;
+                break;
+            }
+        }
+        if (owner == null) {
+            return i;
+        }
+        Computed<Boolean> matched = new Computed<>(() -> false);
+        owner.track(matched);
+        for (int k = 0; k < chain.size(); k++) {
+            Component c = built.get(k);
+            if (c == null) {
+                continue;
+            }
+            String path = conditions.get(k);
+            Computed<Boolean> visible;
+            if (path == null) {
+                Computed<Boolean> previous = matched;
+                visible = new Computed<>(() -> !previous.get());
+            } else {
+                Trackable<?> source = resolveBinding(path, chain.get(k));
+                if (source == null) {
+                    c.setVisible(false);
+                    sink.accept(c);
+                    continue;
+                }
+                Computed<Boolean> self = new Computed<>(() -> truthy(source.get()));
+                Computed<Boolean> previous = matched;
+                visible = new Computed<>(() -> !previous.get() && self.get());
+                matched = new Computed<>(() -> previous.get() || self.get());
+                owner.track(self);
+                owner.track(matched);
+            }
+            owner.track(visible);
+            c.track(new Binding<>(visible, c::setVisible));
+            sink.accept(c);
+        }
+        return i;
+    }
+
+    /**
+     * Expands a {@code for-each="path"} element once per list element, each
+     * copy built under a child scope exposing {@code item} and {@code index}.
+     * When the value is a {@code Map}, its entries are also exposed as
+     * {@code item.<key>}. Unknown paths and non-list values warn and produce
+     * no children.
+     */
+    private void expandForEach(Element element, String path,
+            java.util.function.Consumer<Component> sink) {
+        Trackable<?> source = resolveBinding(path, element);
+        if (source == null) {
+            return;
+        }
+        List<?> items = asList(source.get());
+        if (items == null) {
+            warn("for-each=\"" + path + "\" on <" + element.getTagName()
+                    + "> expects a list but got " + describe(source.get()));
+            return;
+        }
+        Bindings base = scope != null ? scope : bindings;
+        for (int index = 0; index < items.size(); index++) {
+            Object item = items.get(index);
+            Bindings local = base.scoped();
+            local.register("item", constant(item));
+            local.register("index", constant(index));
+            if (item instanceof Map<?, ?> map) {
+                for (Map.Entry<?, ?> entry : map.entrySet()) {
+                    local.register("item." + entry.getKey(), constant(entry.getValue()));
+                }
+            }
+            Bindings previous = scope;
+            scope = local;
+            try {
+                Component c = buildComponent(element);
+                if (c != null) {
+                    sink.accept(c);
+                }
+            } finally {
+                scope = previous;
+            }
+        }
+    }
+
+    /**
+     * Resolves a {@code {path}} or {@code bind:text} path in the active scope,
+     * warning once per unknown path.
+     *
+     * @return the trackable, or null when the path is unknown
+     */
+    private Trackable<?> resolveBinding(String path, Element element) {
+        return resolveIn(activeScope(), path, element);
+    }
+
+    /**
+     * Resolves a path in an explicit scope, warning once per unknown path.
+     *
+     * @return the trackable, or null when the path is unknown
+     */
+    private Trackable<?> resolveIn(Bindings from, String path, Element element) {
+        try {
+            return from.resolve(path);
+        } catch (IllegalArgumentException e) {
+            if (warnedBindings.add(path)) {
+                warn("Unknown binding path {" + path + "} on <"
+                        + element.getTagName() + ">");
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Binds a widget's caption to its content, resolving every {@code {path}}
+     * interpolation (mixed with static text) or a {@code bind:text} attribute.
+     * The caption is rebuilt reactively whenever any referenced value changes.
+     * Non-text widgets and unknown paths warn and are left untouched.
+     */
+    private void applyTextBinding(Element element, Component component) {
+        List<AstNode> children = element.getChildren();
+        boolean hasInterpolation = children.stream().anyMatch(BindingNode.class::isInstance);
+        String attrPath = attr(element, "bind:text");
+        if (attrPath.isEmpty()) {
+            attrPath = attr(element, "bind-text");
+        }
+        if (!hasInterpolation && attrPath.isEmpty()) {
+            return;
+        }
+        if (!(component instanceof Textual textual)) {
+            String shown = hasInterpolation ? firstBindingPath(element) : attrPath;
+            warn("Binding {" + shown + "} on <" + element.getTagName()
+                    + "> ignored: the widget has no caption");
+            return;
+        }
+        if (!hasInterpolation) {
+            Trackable<?> source = resolveBinding(attrPath, element);
+            if (source != null) {
+                component.track(textBinding(asObject(source), textual));
+            }
+            return;
+        }
+        // Capture the scope active at build time: a row's locals are only
+        // visible while that row is built, but the Computed re-runs later.
+        Bindings active = activeScope();
+        Computed<String> caption = new Computed<>(() -> interpolate(element, active));
+        textual.textProperty().set(caption.get());
+        component.track(caption);
+        component.track(new Binding<>(caption, textual.textProperty()::set));
+    }
+
+    /** Concatenates the element's static text and resolved interpolations. */
+    private String interpolate(Element element, Bindings active) {
+        StringBuilder sb = new StringBuilder();
+        for (AstNode child : element.getChildren()) {
+            if (child instanceof TextNode textNode) {
+                sb.append(textNode.getText());
+            } else if (child instanceof BindingNode binding) {
+                Trackable<?> source = resolveIn(active, binding.getRawPath(), element);
+                if (source != null) {
+                    Object value = source.get();
+                    sb.append(value == null ? "" : String.valueOf(value));
+                }
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    /** @return the scope visible while building: the row scope, else the root */
+    private Bindings activeScope() {
+        return scope != null ? scope : bindings;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Trackable<Object> asObject(Trackable<?> source) {
+        return (Trackable<Object>) source;
+    }
+
+    private static Binding<Object> textBinding(Trackable<Object> source, Textual textual) {
+        return new Binding<>(source,
+                value -> textual.textProperty().set(value == null ? "" : String.valueOf(value)));
+    }
+
+    /** @return the path of the first {@code {path}} child, or null when none */
+    private static String firstBindingPath(Element element) {
+        for (AstNode child : element.getChildren()) {
+            if (child instanceof BindingNode binding) {
+                return binding.getRawPath();
+            }
+        }
+        return null;
+    }
+
+    /** @return the value as a list view, or null when it is not list-like */
+    private static List<?> asList(Object value) {
+        if (value instanceof SignalList<?> signalList) {
+            return signalList.snapshot();
+        }
+        if (value instanceof List<?> list) {
+            return list;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> copy = new ArrayList<>();
+            iterable.forEach(copy::add);
+            return copy;
+        }
+        return null;
+    }
+
+    private static String describe(Object value) {
+        return value == null ? "null" : value.getClass().getSimpleName();
+    }
+
+    /** Truthiness used by {@code if}/{@code elif}: null, false, 0 and "" are false. */
+    private static boolean truthy(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        if (value instanceof Number n) {
+            return n.doubleValue() != 0.0;
+        }
+        if (value instanceof CharSequence s) {
+            return s.length() > 0 && !"false".equalsIgnoreCase(s.toString());
+        }
+        return true;
+    }
+
+    /** A constant, never-changing trackable used for {@code for-each} locals. */
+    private static final class Constant<T> implements Trackable<T> {
+        private final T value;
+
+        Constant(T value) {
+            this.value = value;
+        }
+
+        @Override
+        public T get() {
+            return value;
+        }
+
+        @Override
+        public Subscription subscribe(Observer observer) {
+            return () -> {
+                // Constant values never change.
+            };
+        }
+    }
+
+    private static <T> Trackable<T> constant(T value) {
+        return new Constant<>(value);
     }
 
     /**
@@ -1131,8 +1519,8 @@ public final class UiLoader {
      * child elements (like DOM {@code textContent}); an explicit {@code text}
      * attribute takes precedence. The result is trimmed so markup such as
      * {@code <Label>\n  Hola\n</Label>} does not render stray whitespace.
-     * Binding interpolations are not resolved here — a warning is emitted
-     * once per distinct path per load.
+     * {@code {path}} interpolations are not part of the static text: they are
+     * resolved separately by {@link #applyTextBinding(Element, Component)}.
      *
      * @param element the element whose text is requested
      * @return the element text (may be empty)
@@ -1172,14 +1560,9 @@ public final class UiLoader {
                 // Inline children (<Label>Hola <b>mundo</b></Label>) contribute
                 // their own text, matching textContent semantics.
                 collectText(nested, sb);
-            } else if (child instanceof BindingNode binding) {
-                String path = binding.getRawPath();
-                if (warnedBindings.add(path)) {
-                    warn("Binding {" + path + "} in <"
-                            + element.getTagName()
-                            + "> ignored: reactive bindings are not wired yet");
-                }
             }
+            // BindingNodes are resolved reactively (see applyTextBinding), so
+            // they contribute nothing to the static text.
         }
     }
 

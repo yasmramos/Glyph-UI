@@ -102,9 +102,26 @@ class WidgetRegistryTest {
                 "select", "scroll", "scrollpane", "separator", "hr", "badge",
                 "card", "tabs", "tabpanel", "alert", "avatar", "accordion",
                 "chip", "breadcrumb", "pagination", "table", "treeview",
-                "dialog", "colorpicker"}) {
+                "dialog", "colorpicker",
+                // Compose-style spellings that share a factory with the above.
+                "image", "imageview", "radiobutton", "toggleswitch", "dropdown",
+                "progressbar", "hyperlink"}) {
             assertTrue(registry.knows(tag), "missing default tag " + tag);
         }
+    }
+
+    @Test
+    void composeStyleAliasesCreateTheSameWidgets() {
+        WidgetRegistry registry = WidgetRegistry.defaults();
+
+        assertInstanceOf(ImageView.class, registry.create("Image", null, context));
+        assertInstanceOf(ImageView.class, registry.create("ImageView", null, context));
+        assertInstanceOf(RadioButton.class, registry.create("RadioButton", null, context));
+        assertInstanceOf(ToggleSwitch.class, registry.create("ToggleSwitch", null, context));
+        assertInstanceOf(Dropdown.class, registry.create("Dropdown", null, context));
+        assertInstanceOf(ProgressBar.class, registry.create("ProgressBar", null, context));
+        assertInstanceOf(io.github.yasmramos.glyphui.ui.Link.class,
+                registry.create("Hyperlink", null, context));
     }
 
     @Test

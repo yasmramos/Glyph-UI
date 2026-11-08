@@ -25,7 +25,7 @@ import io.github.humbleui.skija.PaintMode;
  * <p>Alerts are informational: they never take focus and never consume pointer
  * or key events.</p>
  */
-public class Alert extends Component {
+public class Alert extends Component implements Textual {
 
     /** Severity of an alert, which selects its accent color. */
     public enum Level {

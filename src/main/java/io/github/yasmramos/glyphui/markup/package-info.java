@@ -43,11 +43,13 @@
  * </ul>
  *
  * <h2>Scope boundary</h2>
- * This package produces the <i>raw</i> tree only. Directives such as
+ * The parsers produce the <i>raw</i> tree only. Directives such as
  * {@code bind:*}, {@code on:*}, {@code if} / {@code elif} / {@code else} and
  * {@code for-each} are kept verbatim as plain attributes
- * ({@link io.github.yasmramos.glyphui.markup.Attribute}); interpreting them belongs to the
- * validator/binder layer.
+ * ({@link io.github.yasmramos.glyphui.markup.Attribute}); the
+ * {@link io.github.yasmramos.glyphui.markup.UiLoader} interprets them (event
+ * handlers, reactive {@code {path}} captions, {@code for-each} expansion and
+ * {@code if}/{@code elif}/{@code else} visibility).
  *
  * <h2>Constraints</h2>
  * No reflection, no parsing libraries and no regular expressions: every

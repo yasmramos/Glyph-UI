@@ -31,7 +31,7 @@ import java.util.logging.Logger;
  *       never leave the button stuck in the pressed state.</li>
  * </ul>
  */
-public class Button extends Component {
+public class Button extends Component implements Textual {
     /**
      * Default horizontal padding added on each side of the measured text.
      * Matches the default theme's button padding; the theme and CSS
