@@ -121,6 +121,8 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── StatusBar.java        # Thin information strip along a window edge
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
+│   ├── PasswordField.java    # Masked single-line text input
+│   ├── TextArea.java         # Editable multi-line text input
 │   ├── ScrollPane.java       # Scrollable container
 │   ├── Separator.java        # One-pixel divider
 │   └── ComponentState.java   # Component state enum
@@ -348,6 +350,8 @@ HTML-ish aliases remain for compatibility:
 | `Row`      | `Panel`     | horizontal flex container; `gap`, `padding`  |
 | `Text`     | `Label`     | text from the first positional argument      |
 | `TextField` | `TextField` | `placeholder`, `value`; `onchange`          |
+| `PasswordField` | `PasswordField` | masked `placeholder`, `value`; `onchange` |
+| `TextArea` | `TextArea`  | multi-line `placeholder`, `value`; Enter inserts a newline |
 | `box`      | `Panel`     | vertical flex container (legacy spelling)    |
 | `div`      | `Panel`     | container; supports `layout="flex"/"flow"`   |
 | `button`   | `Button`    | text from tag body; `onclick="methodName"`   |

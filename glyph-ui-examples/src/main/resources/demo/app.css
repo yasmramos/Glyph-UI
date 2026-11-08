@@ -51,6 +51,10 @@
     border-color: var(--accent);
 }
 
+.field-multiline {
+    height: 96px;
+}
+
 .btn-primary {
     background: var(--accent);
     color: #ffffff;
