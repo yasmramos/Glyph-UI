@@ -25,6 +25,7 @@ public class ImageView extends Component {
     private Image image;
     private ObjectFit objectFit = ObjectFit.FILL;
     private int placeholderColor = Color.makeARGB(255, 128, 128, 128);
+    private Canvas.ImageScaling imageScaling = Canvas.ImageScaling.SMOOTH;
 
     /**
      * Creates an image view bound to an image.
@@ -65,6 +66,31 @@ public class ImageView extends Component {
     public void setObjectFit(ObjectFit objectFit) {
         if (objectFit != null && this.objectFit != objectFit) {
             this.objectFit = objectFit;
+            invalidate();
+        }
+    }
+
+    /**
+     * Gets the sampling policy used when the image is scaled into the bounds.
+     *
+     * @return the sampling policy (never null)
+     */
+    public Canvas.ImageScaling getImageScaling() {
+        return imageScaling;
+    }
+
+    /**
+     * Sets the sampling policy used when the image is scaled into the bounds.
+     * The default is {@link Canvas.ImageScaling#SMOOTH} (bicubic), which keeps
+     * photos and icons free of jaggies; use
+     * {@link Canvas.ImageScaling#PIXELATED} for pixel art or other images whose
+     * hard edges must survive the scale.
+     *
+     * @param scaling the sampling policy (null keeps the current value)
+     */
+    public void setImageScaling(Canvas.ImageScaling scaling) {
+        if (scaling != null && this.imageScaling != scaling) {
+            this.imageScaling = scaling;
             invalidate();
         }
     }
@@ -165,12 +191,12 @@ public class ImageView extends Component {
                 // Clip the overflow so COVER never paints outside the bounds.
                 int saved = canvas.save();
                 canvas.clipRect(0, 0, width, height);
-                canvas.drawImage(image, dx, dy, dw, dh);
+                canvas.drawImage(image, dx, dy, dw, dh, imageScaling);
                 canvas.restoreToCount(saved);
                 return;
             }
         }
-        canvas.drawImage(image, dx, dy, dw, dh);
+        canvas.drawImage(image, dx, dy, dw, dh, imageScaling);
     }
 
     /** Reusable paint for placeholder rendering (no per-frame allocation). */

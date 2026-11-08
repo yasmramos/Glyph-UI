@@ -102,6 +102,22 @@ public class ImageViewTest extends TestBase {
     }
 
     @Test
+    public void imageScalingDefaultsToSmoothAndCanBeSwitched() {
+        ImageView view = new ImageView();
+        assertEquals(io.github.yasmramos.glyphui.graphics.Canvas.ImageScaling.SMOOTH,
+                view.getImageScaling(), "photos and icons default to smooth");
+
+        view.setImageScaling(
+                io.github.yasmramos.glyphui.graphics.Canvas.ImageScaling.PIXELATED);
+        assertEquals(io.github.yasmramos.glyphui.graphics.Canvas.ImageScaling.PIXELATED,
+                view.getImageScaling());
+
+        view.setImageScaling(null);
+        assertEquals(io.github.yasmramos.glyphui.graphics.Canvas.ImageScaling.PIXELATED,
+                view.getImageScaling(), "null keeps the current value");
+    }
+
+    @Test
     public void renderIsNoOpWithoutImageAndDrawsWithImage() throws IOException {
         Surface[] holder = new Surface[1];
         io.github.yasmramos.glyphui.graphics.Canvas canvas = RasterCanvasTestFactory.create(holder);
