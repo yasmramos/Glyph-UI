@@ -30,6 +30,17 @@ aggregate results without reading the Maven log.
 - Widget tests extend `TestBase`; rasterization smoke tests use
   `RasterCanvasTestFactory` with a real Skija surface.
 
+## Rendering quality
+
+Visual quality is a default, not an opt-in: widgets must render through the
+`Canvas` wrapper so they inherit the central defaults instead of hand-rolling
+`Paint`/sampling flags. The current defaults are antialiased geometry
+(`Canvas.withQualityDefaults`), subpixel text (`Fonts.applyQualityDefaults`),
+antialiased clips, bicubic image scaling (`Canvas.ImageScaling.SMOOTH`), and 4x
+MSAA on GL targets. When adding a new draw path, route it through the existing
+helper (e.g. the `drawImage` overload that takes an `ImageScaling`) and cover
+the behaviour with a raster read-back test like `ImageSamplingQualityTest`.
+
 ## Pull requests
 
 - Keep PR bodies free of agent/automation trailers. In particular, do **not**

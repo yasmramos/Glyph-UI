@@ -406,7 +406,8 @@ public class Canvas {
 
     /**
      * Draws a Glyph UI {@link Image} wrapper at the specified position,
-     * scaled to the given destination size.
+     * scaled to the given destination size using the global default sampling
+     * policy (see {@link #drawImage(Image, float, float, float, float, ImageScaling)}).
      *
      * @param image the image wrapper (not consumed by this call)
      * @param x     the destination x-coordinate
@@ -415,14 +416,91 @@ public class Canvas {
      * @param h     the destination height
      */
     public void drawImage(Image image, float x, float y, float w, float h) {
+        drawImage(image, x, y, w, h, DEFAULT_IMAGE_SCALING);
+    }
+
+    /**
+     * Draws a Glyph UI {@link Image} wrapper scaled to the given destination
+     * size, choosing the sampling policy explicitly.
+     *
+     * <p>Skia's implicit sampling for a scaled blit is nearest-neighbour, which
+     * makes an enlarged image look blocky and a HiDPI-downscaled one alias.
+     * Glyph UI therefore defaults to {@link ImageScaling#SMOOTH} (bicubic),
+     * matching the rest of the visual-quality defaults, and exposes
+     * {@link ImageScaling#PIXELATED} for callers that want hard edges (pixel
+     * art, crisp 1:1 icon blits).</p>
+     *
+     * @param image   the image wrapper (not consumed by this call)
+     * @param x       the destination x-coordinate
+     * @param y       the destination y-coordinate
+     * @param w       the destination width
+     * @param h       the destination height
+     * @param scaling the sampling policy (never null)
+     */
+    public void drawImage(Image image, float x, float y, float w, float h,
+                          ImageScaling scaling) {
         checkUiThread();
         if (image == null || !image.isLoaded()) {
             return;
         }
+        java.util.Objects.requireNonNull(scaling, "scaling");
         io.github.humbleui.types.Rect dst = io.github.humbleui.types.Rect.makeXYWH(x, y, w, h);
         io.github.humbleui.types.Rect src = io.github.humbleui.types.Rect.makeXYWH(
                 0, 0, image.getWidth(), image.getHeight());
-        canvas.drawImageRect(image.nativeImageForInternalUse(), src, dst, null, true);
+        canvas.drawImageRect(image.nativeImageForInternalUse(), src, dst,
+                samplingFor(scaling), null, true);
+    }
+
+    /**
+     * Sampling policy for scaled image draws. Controls how source pixels are
+     * combined when the destination size differs from the image's natural size
+     * (including the implicit upscale of a HiDPI canvas).
+     */
+    public enum ImageScaling {
+        /**
+         * High-quality resampling (bicubic Mitchell) that blends neighbouring
+         * pixels: smooth gradients and clean edges when scaling up or down.
+         * The default.
+         */
+        SMOOTH,
+
+        /**
+         * Nearest-neighbour sampling: each destination pixel copies the closest
+         * source pixel, preserving hard edges. Use for pixel art and for
+         * exact 1:1 blits where blending would soften the result.
+         */
+        PIXELATED
+    }
+
+    /** Resolved default sampling policy, read once from the system property. */
+    private static final ImageScaling DEFAULT_IMAGE_SCALING = resolveImageScaling();
+
+    /**
+     * Reads the default image sampling policy from the
+     * {@code glyph.image.sampling} system property ({@code smooth} — default,
+     * or {@code pixelated}/{@code nearest}). Unknown values fall back to
+     * {@link ImageScaling#SMOOTH}.
+     *
+     * @return the resolved default policy (never null)
+     */
+    private static ImageScaling resolveImageScaling() {
+        String raw = System.getProperty("glyph.image.sampling");
+        if (raw == null) {
+            return ImageScaling.SMOOTH;
+        }
+        String value = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        return ("pixelated".equals(value) || "nearest".equals(value))
+                ? ImageScaling.PIXELATED
+                : ImageScaling.SMOOTH;
+    }
+
+    /** Maps a Glyph UI sampling policy to the Skija sampling mode. */
+    private static SamplingMode samplingFor(ImageScaling scaling) {
+        // Skia's default SamplingMode is nearest-neighbour; MITCHELL is its
+        // bicubic resampler, the same "high quality" filter browsers use.
+        return scaling == ImageScaling.PIXELATED
+                ? SamplingMode.DEFAULT
+                : SamplingMode.MITCHELL;
     }
 
     /**

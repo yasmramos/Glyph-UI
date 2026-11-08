@@ -69,6 +69,27 @@ JWM owns the process UI thread: its native message loop is started by
 blitted from the CPU surface onto the window layer via
 `WindowBackend.present(...)`.
 
+### Visual quality
+
+Rendering defaults to a smooth, modern look; jagged edges are treated as a
+bug, not a setting. The defaults are applied centrally so widgets get them for
+free:
+
+- **Geometry**: every `Canvas` draw helper (`drawRect`, `drawRRect`,
+  `drawCircle`, `drawLine`) routes the caller's `Paint` through
+  `Canvas.withQualityDefaults(...)`, which forces antialiasing on.
+- **Text**: fonts built through `Fonts`/`FontManager` use subpixel antialiasing
+  with slight hinting (`Fonts.applyQualityDefaults(...)`), falling back to
+  grayscale on targets without LCD subpixel coverage.
+- **Clips**: `Canvas.clipRect(...)` antialiases its edges.
+- **Images**: a scaled `drawImage(...)` samples with bicubic interpolation
+  (`Canvas.ImageScaling.SMOOTH`) instead of Skia's nearest-neighbour default,
+  so enlarged photos are not blocky and HiDPI downscales do not alias. Pass
+  `Canvas.ImageScaling.PIXELATED` (or set `-Dglyph.image.sampling=pixelated`)
+  for pixel art and other hard-edged images; `ImageView#setImageScaling(...)`
+  exposes the same choice per widget.
+- **GPU targets**: the GL backend requests 4x MSAA (`-Dglyph.gl.samples=0|2|4|8`).
+
 ## Project Structure
 
 ```
