@@ -66,10 +66,10 @@ public class TextField extends Component
     private String placeholder = "";
 
     /** Caret position (character index, 0..text.length()). */
-    private int caret = 0;
+    protected int caret = 0;
 
     /** Anchor of the selection (caret..selectionAnchor is the selection). */
-    private int selectionAnchor = 0;
+    protected int selectionAnchor = 0;
 
     /** True between a press that began a selection and its end (release/hover). */
     private boolean selecting = false;

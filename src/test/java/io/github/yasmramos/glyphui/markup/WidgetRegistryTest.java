@@ -28,6 +28,7 @@ import io.github.yasmramos.glyphui.ui.Slider;
 import io.github.yasmramos.glyphui.ui.Spinner;
 import io.github.yasmramos.glyphui.ui.Table;
 import io.github.yasmramos.glyphui.ui.Tabs;
+import io.github.yasmramos.glyphui.ui.TextArea;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.ToggleSwitch;
 import io.github.yasmramos.glyphui.ui.TreeView;
@@ -140,7 +141,7 @@ class WidgetRegistryTest {
         assertInstanceOf(Label.class, registry.create("label", null, context));
         assertInstanceOf(Label.class, registry.create("h1", null, context));
         assertInstanceOf(TextField.class, registry.create("input", null, context));
-        assertInstanceOf(TextField.class, registry.create("textarea", null, context));
+        assertInstanceOf(TextArea.class, registry.create("textarea", null, context));
         assertInstanceOf(PasswordField.class, registry.create("password", null, context));
         assertInstanceOf(PasswordField.class, registry.create("passwordfield", null, context));
         assertInstanceOf(ImageView.class, registry.create("img", null, context));

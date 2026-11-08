@@ -41,6 +41,7 @@ import io.github.yasmramos.glyphui.ui.StatusBar;
 import io.github.yasmramos.glyphui.ui.Stepper;
 import io.github.yasmramos.glyphui.ui.Table;
 import io.github.yasmramos.glyphui.ui.Tabs;
+import io.github.yasmramos.glyphui.ui.TextArea;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.Toast;
 import io.github.yasmramos.glyphui.ui.ToggleButton;
@@ -215,9 +216,23 @@ public final class WidgetRegistry {
             return field;
         };
         registry.register("input", textField);
-        registry.register("textarea", textField);
         // Compose-style spelling of the single-line text input.
         registry.register("textfield", textField);
+
+        WidgetFactory textArea = (element, ctx) -> {
+            TextArea area = new TextArea();
+            String value = ctx.attr(element, "value");
+            String text = !value.isEmpty() ? value : ctx.textOf(element);
+            if (!text.isEmpty()) {
+                area.setText(text);
+            }
+            String placeholder = ctx.attr(element, "placeholder");
+            if (!placeholder.isEmpty()) {
+                area.setPlaceholder(placeholder);
+            }
+            return area;
+        };
+        registry.register("textarea", textArea);
 
         WidgetFactory passwordField = (element, ctx) -> {
             PasswordField field = new PasswordField();

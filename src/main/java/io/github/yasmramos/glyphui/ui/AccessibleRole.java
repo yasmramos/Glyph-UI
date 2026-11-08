@@ -155,5 +155,8 @@ public enum AccessibleRole {
     STATUS_BAR,
 
     /** A single-line field whose characters are masked ({@link PasswordField}). */
-    PASSWORD_FIELD
+    PASSWORD_FIELD,
+
+    /** A multi-line editable text area ({@link TextArea}). */
+    TEXT_AREA
 }
