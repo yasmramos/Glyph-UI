@@ -41,16 +41,17 @@ import java.util.Objects;
  * <p>Typical use:</p>
  *
  * <pre>{@code
- * Form form = new Form("My App", 1024, 720).decorated(false);
- * form.addMenu("File").addItem("Quit", () -> form.requestClose());
- * form.add(new Label("Hello, Glyph UI"));
  * try (Application app = new Application()) {
- *     if (!app.init(form)) {
- *         return;
- *     }
+ *     Form form = app.createForm("My App", 1024, 720).decorated(false);
+ *     form.addMenu("File").addItem("Quit", () -> form.requestClose());
+ *     form.add(new Label("Hello, Glyph UI"));
  *     app.run();
  * }
  * }</pre>
+ *
+ * <p>Prefer {@code Application#createForm} over {@code new Form(...)}: it
+ * creates the form and initializes the application in one call, so the window
+ * and the application lifecycle stay in step.</p>
  *
  * <p><strong>Fluent setters return {@code Form}.</strong> The creation-time
  * setters inherited from {@link Window} are overridden with a covariant return
@@ -278,8 +279,24 @@ public class Form extends Window {
 
     @Override
     public Form decorated(boolean decorated) {
-        super.decorated(decorated);
+        setDecorated(decorated);
         return this;
+    }
+
+    /**
+     * Toggles the native decoration and re-mounts the chrome so the change is
+     * visible immediately. Because a window's native decoration is fixed at
+     * creation time by some backends, applications normally set this through
+     * the fluent {@link #decorated(boolean)} <em>before</em> the window is
+     * created; a change after adoption still re-mounts the root panel (title
+     * bar on/off) so the in-app chrome stays consistent with the hint.
+     *
+     * @param decorated true for the native title bar, false for custom chrome
+     */
+    @Override
+    public void setDecorated(boolean decorated) {
+        super.setDecorated(decorated);
+        rebuild();
     }
 
     @Override

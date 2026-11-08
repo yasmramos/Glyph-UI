@@ -111,6 +111,32 @@ public class TitleBarTest {
     }
 
     @Test
+    public void leadingAlignmentPinsTheTitleAfterTheMenuBar() {
+        TitleBar bar = new TitleBar("T");
+        MenuBar menu = new MenuBar();
+        menu.addMenu("File");
+        bar.setMenuBar(menu);
+        bar.setTitleAlignment(TitleBar.TitleAlignment.LEADING);
+        assertSame(TitleBar.TitleAlignment.LEADING, bar.getTitleAlignment());
+
+        bar.setWidth(400);
+        bar.setHeight(TitleBar.BAR_HEIGHT);
+        bar.doLayout();
+
+        Component title = bar.getChildren().get(0);
+        assertTrue(title.getX() >= menu.getX() + menu.getWidth(),
+                "a LEADING title sits after the leading zone");
+    }
+
+    @Test
+    public void nullTitleAlignmentRestoresCentering() {
+        TitleBar bar = new TitleBar("T");
+        bar.setTitleAlignment(TitleBar.TitleAlignment.LEADING);
+        bar.setTitleAlignment(null);
+        assertSame(TitleBar.TitleAlignment.CENTER, bar.getTitleAlignment());
+    }
+
+    @Test
     public void setMenuBarReplacesThePreviousOne() {
         TitleBar bar = new TitleBar("T");
         MenuBar first = new MenuBar();

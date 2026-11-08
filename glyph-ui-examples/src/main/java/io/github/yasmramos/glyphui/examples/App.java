@@ -46,20 +46,16 @@ public class App {
         // try-with-resources guarantees they are released in the correct order.
         try (Application app = new Application()) {
 
-            // Undecorated Form: the native title bar is removed so the form's
-            // own TitleBar becomes the chrome. The menu bar is embedded into the
-            // title bar's leading zone, so the menus sit at the window's left and
-            // the title stays centred between them and the window controls.
-            Form form = new Form("Glyph UI — widgets tour", 800, 600)
+            // The Form is the JFrame-style top-level window: Application
+            // creates it and initializes the app in one call. Undecorated, so
+            // the Form's own TitleBar becomes the chrome; its menu bar is
+            // embedded into the title bar's leading zone (menus at the left,
+            // title centred, window controls at the right).
+            Form form = app.createForm("Glyph UI — widgets tour", 800, 600)
                     .decorated(false);
             fillArchivo(form.addMenu("Archivo"));
             fillEditar(form.addMenu("Editar"));
             fillVer(form.addMenu("Ver"));
-
-            if (!app.init(form)) {
-                System.err.println("Failed to initialize application");
-                return;
-            }
 
             // ---- Content column (grows to fill the space below the bar) ----
             FlexLayout column = new FlexLayout(FlexLayout.Direction.COLUMN,

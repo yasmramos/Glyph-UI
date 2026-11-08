@@ -105,6 +105,15 @@ extends it as the high-level top-level window (the Swing `JFrame` analogue).
 undecorated form — a `TitleBar` used as custom chrome. Its creation-time fluent
 setters are covariant overrides so a chain keeps the `Form` type.
 
+**Start applications with `Application#createForm(...)`**, not
+`new Form(...)` + `init(form)`: the factory creates the form and initializes the
+application in one call, and throws `IllegalStateException` on failure (a form
+that cannot be shown is exceptional, unlike the boolean `init`). The old
+`init(Window)` path stays for plain `Window`s and for callers that need the
+boolean. `Form` re-mounts its chrome when `decorated(...)` flips after
+adoption, so `app.createForm(...).decorated(false)` works even though the
+native window is created lazily.
+
 Keep `Window` public. A public class cannot extend a package-private superclass
 from another package (javac rejects it), so `Form` extends the public `Window`
 instead of hiding it; `Window` already crosses the public surface

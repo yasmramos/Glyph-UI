@@ -168,13 +168,10 @@ public class MyApp {
     public static void main(String[] args) {
         try (Application app = new Application()) {
 
-            // Form is the JFrame-style top-level window: it owns the chrome
-            // (title bar, menu bar) and a content pane for your widgets.
-            Form form = new Form("My App", 800, 600);
-            if (!app.init(form)) {
-                System.err.println("Failed to initialize");
-                return;
-            }
+            // Application creates and initializes the Form in one call. Form is
+            // the JFrame-style top-level window: it owns the chrome (title bar,
+            // menu bar) and a content pane for your widgets.
+            Form form = app.createForm("My App", 800, 600);
 
             // Create a button
             Button button = new Button(100, 100, 150, 40, "Click Me!");
@@ -207,14 +204,10 @@ import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.ui.Form;
 
 try (Application app = new Application()) {
-    Form form = new Form("My App", 1280, 720)
+    Form form = app.createForm("My App", 1280, 720)
             .decorated(false);   // no native title bar: Form's TitleBar is used
     form.addMenu("File").addItem("Quit", () -> form.requestClose());
     form.add(new Button("Click Me!"));
-    if (!app.init(form)) {
-        System.err.println("Failed to initialize");
-        return;
-    }
     app.run();
 }
 ```
