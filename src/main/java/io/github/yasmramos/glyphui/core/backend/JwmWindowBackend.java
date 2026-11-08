@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.core.backend;
 
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.GlyphMods;
 
@@ -767,6 +768,30 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         if (w != null) {
             w.setTitle(t);
         }
+    }
+
+    @Override
+    protected void applyNativeCursor(GlyphCursor cursor) {
+        Window w = jwmWindow;
+        if (w != null) {
+            w.setMouseCursor(toNativeCursor(cursor));
+        }
+    }
+
+    /**
+     * Maps a toolkit pointer shape onto JWM's native cursor vocabulary.
+     */
+    private static MouseCursor toNativeCursor(GlyphCursor cursor) {
+        return switch (cursor) {
+            case DEFAULT -> MouseCursor.ARROW;
+            case POINTING_HAND -> MouseCursor.POINTING_HAND;
+            case TEXT -> MouseCursor.IBEAM;
+            case CROSSHAIR -> MouseCursor.CROSSHAIR;
+            case RESIZE_NS -> MouseCursor.RESIZE_NS;
+            case RESIZE_EW -> MouseCursor.RESIZE_WE;
+            case WAIT -> MouseCursor.WAIT;
+            case NOT_ALLOWED -> MouseCursor.NOT_ALLOWED;
+        };
     }
 
     @Override

@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.core.backend;
 
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphMods;
 
 /**
@@ -39,6 +40,9 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     protected boolean centered = true;
     /** Shown at creation. */
     protected boolean visible = true;
+
+    /** Last pointer shape applied to the live window. */
+    protected GlyphCursor cursor = GlyphCursor.DEFAULT;
 
     // --- Listener registry ------------------------------------------------
     protected WindowSizeListener windowSizeListener;
@@ -238,6 +242,18 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     public void setTextInputEnabled(boolean enabled) {
     }
 
+    @Override
+    public void setCursor(GlyphCursor cursor) {
+        if (cursor == null) {
+            cursor = GlyphCursor.DEFAULT;
+        }
+        if (cursor == this.cursor) {
+            return;
+        }
+        this.cursor = cursor;
+        applyNativeCursor(cursor);
+    }
+
     // ------------------------------------------------------------------
     // Notification helpers used by concrete backends when native events
     // arrive. Each helper refreshes the cached state FIRST so that
@@ -331,6 +347,10 @@ public abstract class AbstractWindowBackend implements WindowBackend {
 
     /** Applies the title to the live native window; no-op by default. */
     protected void applyNativeTitle(String title) {
+    }
+
+    /** Applies the pointer shape to the live native window; no-op by default. */
+    protected void applyNativeCursor(GlyphCursor cursor) {
     }
 
     /** Propagates the close request to the live native window; no-op by default. */

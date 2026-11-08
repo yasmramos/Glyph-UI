@@ -2,6 +2,7 @@ package io.github.yasmramos.glyphui.ui;
 
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.skija.PaintMode;
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
@@ -97,6 +98,11 @@ public class MenuItem extends Component {
     @Override
     public AccessibleRole getAccessibleRole() {
         return AccessibleRole.MENU_ITEM;
+    }
+
+    @Override
+    protected GlyphCursor defaultCursor() {
+        return GlyphCursor.POINTING_HAND;
     }
 
     // ------------------------------------------------------------------

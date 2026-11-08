@@ -1,6 +1,7 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.core.Application;
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
@@ -57,6 +58,11 @@ public class Button extends Component implements Textual {
     @Override
     protected String defaultStyleTag() {
         return "button";
+    }
+
+    @Override
+    protected GlyphCursor defaultCursor() {
+        return GlyphCursor.POINTING_HAND;
     }
 
     // Optional per-button color overrides; null means "use the computed

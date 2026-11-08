@@ -1,6 +1,7 @@
 package io.github.yasmramos.glyphui.core;
 
 import io.github.yasmramos.glyphui.events.KeyEvent;
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.MouseEventType;
 import io.github.yasmramos.glyphui.events.MouseEvent;
@@ -926,6 +927,7 @@ public class Application implements AutoCloseable {
             }
             if (type == MouseEventType.MOVE) {
                 updateHover();
+                updateCursor();
             }
             requestRepaint();
         });
@@ -945,6 +947,9 @@ public class Application implements AutoCloseable {
                     mouseButtons[i] = false;
                 }
                 updateHover();
+                // The pointer is now interacting with another window, so the
+                // shape we had applied is stale; fall back to the arrow.
+                window.setCursor(GlyphCursor.DEFAULT);
                 boolean dismissed = popupLayer.closeAll();
                 if (dismissed) {
                     requestRepaint();
@@ -1210,10 +1215,7 @@ public class Application implements AutoCloseable {
         // Popups overlay the page, so they win the hover race; hitTest()
         // reports null when the pointer is not over one, letting the page
         // underneath keep its own hover updates.
-        Component target = popupLayer.hitTest((float) mouseX, (float) mouseY);
-        if (target == null) {
-            target = rootPanel.getComponentAt((float) mouseX, (float) mouseY);
-        }
+        Component target = pointerTarget();
         if (target == hovered) {
             return;
         }
@@ -1232,6 +1234,37 @@ public class Application implements AutoCloseable {
         if (target != null) {
             target.firePointerEnter();
         }
+    }
+
+    /**
+     * Returns the deepest component under the pointer, preferring an open
+     * popup over the page below it. Shared by hover tracking and cursor
+     * resolution so both agree on what the pointer is over.
+     *
+     * @return the component under the pointer, or null when none is
+     */
+    private Component pointerTarget() {
+        Component target = popupLayer.hitTest((float) mouseX, (float) mouseY);
+        if (target == null) {
+            target = rootPanel.getComponentAt((float) mouseX, (float) mouseY);
+        }
+        return target;
+    }
+
+    /**
+     * Applies the pointer shape declared by the component under the mouse.
+     *
+     * <p>Called on every pointer move. A component that is absent or disabled
+     * does not drive the pointer: the default arrow is shown instead, matching
+     * the web convention that disabled controls lose their affordance.</p>
+     */
+    private void updateCursor() {
+        Component target = pointerTarget();
+        GlyphCursor cursor = GlyphCursor.DEFAULT;
+        if (target != null && target.isEnabled()) {
+            cursor = target.getCursor();
+        }
+        window.setCursor(cursor);
     }
 
     /**
