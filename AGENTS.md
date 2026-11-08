@@ -30,6 +30,17 @@ aggregate results without reading the Maven log.
 - Widget tests extend `TestBase`; rasterization smoke tests use
   `RasterCanvasTestFactory` with a real Skija surface.
 
+## Pull requests
+
+- Keep PR bodies free of agent/automation trailers. In particular, do **not**
+  add a line such as `_This PR was created by an AI agent (OpenHands) on behalf
+  of yasmramos._`, and strip the `@yasmramos can click here to continue
+  refining the PR` line the platform appends. After opening a PR, remove both
+  from the body (e.g. `PATCH /repos/{owner}/{repo}/pulls/{number}` with the
+  cleaned `body`).
+- Open PRs against `develop` from a feature branch; never push to `develop`
+  directly, and never push to a branch whose PR is already merged.
+
 ## Declarative front-ends
 
 `.glyph` documents have two front-ends that both produce the same
