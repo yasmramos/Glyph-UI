@@ -68,7 +68,7 @@ These packages form the supported API for application developers:
 
 | Package                                       | Role                                             |
 |-----------------------------------------------|--------------------------------------------------|
-| `io.github.yasmramos.glyphui.core`            | Application lifecycle, Window, WindowConfig, FocusManager, RepaintRequester |
+| `io.github.yasmramos.glyphui.core`            | Application lifecycle, Window, FocusManager, RepaintRequester |
 | `io.github.yasmramos.glyphui.core.backend`    | Window/surface SPI (see section 3)               |
 | `io.github.yasmramos.glyphui.core.logging`    | Opt-in JUL formatter (`SLF4JStyleFormatter`)     |
 | `io.github.yasmramos.glyphui.ui`              | Components (Button, Label, Panel, TextField, ImageView, Component) |

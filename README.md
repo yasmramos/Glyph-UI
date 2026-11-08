@@ -186,6 +186,26 @@ public class MyApp {
 }
 ```
 
+To customize the window (size, decoration, resizability, ...), build a
+`Window`, configure it with the fluent setters, and pass it to
+`Application.init(Window)`:
+
+```java
+import io.github.yasmramos.glyphui.core.Application;
+import io.github.yasmramos.glyphui.core.Window;
+
+try (Application app = new Application()) {
+    Window window = new Window("My App", 1280, 720)
+            .decorated(false)   // no native title bar (e.g. custom chrome)
+            .resizable(true);
+    if (!app.init(window)) {
+        System.err.println("Failed to initialize");
+        return;
+    }
+    app.run();
+}
+```
+
 Components (`Button`, `Label`, `Panel`, ...) also implement `AutoCloseable`;
 `close()` delegates to `dispose()` and `Panel` closes all of its children
 recursively, so standalone widgets can be managed with try-with-resources too:

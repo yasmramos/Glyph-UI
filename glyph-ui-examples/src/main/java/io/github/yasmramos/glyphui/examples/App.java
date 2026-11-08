@@ -1,7 +1,7 @@
 package io.github.yasmramos.glyphui.examples;
 
 import io.github.yasmramos.glyphui.core.Application;
-import io.github.yasmramos.glyphui.core.WindowConfig;
+import io.github.yasmramos.glyphui.core.Window;
 import io.github.yasmramos.glyphui.graphics.Image;
 import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
@@ -49,8 +49,9 @@ public class App {
 
             // Undecorated window: the native title bar is removed so our own
             // TitleBar becomes the chrome (and can host a menu in the strip).
-            WindowConfig config = WindowConfig.create().decorated(false);
-            if (!app.init("Glyph UI — widgets tour", 800, 600, config)) {
+            Window window = new Window("Glyph UI — widgets tour", 800, 600)
+                    .decorated(false);
+            if (!app.init(window)) {
                 System.err.println("Failed to initialize application");
                 return;
             }

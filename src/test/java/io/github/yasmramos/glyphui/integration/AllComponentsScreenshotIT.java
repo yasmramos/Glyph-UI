@@ -1,4 +1,6 @@
 package io.github.yasmramos.glyphui.integration;
+import io.github.yasmramos.glyphui.core.internal.TestHooks;
+import io.github.yasmramos.glyphui.core.Window;
 
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.ui.Button;
@@ -28,7 +30,7 @@ public class AllComponentsScreenshotIT {
         app = new Application();
         // Initialize with raster surface for testing (no GPU context needed)
         // This is more reliable in CI environments with Xvfb
-        boolean initialized = app.init("Glyph UI Integration Test", 800, 600, true);
+        boolean initialized = TestHooks.initForTesting(app, new Window("Glyph UI Integration Test", 800, 600));
         // Skip test if the native window (JWM) cannot be initialized (headless environment)
         Assumptions.assumeTrue(initialized, "JWM native window not available (headless environment); skipping test");
     }

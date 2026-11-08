@@ -1,6 +1,5 @@
 package io.github.yasmramos.glyphui.core.backend;
 
-import io.github.yasmramos.glyphui.core.WindowConfig;
 
 /**
  * In-memory {@link WindowBackend} used by unit and characterization tests.
@@ -17,7 +16,6 @@ import io.github.yasmramos.glyphui.core.WindowConfig;
 public class HeadlessTestBackend implements WindowBackend {
 
     // --- Cached state -----------------------------------------------------
-    private final WindowConfig config;
     private int width;
     private int height;
     private int fbWidth;
@@ -44,13 +42,12 @@ public class HeadlessTestBackend implements WindowBackend {
     public ImeClient imeClient;
     public boolean textInputEnabled;
 
-    public HeadlessTestBackend(String title, int width, int height, WindowConfig config) {
+    public HeadlessTestBackend(String title, int width, int height) {
         this.title = title;
         this.width = width;
         this.height = height;
         this.fbWidth = width;
         this.fbHeight = height;
-        this.config = config != null ? config : new WindowConfig();
     }
 
     // --- Lifecycle ---------------------------------------------------------
@@ -143,11 +140,6 @@ public class HeadlessTestBackend implements WindowBackend {
     }
 
     @Override
-    public WindowConfig getConfig() {
-        return config;
-    }
-
-    @Override
     public void updateDimensions(int width, int height) {
         this.width = width;
         this.height = height;
@@ -220,6 +212,10 @@ public class HeadlessTestBackend implements WindowBackend {
 
     @Override
     public void setFullscreen(boolean fullscreen) {
+    }
+
+    @Override
+    public void setCentered(boolean centered) {
     }
 
     // --- Clipboard -----------------------------------------------------------

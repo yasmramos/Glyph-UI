@@ -21,8 +21,9 @@ import java.util.List;
  * put arbitrary content (a menu bar, buttons, status text, …) directly in the
  * window's title strip, the way FlatLaf's title pane does.
  *
- * <p>Pair it with a {@code WindowConfig.decorated(false)} window so the native
- * title bar is removed and this component becomes the window chrome. The bar
+ * <p>Pair it with an undecorated window
+ * ({@code new Window(...).decorated(false)}) so the native title bar is
+ * removed and this component becomes the window chrome. The bar
  * owns three window controls (minimize / maximize-restore / close), drawn as
  * crisp vector icons, and supports dragging on its empty area to move the
  * window plus a double-click to toggle maximize.</p>

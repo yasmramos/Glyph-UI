@@ -6,7 +6,7 @@ import io.github.humbleui.skija.Typeface;
 import io.github.yasmramos.glyphui.TestBase;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.core.Window;
-import io.github.yasmramos.glyphui.core.WindowConfig;
+import io.github.yasmramos.glyphui.core.internal.TestHooks;
 import io.github.yasmramos.glyphui.core.backend.JwmWindowBackend;
 import io.github.yasmramos.glyphui.core.backend.SurfaceFactory;
 import io.github.yasmramos.glyphui.core.backend.SurfaceResult;
@@ -118,7 +118,7 @@ class StabilityHardeningTest extends TestBase {
 
     /** Builds a JWM backend without ever creating a native window. */
     private static JwmWindowBackend newHeadlessBackend() {
-        return new JwmWindowBackend("stability-test", 64, 64, new WindowConfig());
+        return new JwmWindowBackend("stability-test", 64, 64);
     }
 
     // ------------------------------------------------------------------
@@ -177,7 +177,7 @@ class StabilityHardeningTest extends TestBase {
         // with toolkit-installed listeners) only exists after init(). Use the
         // raster surface so the test runs headless without a GPU context.
         try (Application app = new Application()) {
-            if (!app.init("stability-test", 100, 100, null, true)) {
+            if (!TestHooks.initForTesting(app, new Window("stability-test", 100, 100))) {
                 // Headless CI without a working window backend: skip rather
                 // than fail spuriously; the unit-level containment tests
                 // above already cover the hardened upcall path.
@@ -204,7 +204,7 @@ class StabilityHardeningTest extends TestBase {
     @DisplayName("item 5: negative framebuffer size is clamped and survives the real callback chain")
     void negativeFramebufferSizeIsClamped() throws Exception {
         try (Application app = new Application()) {
-            assertTrue(app.init("stability-item5", 200, 150, true),
+            assertTrue(TestHooks.initForTesting(app, new Window("stability-item5", 200, 150)),
                     "Headless raster init must succeed.");
             Window window = app.getWindow();
             Object surfaceBefore = readField(app, "surface");
@@ -225,7 +225,7 @@ class StabilityHardeningTest extends TestBase {
     @DisplayName("item 5: minimized 0x0 framebuffer keeps the previous surface")
     void minimizedZeroSizeKeepsPreviousSurface() throws Exception {
         try (Application app = new Application()) {
-            assertTrue(app.init("stability-item5-min", 200, 150, true));
+            assertTrue(TestHooks.initForTesting(app, new Window("stability-item5-min", 200, 150)));
             Object surfaceBefore = readField(app, "surface");
             assertNotNull(surfaceBefore);
 
@@ -239,7 +239,7 @@ class StabilityHardeningTest extends TestBase {
     @DisplayName("item 5: invalid content scale (0, negative, NaN, Infinity) is ignored")
     void invalidContentScaleIsIgnored() throws Exception {
         try (Application app = new Application()) {
-            assertTrue(app.init("stability-item5-scale", 200, 150, true));
+            assertTrue(TestHooks.initForTesting(app, new Window("stability-item5-scale", 200, 150)));
             Window window = app.getWindow();
 
             // Baseline: a legitimate scale change goes through.
@@ -272,7 +272,7 @@ class StabilityHardeningTest extends TestBase {
     @DisplayName("item 5: failed surface recreation marks the surface broken, not null")
     void recreateSurfaceFailureSetsBrokenFlag() throws Exception {
         try (Application app = new Application()) {
-            assertTrue(app.init("stability-item5-fail", 200, 150, true));
+            assertTrue(TestHooks.initForTesting(app, new Window("stability-item5-fail", 200, 150)));
 
             // Replace the live factory with one whose recreate() always
             // throws — simulating OOM or a lost GPU context during resize.
