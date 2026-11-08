@@ -4,7 +4,6 @@ import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.graphics.Image;
 import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
-import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Form;
 import io.github.yasmramos.glyphui.ui.Label;
@@ -16,7 +15,6 @@ import io.github.yasmramos.glyphui.ui.TextArea;
 import io.github.yasmramos.glyphui.ui.TextField;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * Example application exercising the main widgets: labels, buttons, a text
@@ -24,10 +22,11 @@ import java.util.Map;
  *
  * <p>The main window is a {@link Form} — the toolkit's {@code JFrame}-style
  * top-level window. The form is undecorated, so its own
- * {@link io.github.yasmramos.glyphui.ui.TitleBar} becomes the chrome: it hosts
- * the window title, the menu strip and the min/max/close controls. Below the
- * chrome sits the form's content pane, a vertical column of labelled sections,
- * each a horizontal row of controls.</p>
+ * {@link io.github.yasmramos.glyphui.ui.TitleBar} becomes the chrome and hosts
+ * the menu bar in its leading zone, the window title in its centre and the
+ * min/max/close controls at its trailing edge. Below the chrome sits the form's
+ * content pane, a vertical column of labelled sections, each a horizontal row
+ * of controls.</p>
  *
  * <p>Moved out of the core library into the standalone
  * {@code glyph-ui-examples} module so the published toolkit jar stays free
@@ -47,22 +46,16 @@ public class App {
         // try-with-resources guarantees they are released in the correct order.
         try (Application app = new Application()) {
 
-            // Undecorated Form: the native title bar is removed so the form's
-            // own TitleBar becomes the chrome (and hosts the menu strip).
-            Form form = new Form("Glyph UI — widgets tour", 800, 600)
+            // The Form is the JFrame-style top-level window: Application
+            // creates it and initializes the app in one call. Undecorated, so
+            // the Form's own TitleBar becomes the chrome; its menu bar is
+            // embedded into the title bar's leading zone (menus at the left,
+            // title centred, window controls at the right).
+            Form form = app.createForm("Glyph UI — widgets tour", 800, 600)
                     .decorated(false);
-            // Native-menubar look: the menus sit flush against each other, so
-            // the gap between items is zero (each button keeps only its own
-            // small padding, see menuButton below).
-            form.getTitleBar().setItemGap(0.0f);
-            form.getTitleBar().addContent(menuButton("Archivo", archivoMenu()));
-            form.getTitleBar().addContent(menuButton("Editar", editarMenu()));
-            form.getTitleBar().addContent(menuButton("Ver", verMenu()));
-
-            if (!app.init(form)) {
-                System.err.println("Failed to initialize application");
-                return;
-            }
+            fillArchivo(form.addMenu("Archivo"));
+            fillEditar(form.addMenu("Editar"));
+            fillVer(form.addMenu("Ver"));
 
             // ---- Content column (grows to fill the space below the bar) ----
             FlexLayout column = new FlexLayout(FlexLayout.Direction.COLUMN,
@@ -192,43 +185,21 @@ public class App {
         return label;
     }
 
-    /** A small menu-strip button placed inside the title bar. */
-    private static Button menuButton(String text, Menu menu) {
-        Button button = new Button(text);
-        // Flat menubar look: no chrome in the normal state (transparent fill and
-        // border, square corners) so it blends with the title bar; hovering still
-        // shows the theme's control hover/pressed highlight.
-        button.setNormalColor(0x00000000);
-        button.setBorderColor(0x00000000);
-        button.setBorderRadius(0f);
-        // Tight padding (the theme default is 12px) so neighbouring menus stay
-        // close together, like a native menu bar.
-        button.setInlineStyle(Style.parseInline("padding: 6px", Map.of()));
-        // The button toggles its drop-down; Menu.open() aligns the popup just
-        // below the button and the popup layer dismisses it afterwards.
-        menu.setTrigger(button);
-        button.setOnClick(menu::toggle);
-        return button;
-    }
-
     // ------------------------------------------------------------------
     // Title-bar menus
     // ------------------------------------------------------------------
 
     /** File actions: rows with icons, shortcuts and a trailing separator. */
-    private static Menu archivoMenu() {
-        Menu menu = new Menu();
+    private static void fillArchivo(Menu menu) {
         addItem(menu, "Nuevo", "Ctrl+N", icon("new"));
         addItem(menu, "Abrir…", "Ctrl+O", icon("open"));
         addItem(menu, "Guardar", "Ctrl+S", icon("save"));
         menu.addSeparator();
         addItem(menu, "Salir", "Alt+F4", null);
-        return menu;
     }
 
     /** Edit actions: includes a disabled row (nothing to paste yet). */
-    private static Menu editarMenu() {
-        Menu menu = new Menu();
+    private static void fillEditar(Menu menu) {
         addItem(menu, "Deshacer", "Ctrl+Z", null);
         menu.addSeparator();
         addItem(menu, "Cortar", "Ctrl+X", null);
@@ -237,12 +208,10 @@ public class App {
         // Disabled rows stay visible (so the shortcut is discoverable) but
         // ignore the pointer entirely.
         paste.setEnabled(false);
-        return menu;
     }
 
     /** View options: checkable rows toggle their own check mark on click. */
-    private static Menu verMenu() {
-        Menu menu = new Menu();
+    private static void fillVer(Menu menu) {
         MenuItem toolbar = addItem(menu, "Barra de herramientas", null, null);
         toolbar.setCheckable(true);
         toolbar.setChecked(true);
@@ -255,7 +224,6 @@ public class App {
         menu.addSeparator();
         addItem(menu, "Acercar", "Ctrl++", null);
         addItem(menu, "Alejar", "Ctrl+−", null);
-        return menu;
     }
 
     /** Appends an item with an accelerator and a printer-style action. */

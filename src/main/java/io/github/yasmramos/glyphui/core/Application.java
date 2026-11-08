@@ -15,6 +15,7 @@ import io.github.yasmramos.glyphui.core.backend.SurfaceResult;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.ComponentState;
+import io.github.yasmramos.glyphui.ui.Form;
 import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.PopupLayer;
 import io.github.yasmramos.glyphui.ui.TextField;
@@ -426,6 +427,67 @@ public class Application implements AutoCloseable {
      */
     public boolean init(Window window) {
         return init(window, false);
+    }
+
+    // ------------------------------------------------------------------
+    // Form factory: create and initialize the top-level window in one call
+    // ------------------------------------------------------------------
+
+    /**
+     * Creates a {@link Form} and initializes this application with it in a
+     * single call — the recommended way to start an application. The form is
+     * the toolkit's {@code JFrame}-style top-level window and becomes the
+     * application's window; keep using the returned reference to add menus and
+     * widgets:
+     *
+     * <pre>{@code
+     * try (Application app = new Application()) {
+     *     Form form = app.createForm("My App", 1024, 720).decorated(false);
+     *     form.addMenu("File").addItem("Quit", () -> form.requestClose());
+     *     form.add(new Label("Hello, Glyph UI"));
+     *     app.run();
+     * }
+     * }</pre>
+     *
+     * <p>The form is created undecorated-ready: creation-time attributes
+     * (decoration, resizability, …) can still be set on the returned form
+     * before {@link #run()} because the native window is created lazily by the
+     * backend, and {@link Form} re-mounts its chrome when the decoration
+     * changes.</p>
+     *
+     * <p>Unlike {@link #init(Window)}, which reports failure with a boolean,
+     * this factory throws when initialization fails: a form that cannot be
+     * shown is an exceptional condition, and a factory that returned a
+     * half-built window would only push the check to every caller.</p>
+     *
+     * @param title  the window title
+     * @param width  the window width
+     * @param height the window height
+     * @return the created, initialized form
+     * @throws IllegalStateException if the application is already initialized
+     *                               or the window could not be created
+     */
+    public Form createForm(String title, int width, int height) {
+        Form form = new Form(title, width, height);
+        if (!init(form)) {
+            throw new IllegalStateException(
+                    "Failed to initialize application with a Form window");
+        }
+        return form;
+    }
+
+    /**
+     * Creates a {@link Form} with the default window settings (a visible,
+     * resizable, decorated, centered 800x600 window titled "Glyph UI") and
+     * initializes this application with it. See
+     * {@link #createForm(String, int, int)}.
+     *
+     * @return the created, initialized form
+     * @throws IllegalStateException if the application is already initialized
+     *                               or the window could not be created
+     */
+    public Form createForm() {
+        return createForm("Glyph UI", 800, 600);
     }
 
     /**

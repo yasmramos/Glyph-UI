@@ -168,13 +168,10 @@ public class MyApp {
     public static void main(String[] args) {
         try (Application app = new Application()) {
 
-            // Form is the JFrame-style top-level window: it owns the chrome
-            // (title bar, menu bar) and a content pane for your widgets.
-            Form form = new Form("My App", 800, 600);
-            if (!app.init(form)) {
-                System.err.println("Failed to initialize");
-                return;
-            }
+            // Application creates and initializes the Form in one call. Form is
+            // the JFrame-style top-level window: it owns the chrome (title bar,
+            // menu bar) and a content pane for your widgets.
+            Form form = app.createForm("My App", 800, 600);
 
             // Create a button
             Button button = new Button(100, 100, 150, 40, "Click Me!");
@@ -197,32 +194,38 @@ public class MyApp {
 
 `Form` is the high-level top-level window, the analogue of Swing's `JFrame`
 over AWT's `Frame`: a `Window` that assembles the usual application chrome for
-you. Add widgets to its **content pane** with `form.add(...)`, populate its
-**menu bar** with `form.addMenu("File")`, and — for an undecorated window —
-let its **title bar** become the chrome that hosts the menus and the
-min/max/close controls:
+you. Add widgets to its **content pane** with `form.add(...)` and populate its
+**menu bar** with `form.addMenu("File")`. On an **undecorated** window the menu
+bar is embedded into the title bar (FlatLaf-style): the menus sit at the left,
+the window title is centred, and the min/max/close controls are pinned right.
 
 ```java
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.ui.Form;
 
 try (Application app = new Application()) {
-    Form form = new Form("My App", 1280, 720)
-            .decorated(false)   // no native title bar: Form's TitleBar is used
-            .resizable(true);
+    Form form = app.createForm("My App", 1280, 720)
+            .decorated(false);   // no native title bar: Form's TitleBar is used
     form.addMenu("File").addItem("Quit", () -> form.requestClose());
     form.add(new Button("Click Me!"));
-    if (!app.init(form)) {
-        System.err.println("Failed to initialize");
-        return;
-    }
     app.run();
 }
 ```
 
-When you need full control (a bespoke title bar, an existing content panel),
-`Form` still lets you supply each part explicitly via
-`setTitleBar(TitleBar)`, `setMenuBar(MenuBar)` and `setContentPane(Panel)`.
+The title bar is laid out in three zones — the leading menu bar, the centred
+title, and the trailing window controls — so menus never collide with the
+title. A **decorated** form keeps the native title bar and shows the menu bar
+as a separate row underneath it.
+
+When you need full control (a bespoke title bar, extra leading chrome such as a
+back button, or an existing content panel), `Form` and `TitleBar` still let you
+supply each part explicitly:
+
+```java
+form.getTitleBar().setMenuBar(myMenuBar);   // embed a menu bar
+form.getTitleBar().addContent(backButton);  // extra leading-zone widget
+form.setContentPane(existingPanel);         // reuse an existing panel
+```
 
 To configure only the raw window (no chrome assembly), build a `Window`,
 configure it with the fluent setters, and pass it to

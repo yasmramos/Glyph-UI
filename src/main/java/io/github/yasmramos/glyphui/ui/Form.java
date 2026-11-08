@@ -24,29 +24,34 @@ import java.util.Objects;
  *       chrome (see {@link #getContentPane()}). Add widgets to it with
  *       {@link #add(Component)}; it grows vertically to absorb the leftover
  *       height, so content stays anchored below the chrome.</li>
- *   <li><b>Menu bar</b> — an optional {@link MenuBar} pinned under the title
- *       bar. Populate it with {@link #getMenuBar()} / {@link #addMenu(String)},
- *       or supply your own via {@link #setMenuBar(MenuBar)}.</li>
+ *   <li><b>Menu bar</b> — an optional {@link MenuBar}. Populate it with
+ *       {@link #getMenuBar()} / {@link #addMenu(String)}, or supply your own via
+ *       {@link #setMenuBar(MenuBar)}. On an undecorated form the menu bar is
+ *       embedded into the title bar's leading zone (FlatLaf-style), so the menus
+ *       sit at the window's left; on a decorated form it is a separate row under
+ *       the native title bar.</li>
  *   <li><b>Custom title bar</b> — when the window is undecorated
  *       ({@code decorated(false)}), a {@link TitleBar} becomes the chrome: it
- *       hosts the window title, the menu strip and the min/max/close controls.
- *       Supply your own via {@link #setTitleBar(TitleBar)}. A decorated window
- *       keeps the native chrome and shows no title bar.</li>
+ *       hosts the menu strip (leading), the window title (centre) and the
+ *       min/max/close controls (trailing). Supply your own via
+ *       {@link #setTitleBar(TitleBar)}. A decorated window keeps the native
+ *       chrome and shows no title bar.</li>
  * </ul>
  *
  * <p>Typical use:</p>
  *
  * <pre>{@code
- * Form form = new Form("My App", 1024, 720).decorated(false);
- * form.addMenu("File").addItem("Quit", () -> form.requestClose());
- * form.add(new Label("Hello, Glyph UI"));
  * try (Application app = new Application()) {
- *     if (!app.init(form)) {
- *         return;
- *     }
+ *     Form form = app.createForm("My App", 1024, 720).decorated(false);
+ *     form.addMenu("File").addItem("Quit", () -> form.requestClose());
+ *     form.add(new Label("Hello, Glyph UI"));
  *     app.run();
  * }
  * }</pre>
+ *
+ * <p>Prefer {@code Application#createForm} over {@code new Form(...)}: it
+ * creates the form and initializes the application in one call, so the window
+ * and the application lifecycle stay in step.</p>
  *
  * <p><strong>Fluent setters return {@code Form}.</strong> The creation-time
  * setters inherited from {@link Window} are overridden with a covariant return
@@ -157,12 +162,15 @@ public class Form extends Window {
     }
 
     /**
-     * The custom title bar used when this form is undecorated, or {@code null}
-     * when none has been installed yet. A decorated window never shows it.
+     * The custom title bar used when this form is undecorated. Created on first
+     * use with the current window title. A decorated window never shows it.
      *
-     * @return the title bar, or null
+     * @return the title bar (never null)
      */
     public TitleBar getTitleBar() {
+        if (titleBar == null) {
+            titleBar = new TitleBar(getTitle());
+        }
         return titleBar;
     }
 
@@ -172,7 +180,8 @@ public class Form extends Window {
      * chrome stays). Takes effect immediately when the form is already
      * adopted.
      *
-     * @param titleBar the title bar to install, or null to remove it
+     * @param titleBar the title bar to install, or null to revert to the
+     *                 lazily created default
      * @return this form
      */
     public Form setTitleBar(TitleBar titleBar) {
@@ -207,19 +216,27 @@ public class Form extends Window {
     /**
      * (Re)assembles the root panel from the current chrome and content. Safe
      * to call before adoption (no-op until a root panel exists).
+     *
+     * <p>On an undecorated form the menu bar is embedded into the title bar's
+     * leading zone (FlatLaf-style) instead of taking its own row; on a decorated
+     * form it stays a separate row under the native title bar.</p>
      */
     private void rebuild() {
         if (rootPanel == null) {
             return;
         }
-        rootPanel.clear();
-        if (!isDecorated()) {
-            if (titleBar == null) {
-                titleBar = new TitleBar(getTitle());
-            }
-            rootPanel.add(titleBar);
+        boolean undecorated = !isDecorated();
+        if (undecorated) {
+            // Keep the lazily created default bar in step with the window title.
+            TitleBar bar = getTitleBar();
+            bar.setTitle(getTitle());
+            bar.setMenuBar(menuBar);
         }
-        if (menuBar != null) {
+        rootPanel.clear();
+        if (undecorated) {
+            rootPanel.add(titleBar);
+        } else if (menuBar != null) {
+            menuBar.setEmbedded(false);
             rootPanel.add(menuBar);
         }
         // Make the content pane absorb the leftover height so content sits
@@ -262,8 +279,24 @@ public class Form extends Window {
 
     @Override
     public Form decorated(boolean decorated) {
-        super.decorated(decorated);
+        setDecorated(decorated);
         return this;
+    }
+
+    /**
+     * Toggles the native decoration and re-mounts the chrome so the change is
+     * visible immediately. Because a window's native decoration is fixed at
+     * creation time by some backends, applications normally set this through
+     * the fluent {@link #decorated(boolean)} <em>before</em> the window is
+     * created; a change after adoption still re-mounts the root panel (title
+     * bar on/off) so the in-app chrome stays consistent with the hint.
+     *
+     * @param decorated true for the native title bar, false for custom chrome
+     */
+    @Override
+    public void setDecorated(boolean decorated) {
+        super.setDecorated(decorated);
+        rebuild();
     }
 
     @Override
