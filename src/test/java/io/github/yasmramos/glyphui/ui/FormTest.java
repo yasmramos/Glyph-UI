@@ -191,4 +191,23 @@ public class FormTest extends TestBase {
         Form decorated = new Form("B", 100, 100);
         assertTrue(decorated.isDecorated());
     }
+
+    @Test
+    public void changingDecorationAfterAdoptionRemountsTheChrome() {
+        // The factory hands back a live form; flipping decoration afterwards
+        // must keep the root panel in step (title bar on/off).
+        Form form = new Form("App", 800, 600);
+        Panel root = new Panel();
+        form.onAdopted(root);
+        assertEquals(1, root.getChildren().size(), "decorated: content only");
+
+        form.decorated(false);
+        assertEquals(2, root.getChildren().size(),
+                "undecorated: title bar + content");
+        assertInstanceOf(TitleBar.class, root.getChildren().get(0));
+
+        form.decorated(true);
+        assertEquals(1, root.getChildren().size(),
+                "back to decorated: title bar removed");
+    }
 }

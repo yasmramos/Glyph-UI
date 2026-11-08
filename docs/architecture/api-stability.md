@@ -141,6 +141,12 @@ Added to the public surface:
   in three zones (leading menu bar, centred title, trailing window controls),
   following FlatLaf's title pane, and an embedded menu bar drops its own chrome
   so the menus blend into the strip.
+- `TitleBar#getTitleAlignment()` / `setTitleAlignment(TitleAlignment)`:
+  `CENTER` (default, FlatLaf-style) or `LEADING` (pinned after the menu bar).
+- `Application#createForm(String, int, int)` and `Application#createForm()`:
+  create a `Form` and initialize the application in one call. Throws
+  `IllegalStateException` when the application is already initialized or the
+  window cannot be created (the boolean `init(Window)` path is unchanged).
 
 No removals: existing code that builds a plain `Window` keeps working exactly
 as before, and a standalone `MenuBar` keeps its toolbar-like chrome (embedded

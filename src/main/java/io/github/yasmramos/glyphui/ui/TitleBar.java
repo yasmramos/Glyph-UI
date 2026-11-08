@@ -61,6 +61,18 @@ public class TitleBar extends Panel {
     /** Height of the bar (logical units). */
     public static final float BAR_HEIGHT = 40.0f;
 
+    /**
+     * Where the title sits within the free space between the leading zone and
+     * the window controls.
+     */
+    public enum TitleAlignment {
+        /** Centred in the free space (FlatLaf's default), falling back to the
+         * whole bar when the leading zone leaves no room. */
+        CENTER,
+        /** Left-aligned, immediately after the leading zone (menu bar). */
+        LEADING
+    }
+
     /** Width of each window-control button. */
     public static final float CONTROL_WIDTH = 48.0f;
 
@@ -90,6 +102,9 @@ public class TitleBar extends Panel {
 
     /** Gap between adjacent leading items (menu bar, extra widgets). */
     private float itemGap = DEFAULT_ITEM_GAP;
+
+    /** Where the title sits between the leading zone and the controls. */
+    private TitleAlignment titleAlignment = TitleAlignment.CENTER;
     private final ControlButton minimizeButton;
     private final ControlButton maximizeButton;
     private final ControlButton closeButton;
@@ -270,6 +285,30 @@ public class TitleBar extends Panel {
         invalidate();
     }
 
+    /**
+     * Returns where the window title sits between the leading zone and the
+     * window controls.
+     *
+     * @return the current title alignment
+     */
+    public TitleAlignment getTitleAlignment() {
+        return titleAlignment;
+    }
+
+    /**
+     * Sets where the window title sits between the leading zone and the window
+     * controls. {@link TitleAlignment#CENTER} (the default) centres it in the
+     * free space, FlatLaf-style; {@link TitleAlignment#LEADING} pins it just
+     * after the menu bar. Takes effect on the next layout pass.
+     *
+     * @param titleAlignment the new alignment (null restores CENTER)
+     */
+    public void setTitleAlignment(TitleAlignment titleAlignment) {
+        this.titleAlignment = titleAlignment == null ? TitleAlignment.CENTER : titleAlignment;
+        markLayoutDirty();
+        invalidate();
+    }
+
     // ------------------------------------------------------------------
     // Sizing / layout
     // ------------------------------------------------------------------
@@ -356,9 +395,8 @@ public class TitleBar extends Panel {
         }
         float leadingEnd = left;
 
-        // Centre zone: the title, centred in the space left between the leading
-        // zone and the controls. When the whole bar has room, centre it against
-        // the full width so it reads as a window title (FlatLaf's behaviour).
+        // Title zone: centred in the space left between the leading zone and
+        // the controls, or pinned just after the leading zone (LEADING).
         Dimension td = titleLabel.measure(Float.MAX_VALUE, Float.MAX_VALUE);
         float titleW = Math.max(0, td.width);
         float freeStart = leadingEnd + PAD_TRAILING;
@@ -366,11 +404,20 @@ public class TitleBar extends Panel {
         float freeWidth = Math.max(0.0f, freeEnd - freeStart);
 
         float titleX;
-        float windowCenteredX = (barWidth - titleW) / 2f;
-        if (titleW <= freeWidth && windowCenteredX >= freeStart && windowCenteredX + titleW <= freeEnd) {
-            titleX = windowCenteredX;
+        if (titleAlignment == TitleAlignment.LEADING) {
+            titleX = freeStart;
         } else {
-            titleX = freeStart + Math.max(0.0f, (freeWidth - titleW) / 2f);
+            // When the whole bar has room, centre against the full width so the
+            // title reads as a window title (FlatLaf's behaviour); otherwise
+            // fall back to the centre of the free space.
+            float windowCenteredX = (barWidth - titleW) / 2f;
+            if (titleW <= freeWidth
+                    && windowCenteredX >= freeStart
+                    && windowCenteredX + titleW <= freeEnd) {
+                titleX = windowCenteredX;
+            } else {
+                titleX = freeStart + Math.max(0.0f, (freeWidth - titleW) / 2f);
+            }
         }
         float clippedW = Math.min(titleW, Math.max(0.0f, freeEnd - titleX));
         titleLabel.setX(titleX);
