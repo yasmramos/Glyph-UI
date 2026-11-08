@@ -1,6 +1,5 @@
 package io.github.yasmramos.glyphui.examples;
 
-import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.graphics.Image;
 import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
@@ -42,140 +41,134 @@ public class App {
     private static final float ROW = 44.0f;
 
     public static void main(String[] args) {
-        // Application owns all native resources (surface, GPU context, window);
-        // try-with-resources guarantees they are released in the correct order.
-        try (Application app = new Application()) {
+        // Swing-style entry point: build the Form, then show it. Showing a form
+        // that has no application yet creates one and runs its event loop on
+        // this (main) thread until the window is closed — no Application object
+        // to wire up, exactly like new JFrame(...).setVisible(true).
+        Form form = new Form("Glyph UI — widgets tour", 800, 600)
+                .decorated(false);
+        fillArchivo(form.addMenu("Archivo"));
+        fillEditar(form.addMenu("Editar"));
+        fillVer(form.addMenu("Ver"));
 
-            // The Form is the JFrame-style top-level window: Application
-            // creates it and initializes the app in one call. Undecorated, so
-            // the Form's own TitleBar becomes the chrome; its menu bar is
-            // embedded into the title bar's leading zone (menus at the left,
-            // title centred, window controls at the right).
-            Form form = app.createForm("Glyph UI — widgets tour", 800, 600)
-                    .decorated(false);
-            fillArchivo(form.addMenu("Archivo"));
-            fillEditar(form.addMenu("Editar"));
-            fillVer(form.addMenu("Ver"));
+        // ---- Content column (grows to fill the space below the bar) ----
+        FlexLayout column = new FlexLayout(FlexLayout.Direction.COLUMN,
+                FlexLayout.Justify.FLEX_START, FlexLayout.Align.FLEX_START);
+        column.setPadding(24.0f);
+        column.setGap(8.0f);
+        Panel content = form.getContentPane();
+        content.setLayoutManager(column);
 
-            // ---- Content column (grows to fill the space below the bar) ----
-            FlexLayout column = new FlexLayout(FlexLayout.Direction.COLUMN,
-                    FlexLayout.Justify.FLEX_START, FlexLayout.Align.FLEX_START);
-            column.setPadding(24.0f);
-            column.setGap(8.0f);
-            Panel content = form.getContentPane();
-            content.setLayoutManager(column);
+        // ---- Header -----------------------------------------------------
+        Label title = new Label("Glyph UI");
+        title.setFontSize(28.0f);
+        content.add(title);
 
-            // ---- Header -----------------------------------------------------
-            Label title = new Label("Glyph UI");
-            title.setFontSize(28.0f);
-            content.add(title);
+        Label subtitle = new Label("Buttons, text fields and nested layouts");
+        subtitle.setTextColor(MUTED);
+        content.add(subtitle);
 
-            Label subtitle = new Label("Buttons, text fields and nested layouts");
-            subtitle.setTextColor(MUTED);
-            content.add(subtitle);
+        // ---- Interactive counter ----------------------------------------
+        content.add(caption("Counter (nested panels + FlexLayout)"));
 
-            // ---- Interactive counter ----------------------------------------
-            content.add(caption("Counter (nested panels + FlexLayout)"));
+        // A stateful widget: the click handler mutates a label, which is
+        // repainted on demand (setText requests the repaint implicitly).
+        Label counterValue = new Label("0");
+        counterValue.setFontSize(20.0f);
 
-            // A stateful widget: the click handler mutates a label, which is
-            // repainted on demand (setText requests the repaint implicitly).
-            Label counterValue = new Label("0");
-            counterValue.setFontSize(20.0f);
+        final int[] count = {0};
+        Button decrement = new Button("−");
+        Button increment = new Button("+");
+        increment.setOnClick(() -> counterValue.setText(String.valueOf(++count[0])));
+        decrement.setOnClick(() -> counterValue.setText(String.valueOf(--count[0])));
 
-            final int[] count = {0};
-            Button decrement = new Button("−");
-            Button increment = new Button("+");
-            increment.setOnClick(() -> counterValue.setText(String.valueOf(++count[0])));
-            decrement.setOnClick(() -> counterValue.setText(String.valueOf(--count[0])));
+        Panel counterRow = row();
+        counterRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
+                FlexLayout.Justify.CENTER, FlexLayout.Align.CENTER));
+        counterRow.add(decrement);
+        counterRow.add(counterValue);
+        counterRow.add(increment);
+        content.add(counterRow);
 
-            Panel counterRow = row();
-            counterRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
-                    FlexLayout.Justify.CENTER, FlexLayout.Align.CENTER));
-            counterRow.add(decrement);
-            counterRow.add(counterValue);
-            counterRow.add(increment);
-            content.add(counterRow);
+        // ---- Text field wired to a label --------------------------------
+        content.add(caption("TextField (placeholder + live echo)"));
 
-            // ---- Text field wired to a label --------------------------------
-            content.add(caption("TextField (placeholder + live echo)"));
+        // The handler runs on the UI thread, so mutating other widgets from
+        // it needs no synchronization.
+        Label echo = new Label("Type above…");
+        echo.setTextColor(MUTED);
 
-            // The handler runs on the UI thread, so mutating other widgets from
-            // it needs no synchronization.
-            Label echo = new Label("Type above…");
-            echo.setTextColor(MUTED);
+        TextField field = new TextField();
+        field.setPlaceholder("Your name");
+        field.setOnTextChanged(() -> {
+            String text = field.getText();
+            echo.setText(text.isEmpty() ? "Type above…" : "Hello, " + text + "!");
+        });
 
-            TextField field = new TextField();
-            field.setPlaceholder("Your name");
-            field.setOnTextChanged(() -> {
-                String text = field.getText();
-                echo.setText(text.isEmpty() ? "Type above…" : "Hello, " + text + "!");
-            });
+        Panel fieldRow = row();
+        fieldRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
+                FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
+        fieldRow.add(field);
+        content.add(fieldRow);
+        content.add(echo);
 
-            Panel fieldRow = row();
-            fieldRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
-                    FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
-            fieldRow.add(field);
-            content.add(fieldRow);
-            content.add(echo);
+        // ---- Masked and multi-line inputs -------------------------------
+        content.add(caption("PasswordField (masked) and TextArea (multi-line)"));
 
-            // ---- Masked and multi-line inputs -------------------------------
-            content.add(caption("PasswordField (masked) and TextArea (multi-line)"));
+        PasswordField password = new PasswordField();
+        password.setPlaceholder("Password");
+        password.setWidth(COLUMN);
 
-            PasswordField password = new PasswordField();
-            password.setPlaceholder("Password");
-            password.setWidth(COLUMN);
+        TextArea notes = new TextArea();
+        notes.setPlaceholder("Notes…");
+        notes.setWidth(COLUMN);
+        notes.setHeight(96.0f);
+        notes.setText("First line\nSecond line");
 
-            TextArea notes = new TextArea();
-            notes.setPlaceholder("Notes…");
-            notes.setWidth(COLUMN);
-            notes.setHeight(96.0f);
-            notes.setText("First line\nSecond line");
+        Panel passwordRow = row();
+        passwordRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
+                FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
+        passwordRow.add(password);
+        content.add(passwordRow);
 
-            Panel passwordRow = row();
-            passwordRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
-                    FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
-            passwordRow.add(password);
-            content.add(passwordRow);
+        // The multi-line area needs a taller row than the default one.
+        Panel notesRow = row();
+        notesRow.setHeight(112.0f);
+        notesRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
+                FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
+        notesRow.add(notes);
+        content.add(notesRow);
 
-            // The multi-line area needs a taller row than the default one.
-            Panel notesRow = row();
-            notesRow.setHeight(112.0f);
-            notesRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
-                    FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
-            notesRow.add(notes);
-            content.add(notesRow);
+        // ---- Buttons: intrinsic vs. fixed size --------------------------
+        content.add(caption("Buttons (auto-sized and fixed)"));
 
-            // ---- Buttons: intrinsic vs. fixed size --------------------------
-            content.add(caption("Buttons (auto-sized and fixed)"));
+        // Preferred sizes come from the measured text, so no bounds are
+        // needed under a layout manager; an explicit size wins over it.
+        Button primary = new Button("Click here!");
+        Button secondary = new Button("Second button");
+        Button fixed = new Button(200, ROW, "Fixed size button");
 
-            // Preferred sizes come from the measured text, so no bounds are
-            // needed under a layout manager; an explicit size wins over it.
-            Button primary = new Button("Click here!");
-            Button secondary = new Button("Second button");
-            Button fixed = new Button(200, ROW, "Fixed size button");
+        primary.setOnClick(() -> System.out.println("Hello Glyph UI!"));
+        secondary.setOnClick(() -> System.out.println("Second button clicked!"));
+        fixed.setOnClick(() -> System.out.println("Third button clicked!"));
 
-            primary.setOnClick(() -> System.out.println("Hello Glyph UI!"));
-            secondary.setOnClick(() -> System.out.println("Second button clicked!"));
-            fixed.setOnClick(() -> System.out.println("Third button clicked!"));
+        Panel buttonsRow = row();
+        buttonsRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
+                FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
+        buttonsRow.add(primary);
+        buttonsRow.add(secondary);
+        buttonsRow.add(fixed);
+        content.add(buttonsRow);
 
-            Panel buttonsRow = row();
-            buttonsRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
-                    FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
-            buttonsRow.add(primary);
-            buttonsRow.add(secondary);
-            buttonsRow.add(fixed);
-            content.add(buttonsRow);
+        // ---- Labels: multi-line captions -------------------------------
+        content.add(caption("Label (multi-line, one line per \\n)"));
 
-            // ---- Labels: multi-line captions -------------------------------
-            content.add(caption("Label (multi-line, one line per \\n)"));
+        Label verse = new Label("Labels hold any text.\nSecond line, same box.\nThird line too.");
+        verse.setTextColor(Theme.current().getForegroundColor());
+        content.add(verse);
 
-            Label verse = new Label("Labels hold any text.\nSecond line, same box.\nThird line too.");
-            verse.setTextColor(Theme.current().getForegroundColor());
-            content.add(verse);
-
-            // Run the application
-            app.run();
-        }
+        // Run the application
+        form.setVisible(true);   // shows the window, runs until it closes
     }
 
     /** A muted caption label introducing one section. */
