@@ -353,6 +353,8 @@ HTML-ish aliases remain for compatibility:
 | `button`   | `Button`    | text from tag body; `onclick="methodName"`   |
 | `label`, `p` | `Label`   | text from tag body                           |
 | `input`    | `TextField` | `value` attribute; `onchange="methodName"`   |
+| `textarea` | `TextField` | single-line text input (HTML-ish alias)      |
+| `password`, `PasswordField` | `PasswordField` | masked `input`; `value`, `placeholder`; `mask` sets the mask glyph (default `\u2022`) |
 | `img`      | `ImageView` | `src` resolved through the loader's `ImageProvider` |
 | `checkbox` | `CheckBox`  | `checked` selects it initially               |
 | `radio`    | `RadioButton` | `selected`/`checked`; `name` groups radios into a `RadioGroup` |

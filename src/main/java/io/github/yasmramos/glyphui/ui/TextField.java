@@ -170,6 +170,18 @@ public class TextField extends Component
     }
 
     /**
+     * Returns the string actually painted in the field. The default is the
+     * raw buffer; a subclass overrides this to mask or otherwise transform the
+     * displayed characters (see {@link PasswordField}) while the editing model
+     * keeps operating on the real text.
+     *
+     * @return the display string (never null)
+     */
+    protected String displayText() {
+        return text;
+    }
+
+    /**
      * Returns the observable text property. Setting it from a background
      * thread marshals the change onto the UI thread automatically, matching
      * the threading contract of Button/Label (previously {@code setText}
@@ -943,9 +955,13 @@ public class TextField extends Component
         // box, like a native single-line input.
         float contentLeft = padding;
         float contentWidth = Math.max(0.0f, width - 2.0f * padding);
-        float totalTextWidth = font.measureTextWidth(text);
+        // The painted string may differ from the buffer (see displayText):
+        // a password field masks it, so measurement and painting both work on
+        // the display form while the caret index still maps 1:1.
+        String shown = displayText();
+        float totalTextWidth = font.measureTextWidth(shown);
         if (isFocused()) {
-            float caretTextX = font.measureTextWidth(text.substring(0, caret));
+            float caretTextX = font.measureTextWidth(shown.substring(0, caret));
             // Reserve the caret's own width so it never lands exactly on the
             // clip edge (where it would be cropped away).
             float visibleRight = Math.max(0.0f, contentWidth - CARET_WIDTH);
@@ -969,8 +985,8 @@ public class TextField extends Component
         if (isFocused() && hasSelection()) {
             int lo = Math.min(caret, selectionAnchor);
             int hi = Math.max(caret, selectionAnchor);
-            float startX = textX + font.measureTextWidth(text.substring(0, lo));
-            float endX = textX + font.measureTextWidth(text.substring(0, hi));
+            float startX = textX + font.measureTextWidth(shown.substring(0, lo));
+            float endX = textX + font.measureTextWidth(shown.substring(0, hi));
             selectionPaint.setColor(withAlpha(theme.getAccentColor(), 90));
             canvas.drawRect(startX, baseline + metrics.getAscent() - 2.0f,
                     Math.max(0.0f, endX - startX), lineHeight + 4.0f, selectionPaint);
@@ -980,12 +996,12 @@ public class TextField extends Component
         // the disabled path re-resolves through the computed style so
         // `input:disabled { color: ... }` applies instead of jumping straight
         // to the dimmed theme token.
-        if (!text.isEmpty()) {
+        if (!shown.isEmpty()) {
             int textColor = enabled
                     ? resolveIntStyle(StyleProperty.COLOR, null, theme.getForegroundColor())
                     : resolveIntStyle(StyleProperty.COLOR, null, theme.getControlTextDisabledColor());
             textPaint.setColor(textColor);
-            canvas.drawString(text, textX, baseline, textPaint, font);
+            canvas.drawString(shown, textX, baseline, textPaint, font);
         } else if (!isFocused() && !placeholder.isEmpty()) {
             textPaint.setColor(withAlpha(theme.getForegroundColor(), 120));
             canvas.drawString(placeholder, contentLeft, baseline, textPaint, font);
@@ -993,7 +1009,7 @@ public class TextField extends Component
 
         // Caret
         if (isFocused() && enabled) {
-            float caretX = textX + font.measureTextWidth(text.substring(0, caret));
+            float caretX = textX + font.measureTextWidth(shown.substring(0, caret));
             cursorPaint.setColor(resolveIntStyle(StyleProperty.ACCENT_COLOR, null, theme.getAccentColor()));
             canvas.drawRect(caretX, baseline + metrics.getAscent() - 2.0f,
                     CARET_WIDTH, lineHeight + 4.0f, cursorPaint);

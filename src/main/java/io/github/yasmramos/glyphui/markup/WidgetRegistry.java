@@ -24,6 +24,7 @@ import io.github.yasmramos.glyphui.ui.ListBox;
 import io.github.yasmramos.glyphui.ui.MenuBar;
 import io.github.yasmramos.glyphui.ui.Pagination;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.PasswordField;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.ProgressRing;
 import io.github.yasmramos.glyphui.ui.RadioButton;
@@ -217,6 +218,26 @@ public final class WidgetRegistry {
         registry.register("textarea", textField);
         // Compose-style spelling of the single-line text input.
         registry.register("textfield", textField);
+
+        WidgetFactory passwordField = (element, ctx) -> {
+            PasswordField field = new PasswordField();
+            String value = ctx.attr(element, "value");
+            String text = !value.isEmpty() ? value : ctx.textOf(element);
+            if (!text.isEmpty()) {
+                field.setText(text);
+            }
+            String placeholder = ctx.attr(element, "placeholder");
+            if (!placeholder.isEmpty()) {
+                field.setPlaceholder(placeholder);
+            }
+            String mask = ctx.attr(element, "mask");
+            if (!mask.isEmpty()) {
+                field.setMaskChar(mask.charAt(0));
+            }
+            return field;
+        };
+        registry.register("password", passwordField);
+        registry.register("passwordfield", passwordField);
 
         WidgetFactory imageView = (element, ctx) -> {
             ImageView view = new ImageView();

@@ -18,6 +18,7 @@ import io.github.yasmramos.glyphui.ui.ImageView;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Pagination;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.PasswordField;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.RadioButton;
 import io.github.yasmramos.glyphui.ui.RadioGroup;
@@ -102,7 +103,7 @@ class WidgetRegistryTest {
                 "select", "scroll", "scrollpane", "separator", "hr", "badge",
                 "card", "tabs", "tabpanel", "alert", "avatar", "accordion",
                 "chip", "breadcrumb", "pagination", "table", "treeview",
-                "dialog", "colorpicker",
+                "dialog", "colorpicker", "password", "passwordfield",
                 // Compose-style spellings that share a factory with the above.
                 "image", "imageview", "radiobutton", "toggleswitch", "dropdown",
                 "progressbar", "hyperlink"}) {
@@ -140,6 +141,8 @@ class WidgetRegistryTest {
         assertInstanceOf(Label.class, registry.create("h1", null, context));
         assertInstanceOf(TextField.class, registry.create("input", null, context));
         assertInstanceOf(TextField.class, registry.create("textarea", null, context));
+        assertInstanceOf(PasswordField.class, registry.create("password", null, context));
+        assertInstanceOf(PasswordField.class, registry.create("passwordfield", null, context));
         assertInstanceOf(ImageView.class, registry.create("img", null, context));
         assertInstanceOf(CheckBox.class, registry.create("checkbox", null, context));
         assertInstanceOf(RadioButton.class, registry.create("radio", null, context));
