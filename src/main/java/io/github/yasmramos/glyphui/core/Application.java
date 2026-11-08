@@ -1262,7 +1262,8 @@ public class Application implements AutoCloseable {
         Component target = pointerTarget();
         GlyphCursor cursor = GlyphCursor.DEFAULT;
         if (target != null && target.isEnabled()) {
-            cursor = target.getCursor();
+            cursor = target.getCursorAt(
+                    target.toLocalX((float) mouseX), target.toLocalY((float) mouseY));
         }
         window.setCursor(cursor);
     }

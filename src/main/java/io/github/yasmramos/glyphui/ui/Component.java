@@ -1359,6 +1359,74 @@ public abstract class Component implements StyleNode, Disposable {
     }
 
     /**
+     * Gets the pointer shape shown while the mouse is at the given point
+     * inside this component.
+     *
+     * <p>Most widgets show one shape everywhere, so the base implementation
+     * ignores the point and returns {@link #getCursor()}. Widgets with
+     * position-dependent affordances override {@link #cursorAt(float, float)}
+     * instead — a split pane shows a resize cursor only while the pointer is
+     * over its divider — and the rest of the widget keeps its usual shape. An
+     * explicit {@link #setCursor(GlyphCursor)} override always wins.</p>
+     *
+     * @param localX the x-coordinate in this component's local space
+     * @param localY the y-coordinate in this component's local space
+     * @return the cursor shape at the point (never null)
+     */
+    public GlyphCursor getCursorAt(float localX, float localY) {
+        return cursorOverride != null ? cursorOverride : cursorAt(localX, localY);
+    }
+
+    /**
+     * Returns the pointer shape for a point inside this component.
+     *
+     * <p>The extension point for position-dependent cursors; see
+     * {@link #getCursorAt(float, float)}. The base implementation returns
+     * {@link #defaultCursor()}, so a widget that does not care about the point
+     * only has to override that method.</p>
+     *
+     * @param localX the x-coordinate in this component's local space
+     * @param localY the y-coordinate in this component's local space
+     * @return the cursor shape at the point (never null)
+     */
+    protected GlyphCursor cursorAt(float localX, float localY) {
+        return defaultCursor();
+    }
+
+    /**
+     * Converts a window-space x-coordinate to this component's local space.
+     *
+     * <p>Walks up the parent chain subtracting each ancestor's origin, the
+     * inverse of the translate the renderer applies before
+     * {@link #render(Canvas)}. Used to resolve position-dependent cursors.</p>
+     *
+     * @param windowX the x-coordinate in window space
+     * @return the x-coordinate in this component's local space
+     */
+    public float toLocalX(float windowX) {
+        float local = windowX;
+        for (Component node = this; node != null; node = node.getParent()) {
+            local -= node.getX();
+        }
+        return local;
+    }
+
+    /**
+     * Converts a window-space y-coordinate to this component's local space;
+     * see {@link #toLocalX(float)}.
+     *
+     * @param windowY the y-coordinate in window space
+     * @return the y-coordinate in this component's local space
+     */
+    public float toLocalY(float windowY) {
+        float local = windowY;
+        for (Component node = this; node != null; node = node.getParent()) {
+            local -= node.getY();
+        }
+        return local;
+    }
+
+    /**
      * Returns the pointer shape this component shows by default.
      *
      * <p>Subclasses override this to declare their affordance once instead of

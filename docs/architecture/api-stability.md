@@ -165,6 +165,40 @@ No removals: existing code that builds a plain `Window` keeps working exactly
 as before, and a standalone `MenuBar` keeps its toolbar-like chrome (embedded
 mode is off by default).
 
+### Added per-widget pointer cursors
+
+Widgets now advertise the mouse-pointer shape they show while under the
+pointer, so a toolkit app gets the affordances a web page does (a hand over a
+button, a caret over editable text, a resize cursor on a split divider).
+
+Added to the public surface:
+
+- `io.github.yasmramos.glyphui.events.GlyphCursor` (enum): toolkit-owned
+  pointer vocabulary (`DEFAULT`, `POINTING_HAND`, `TEXT`, `CROSSHAIR`,
+  `RESIZE_NS`, `RESIZE_EW`, `WAIT`, `NOT_ALLOWED`). No native cursor type
+  crosses the boundary.
+- `Window#setCursor(GlyphCursor)` and the default `WindowBackend#setCursor`
+  SPI method: the application resolves the shape under the pointer and hands it
+  to the backend, which maps it onto its own native cursor. `null` normalizes
+  to `DEFAULT`, and `AbstractWindowBackend` de-duplicates repeated shapes so
+  the native layer is only touched on a real change.
+- `Component#getCursor()` / `setCursor(GlyphCursor)`: the shape a widget shows,
+  with `null` restoring the subclass default; an explicit override wins over
+  everything else.
+- `Component#defaultCursor()` (protected): the extension point a widget
+  overrides to declare one shape for its whole area (`Button` returns
+  `POINTING_HAND`, `TextField` returns `TEXT`).
+- `Component#getCursorAt(float, float)` / `cursorAt(float, float)` (the latter
+  protected) and `Component#toLocalX(float)` / `toLocalY(float)`: the
+  position-dependent variant. A widget whose affordance varies across its area
+  overrides `cursorAt` and inspects the local point — `SplitPane` returns
+  `RESIZE_EW` / `RESIZE_NS` only over its divider — while the base
+  implementation keeps returning `defaultCursor()`.
+
+A disabled component does not drive the pointer: its shape is ignored and the
+arrow is shown, matching the web convention that disabled controls lose their
+affordance.
+
 ## Consequences
 
 - Audits become mechanical: apply the five rules, move violations to
