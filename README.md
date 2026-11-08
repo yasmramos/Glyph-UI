@@ -81,6 +81,9 @@ src/main/java/io/github/yasmramos/glyphui/
 ├── ui/
 │   ├── Component.java        # Base class for all UI components
 │   ├── Panel.java            # Container for components
+│   ├── Form.java             # JFrame-style top-level window (content/menu/title)
+│   ├── TitleBar.java         # Custom undecorated-window chrome
+│   ├── MenuBar.java          # Horizontal strip of drop-down menus
 │   ├── Button.java           # Clickable button component
 │   ├── Label.java            # Text label component
 │   ├── CheckBox.java         # Boolean check box
@@ -159,12 +162,16 @@ window - always in the correct dependency order:
 ```java
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.Form;
 
 public class MyApp {
     public static void main(String[] args) {
         try (Application app = new Application()) {
 
-            if (!app.init("My App", 800, 600)) {
+            // Form is the JFrame-style top-level window: it owns the chrome
+            // (title bar, menu bar) and a content pane for your widgets.
+            Form form = new Form("My App", 800, 600);
+            if (!app.init(form)) {
                 System.err.println("Failed to initialize");
                 return;
             }
@@ -175,8 +182,8 @@ public class MyApp {
                 System.out.println("Button clicked!");
             });
 
-            // Add to root panel (ownership transfers to the panel)
-            app.getRootPanel().add(button);
+            // Add it to the form's content pane
+            form.add(button);
 
             app.run();
         }
@@ -186,8 +193,39 @@ public class MyApp {
 }
 ```
 
-To customize the window (size, decoration, resizability, ...), build a
-`Window`, configure it with the fluent setters, and pass it to
+### Forms: custom chrome and menus
+
+`Form` is the high-level top-level window, the analogue of Swing's `JFrame`
+over AWT's `Frame`: a `Window` that assembles the usual application chrome for
+you. Add widgets to its **content pane** with `form.add(...)`, populate its
+**menu bar** with `form.addMenu("File")`, and — for an undecorated window —
+let its **title bar** become the chrome that hosts the menus and the
+min/max/close controls:
+
+```java
+import io.github.yasmramos.glyphui.core.Application;
+import io.github.yasmramos.glyphui.ui.Form;
+
+try (Application app = new Application()) {
+    Form form = new Form("My App", 1280, 720)
+            .decorated(false)   // no native title bar: Form's TitleBar is used
+            .resizable(true);
+    form.addMenu("File").addItem("Quit", () -> form.requestClose());
+    form.add(new Button("Click Me!"));
+    if (!app.init(form)) {
+        System.err.println("Failed to initialize");
+        return;
+    }
+    app.run();
+}
+```
+
+When you need full control (a bespoke title bar, an existing content panel),
+`Form` still lets you supply each part explicitly via
+`setTitleBar(TitleBar)`, `setMenuBar(MenuBar)` and `setContentPane(Panel)`.
+
+To configure only the raw window (no chrome assembly), build a `Window`,
+configure it with the fluent setters, and pass it to
 `Application.init(Window)`:
 
 ```java

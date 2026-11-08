@@ -539,6 +539,13 @@ public class Application implements AutoCloseable {
             // parent chain instead of the process-wide pointer (multi-app safe).
             rootPanel.setContext(AppContext.of(this));
 
+            // Let higher-level window types install their chrome and content
+            // now that the root panel is sized and bound (ui.Form mounts its
+            // title bar, menu bar and content pane here). Runs after
+            // setContext so every panel added during the hook inherits the
+            // owning context at add time.
+            window.onAdopted(rootPanel);
+
             return true;
         } catch (Exception e) {
             log.log(Logger.Level.ERROR, "Failed to initialize application: " + e.getMessage(), e);
