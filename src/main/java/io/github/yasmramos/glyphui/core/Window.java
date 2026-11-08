@@ -2,6 +2,7 @@ package io.github.yasmramos.glyphui.core;
 
 import io.github.yasmramos.glyphui.core.backend.JwmWindowBackend;
 import io.github.yasmramos.glyphui.core.backend.WindowBackend;
+import io.github.yasmramos.glyphui.ui.Panel;
 
 /**
  * Manages the application window, delegating all native operations to a
@@ -77,6 +78,13 @@ public class Window implements AutoCloseable {
      * goes through {@link #setMaximized(boolean)}, keeping this accurate.
      */
     private boolean maximized;
+
+    /**
+     * Whether the window was created decorated (native title bar / borders).
+     * Mirrors the creation hint so higher-level window types can decide
+     * whether to install their own chrome (see {@link #isDecorated()}).
+     */
+    private boolean decorated = true;
 
     /**
      * Test-only constructor: injects a pre-built backend (e.g.
@@ -186,6 +194,25 @@ public class Window implements AutoCloseable {
     public boolean create() {
         checkThread();
         return backend.create();
+    }
+
+    /**
+     * Template hook invoked by {@link Application} once this window has been
+     * adopted and the root panel is sized and bound to the owning
+     * application. Higher-level window types override it to install their own
+     * chrome and content into the root panel — {@code ui.Form} uses it to
+     * mount its title bar, menu bar and content pane. The default
+     * implementation does nothing, so a plain {@code Window} is unaffected.
+     *
+     * <p><strong>Extension point:</strong> subclasses may override. When this
+     * runs the root panel already reports the window's logical size and
+     * resolves its {@code AppContext}, so widgets added here inherit the
+     * owning application by ownership.</p>
+     *
+     * @param rootPanel the application root panel (never null)
+     */
+    protected void onAdopted(Panel rootPanel) {
+        // Plain windows install no chrome: nothing to do.
     }
 
     /**
@@ -449,6 +476,18 @@ public class Window implements AutoCloseable {
     public void setDecorated(boolean decorated) {
         checkThread();
         backend.setDecorated(decorated);
+        this.decorated = decorated;
+    }
+
+    /**
+     * Reports whether the window is decorated (native title bar / borders).
+     * Mirrors the creation hint: an undecorated window expects the application
+     * to supply its own chrome (see {@code ui.Form} / {@code ui.TitleBar}).
+     *
+     * @return true when the native decoration is enabled
+     */
+    public boolean isDecorated() {
+        return decorated;
     }
 
     /**

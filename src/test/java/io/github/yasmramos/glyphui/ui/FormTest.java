@@ -1,0 +1,183 @@
+package io.github.yasmramos.glyphui.ui;
+
+import io.github.yasmramos.glyphui.TestBase;
+import io.github.yasmramos.glyphui.style.StyleProperty;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Unit tests for {@link Form}, the {@code JFrame}-style top-level window: the
+ * root-panel structure it mounts (title bar / menu bar / content pane), the
+ * covariant fluent setters, and the behaviour of the individual chrome parts.
+ *
+ * <p>The mounting tests drive {@link Form#onAdopted(Panel)} directly with a
+ * plain {@link Panel}, so they exercise the real assembly logic without
+ * needing an {@code Application} or any native windowing library.</p>
+ */
+public class FormTest extends TestBase {
+
+    @Test
+    public void undecoratedFormMountsTitleBarMenuBarAndContentPane() {
+        Form form = new Form("App", 800, 600).decorated(false);
+        form.getMenuBar().addMenu("File");
+        Panel root = new Panel();
+        form.onAdopted(root);
+
+        List<Component> kids = root.getChildren();
+        assertEquals(3, kids.size(), "chrome + menu + content");
+        assertInstanceOf(TitleBar.class, kids.get(0));
+        assertInstanceOf(MenuBar.class, kids.get(1));
+        assertSame(form.getContentPane(), kids.get(2));
+    }
+
+    @Test
+    public void decoratedFormKeepsNativeChromeAndShowsNoTitleBar() {
+        Form form = new Form("App", 800, 600);
+        Panel root = new Panel();
+        form.onAdopted(root);
+
+        assertEquals(1, root.getChildren().size(),
+                "a decorated form adds only the content pane");
+        assertSame(form.getContentPane(), root.getChildren().get(0));
+    }
+
+    @Test
+    public void decoratedFormWithExplicitMenuBarMountsMenuAndContentOnly() {
+        Form form = new Form("App", 800, 600);
+        form.setMenuBar(new MenuBar());
+        Panel root = new Panel();
+        form.onAdopted(root);
+
+        List<Component> kids = root.getChildren();
+        assertEquals(2, kids.size());
+        assertInstanceOf(MenuBar.class, kids.get(0));
+        assertSame(form.getContentPane(), kids.get(1));
+    }
+
+    @Test
+    public void contentPaneGrowsToFillLeftoverSpace() {
+        Form form = new Form("App", 800, 600);
+        Panel root = new Panel();
+        form.onAdopted(root);
+
+        assertTrue(form.getContentPane().getInlineStyle()
+                        .has(StyleProperty.FLEX_GROW),
+                "content pane must absorb leftover height below the chrome");
+        assertEquals(1.0f, form.getContentPane().getInlineStyle()
+                .getFloat(StyleProperty.FLEX_GROW, 0.0f), 0.001f);
+    }
+
+    @Test
+    public void userFlexGrowOnContentPaneIsPreserved() {
+        Form form = new Form("App", 800, 600);
+        form.getContentPane().setInlineStyle(
+                io.github.yasmramos.glyphui.style.Style.builder()
+                        .setFloat(StyleProperty.FLEX_GROW, 2.0f).build());
+        Panel root = new Panel();
+        form.onAdopted(root);
+
+        assertEquals(2.0f, form.getContentPane().getInlineStyle()
+                .getFloat(StyleProperty.FLEX_GROW, 0.0f), 0.001f);
+    }
+
+    @Test
+    public void addDelegatesToTheContentPane() {
+        Form form = new Form("App", 800, 600);
+        Label label = new Label("Hi");
+        assertSame(form, form.add(label));
+        assertTrue(form.getContentPane().getChildren().contains(label));
+    }
+
+    @Test
+    public void getMenuBarCreatesOneOnFirstUse() {
+        Form form = new Form("App", 800, 600);
+        assertNull(form.getTitleBar(), "no title bar until requested or mounted");
+        MenuBar bar = form.getMenuBar();
+        assertNotNull(bar);
+        assertSame(bar, form.getMenuBar(), "created once and cached");
+    }
+
+    @Test
+    public void addMenuCreatesTheBarAndAppends() {
+        Form form = new Form("App", 800, 600);
+        Menu file = form.addMenu("File");
+        assertNotNull(file);
+        assertEquals(1, form.getMenuBar().getMenus().size());
+        assertSame(file, form.getMenuBar().getMenus().get(0));
+    }
+
+    @Test
+    public void settingChromeAfterAdoptionRemountsImmediately() {
+        Form form = new Form("App", 800, 600).decorated(false);
+        Panel root = new Panel();
+        form.onAdopted(root);
+        assertEquals(2, root.getChildren().size(), "title bar + content");
+
+        MenuBar bar = new MenuBar();
+        form.setMenuBar(bar);
+        assertEquals(3, root.getChildren().size(), "menu bar inserted in place");
+        assertSame(bar, root.getChildren().get(1));
+
+        form.setMenuBar(null);
+        assertEquals(2, root.getChildren().size(), "menu bar removed again");
+    }
+
+    @Test
+    public void mountedChildrenInheritTheRootContext() {
+        io.github.yasmramos.glyphui.SkijaTestSupport.assumeAvailable();
+        io.github.yasmramos.glyphui.core.Application app =
+                new io.github.yasmramos.glyphui.core.Application();
+        if (!io.github.yasmramos.glyphui.core.internal.TestHooks
+                .initForTesting(app, new Form("ctx", 320, 240))) {
+            app.close();
+            org.junit.jupiter.api.Assumptions.abort(
+                    "Application.init() unavailable on this host");
+        }
+        // TestBase closes the current application after the test.
+        Form form = new Form("ctx", 320, 240).decorated(false);
+        form.onAdopted(app.getRootPanel());
+
+        assertSame(app, form.getContentPane().context().app(),
+                "content pane must inherit the owning application");
+        assertSame(app, form.getTitleBar().context().app(),
+                "title bar must inherit the owning application");
+    }
+
+    @Test
+    public void fluentSettersKeepTheFormType() {
+        Form form = new Form("App", 800, 600);
+        Form chained = form.title("T").size(640, 480).decorated(false)
+                .resizable(false).centered(true);
+        assertSame(form, chained, "each fluent setter returns the same Form");
+    }
+
+    @Test
+    public void titleChangeKeepsTheCustomTitleBarInStep() {
+        Form form = new Form("First", 800, 600).decorated(false);
+        Panel root = new Panel();
+        form.onAdopted(root);
+        TitleBar bar = (TitleBar) root.getChildren().get(0);
+
+        form.setTitle("Second");
+        Label titleLabel = (Label) bar.getChildren().get(0);
+        assertEquals("Second", titleLabel.getText(),
+                "setTitle must propagate to the custom title bar");
+    }
+
+    @Test
+    public void isDecoratedReflectsTheFluentHint() {
+        Form undecorated = new Form("A", 100, 100).decorated(false);
+        assertFalse(undecorated.isDecorated());
+        Form decorated = new Form("B", 100, 100);
+        assertTrue(decorated.isDecorated());
+    }
+}
