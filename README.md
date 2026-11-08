@@ -69,6 +69,64 @@ JWM owns the process UI thread: its native message loop is started by
 blitted from the CPU surface onto the window layer via
 `WindowBackend.present(...)`.
 
+### Visual quality
+
+Rendering defaults to a smooth, modern look; jagged edges are treated as a
+bug, not a setting. The defaults are applied centrally so widgets get them for
+free:
+
+- **Geometry**: every `Canvas` draw helper (`drawRect`, `drawRRect`,
+  `drawCircle`, `drawLine`) routes the caller's `Paint` through
+  `Canvas.withQualityDefaults(...)`, which forces antialiasing on.
+- **Text**: fonts built through `Fonts`/`FontManager` use subpixel antialiasing
+  with slight hinting (`Fonts.applyQualityDefaults(...)`), falling back to
+  grayscale on targets without LCD subpixel coverage.
+- **Clips**: `Canvas.clipRect(...)` antialiases its edges.
+- **Images**: a scaled `drawImage(...)` samples with bicubic interpolation
+  (`Canvas.ImageScaling.SMOOTH`) instead of Skia's nearest-neighbour default,
+  so enlarged photos are not blocky and HiDPI downscales do not alias. Pass
+  `Canvas.ImageScaling.PIXELATED` (or set `-Dglyph.image.sampling=pixelated`)
+  for pixel art and other hard-edged images; `ImageView#setImageScaling(...)`
+  exposes the same choice per widget.
+- **GPU targets**: the GL backend requests 4x MSAA (`-Dglyph.gl.samples=0|2|4|8`).
+
+### Theme
+
+The built-in palettes follow a modern-web look: a cool neutral ("slate") ramp
+with an indigo primary, hairline borders and a clear surface hierarchy (page →
+control → input well), with text contrast that reaches WCAG AAA on the page and
+AA on controls in both modes. Dark is the process default.
+
+```java
+Theme.setCurrent(Theme.light());   // or Theme.dark()
+
+// Derive a custom theme from a palette; mode() re-seeds every color token,
+// so set it first (or use Theme.builder(mode)) and override afterwards.
+Theme brand = Theme.builder(Theme.Mode.LIGHT)
+        .accentColor(0xFF0EA5E9)
+        .controlCornerRadius(10.0f)
+        .build();
+```
+
+Themes are immutable value objects, and `ModernPaletteTest` pins the design
+intent (neutral chroma, hairline borders, contrast ratios) rather than exact
+ARGB values, so palettes can be tuned without rewriting tests.
+
+### Elevation
+
+Raised surfaces share one depth language instead of hand-rolled offsets.
+`Canvas.Elevation` defines four levels — `NONE`, `LOW`, `MEDIUM`, `HIGH` — each
+pairing a downward offset with a Gaussian blur, and
+`Canvas.drawShadow(x, y, w, h, radius, level)` paints the shadow from the single
+theme token `Theme.getShadowColor()`. Cards use `LOW`, popup menus `MEDIUM`, and
+dialogs and tooltips `HIGH`; the layer no longer paints its own shadow. Widgets
+draw the shadow immediately before the surface, so the opaque fill covers the
+blur that falls inside it.
+
+Focus rings are solid 2px accent outlines (the modern `:focus-visible` look)
+rather than the dashed legacy outline.
+
+
 ## Project Structure
 
 ```

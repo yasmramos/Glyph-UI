@@ -877,6 +877,10 @@ public class Dialog extends Panel {
         }
 
         float radius = getTheme().getControlCornerRadius();
+        // Lift the surface off the scrim with the shared elevation language,
+        // so a modal reads as the topmost layer.
+        canvas.drawShadow(surfaceX, surfaceY, surfaceW, surfaceH, radius,
+                Canvas.Elevation.HIGH);
         surfacePaint.setColor(enabled ? getSurfaceColor()
                 : getTheme().getControlDisabledColor());
         canvas.drawRRect(surfaceX, surfaceY, surfaceX + surfaceW,

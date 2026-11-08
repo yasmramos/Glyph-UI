@@ -368,6 +368,9 @@ public class Tooltip extends Panel implements PassiveOverlay {
     @Override
     protected void render(Canvas canvas) {
         ensurePaints();
+        // Tooltips float above everything: the strongest lift keeps them
+        // legible over busy content.
+        canvas.drawShadow(0, 0, width, height, CORNER_RADIUS, Canvas.Elevation.HIGH);
         bgPaint.setColor(getBackgroundColor());
         canvas.drawRRect(0, 0, width, height, CORNER_RADIUS, CORNER_RADIUS, bgPaint);
 

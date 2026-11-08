@@ -505,6 +505,9 @@ public class Menu extends Panel {
         // through the popup and the rows look translucent.
         Theme theme = getTheme();
         setBackgroundColor(theme.getControlNormalColor());
+        // The popup owns its elevation: draw the shared drop shadow before the
+        // surface so the panel fill covers the blur that falls inside it.
+        canvas.drawShadow(0, 0, width, height, 0.0f, Canvas.Elevation.MEDIUM);
         super.render(canvas);
 
         // Hairline border on top of everything: rows are inset by PADDING,

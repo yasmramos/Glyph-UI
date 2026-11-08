@@ -153,6 +153,13 @@ Added to the public surface:
   (main) thread until the window closes; when the form already has an owner it
   only presents the window. `dispose()` ends the loop (or closes the form), and
   `getApplication()` exposes the owner (null before the first show).
+- `Canvas#drawImage(Image, float, float, float, float, ImageScaling)` and the
+  nested `Canvas.ImageScaling` enum (`SMOOTH` default / `PIXELATED`): a scaled
+  blit now samples bicubically by default instead of Skia's nearest-neighbour,
+  closing the last gap in the visual-quality defaults. The four-argument
+  `drawImage` overload keeps its signature and delegates with the default.
+  `ImageView#getImageScaling()` / `setImageScaling(ImageScaling)` expose the
+  choice per widget.
 
 No removals: existing code that builds a plain `Window` keeps working exactly
 as before, and a standalone `MenuBar` keeps its toolbar-like chrome (embedded
