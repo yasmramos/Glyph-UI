@@ -121,6 +121,8 @@ src/main/java/io/github/yasmramos/glyphui/
 │   ├── StatusBar.java        # Thin information strip along a window edge
 │   ├── Dropdown.java         # Single-choice drop-down list (popup via Menu)
 │   ├── TextField.java        # Editable single-line text input
+│   ├── PasswordField.java    # Masked single-line text input
+│   ├── TextArea.java         # Editable multi-line text input
 │   ├── ScrollPane.java       # Scrollable container
 │   ├── Separator.java        # One-pixel divider
 │   └── ComponentState.java   # Component state enum
@@ -143,7 +145,7 @@ glyph-ui-examples/            # Separate Maven project with runnable demos
 ├── pom.xml                   # Depends on the glyph-ui artifact
 └── src/main/
     ├── java/io/github/yasmramos/glyphui/examples/App.java
-    └── resources/demo/       # ui.glyph + app.css declarative markup demo
+    └── resources/demo/       # ui.glyph + app.css declarative DSL demo
 ```
 
 ## Usage Example
@@ -249,31 +251,73 @@ of waiting for the next poll tick.
 
 This project is open source. See the LICENSE file for details.
 
-## Declarative UI: `.glyph` markup + CSS subset
+## Declarative UI: `.glyph` DSL + CSS subset
 
-Glyph-UI lets you declare interfaces in a `.glyph` markup file and style them
-with a CSS subset, resolved against the live widget tree. `.glyph` is scanned
-by the built-in `Tokenizer`/`Parser` (no third-party HTML parser) into a raw
-AST that `UiLoader` maps onto widgets.
+Glyph-UI lets you declare interfaces in a `.glyph` file and style them with a
+CSS subset, resolved against the live widget tree. `.glyph` is scanned by the
+built-in parsers (no third-party HTML parser) into a raw AST that `UiLoader`
+maps onto widgets.
+
+Two front-ends produce the same AST, so everything downstream (widget
+vocabulary, CSS engine, event binding) is shared:
+
+- **Compose-style DSL** (default for new files) — `Component(args) { children }`,
+  closer to Kotlin UI toolkits than to HTML.
+- **XML-style markup** (legacy) — `<Component attr="value">children</Component>`.
+
+The loader picks the front-end automatically: a document whose first
+significant character is `<` is parsed as XML, anything else as the DSL.
 
 > **This is NOT a browser.** There is no JavaScript engine, no DOM, and only a
 > documented subset of CSS is supported. Unknown properties/selectors are
 > ignored with a warning.
 
-### Markup (`UiLoader`)
+### DSL syntax
+
+```glyph
+Stylesheet("app.css")
+
+Column(id = "root", class = "page", gap = 12, padding = 24) {
+    Text("Glyph-UI", class = "title")
+
+    Row(class = "card", gap = 8) {
+        TextField(id = "name", placeholder = "Your name")
+        Button("Greet", id = "greet", class = "btn-primary", onClick = sayHello)
+    }
+
+    Text(id = "status", class = "muted", "Ready.")
+}
+```
+
+- Every widget is a **call**: `Name(...)` with an optional argument list and a
+  trailing `{ ... }` block of children. Containers may omit the parentheses
+  (`Column { ... }`); leaf widgets without a block are self-closing
+  (`TextField(id = "name")`).
+- A **positional string or bare word** becomes the widget's text content, so
+  `Text("Hello")` and `Chip(NEW)` both work. A positional `{path}` becomes a
+  binding node.
+- A **named argument** becomes an attribute: `id = "root"`, `class = "page"`.
+  camelCase is normalised to the loader's canonical spelling
+  (`fontSize = 20` → `font-size`, `textColor` → `text-color`) and event
+  handlers collapse to the `on` form (`onClick = sayHello` → `onclick`).
+- `flag = true` is a valueless presence flag (e.g. `indeterminate = true`);
+  `flag = false` is dropped.
+- `Stylesheet("app.css")` links an external sheet; inline CSS is not supported
+  (the `{` delimiter collides with bindings).
+- Comments use `//` or `/* ... */`.
 
 ```java
 UiLoader loader = new UiLoader();
 Panel root = (Panel) loader.load("/demo/ui.glyph", new MyController());
 
-// A <link rel="stylesheet" href="app.css"/> found while parsing is exposed here:
+// The Stylesheet("app.css") header is exposed here:
 StyleSheet sheet = loader.getLastStyleSheet();
 if (sheet != null) {
     StyleEngine.apply(root, sheet);
 }
 ```
 
-`.glyph` syntax is XML-like:
+### XML markup syntax (legacy)
 
 ```glyph
 <!-- comments use the HTML form -->
@@ -289,21 +333,32 @@ if (sheet != null) {
 - Elements use `<Tag attr="value">children</Tag>` or the self-closing
   `<Tag/>` form; unquoted values (`layout=flex`) are accepted.
 - Content may contain `{path.to.value}` interpolations and the literal-brace
-  escapes `{{` / `}}`. The parser captures interpolations as `BindingNode`s,
-  but wiring them to reactive properties is not implemented yet, so
-  `UiLoader` reports them as warnings.
+  escapes `{{` / `}}`. Both front-ends capture interpolations as
+  `BindingNode`s and `UiLoader` resolves them reactively (see
+  [Bindings and control flow](#bindings-and-control-flow)).
 - Inline `<style>` blocks are **not** supported (the `{` delimiter collides
   with interpolations). Link an external sheet with
   `<link rel="stylesheet" href="app.css"/>` instead.
 
-Supported tags (unknown tags become a generic `Panel` with a warning):
+Supported tags (unknown tags become a generic `Panel` with a warning). The
+Compose-style spellings in the first rows are the preferred vocabulary; the
+HTML-ish aliases remain for compatibility:
 
 | Tag        | Widget      | Notes                                        |
 |------------|-------------|----------------------------------------------|
+| `Column`   | `Panel`     | vertical flex container; `gap`, `padding`    |
+| `Row`      | `Panel`     | horizontal flex container; `gap`, `padding`  |
+| `Text`     | `Label`     | text from the first positional argument      |
+| `TextField` | `TextField` | `placeholder`, `value`; `onchange`          |
+| `PasswordField` | `PasswordField` | masked `placeholder`, `value`; `onchange` |
+| `TextArea` | `TextArea`  | multi-line `placeholder`, `value`; Enter inserts a newline |
+| `box`      | `Panel`     | vertical flex container (legacy spelling)    |
 | `div`      | `Panel`     | container; supports `layout="flex"/"flow"`   |
 | `button`   | `Button`    | text from tag body; `onclick="methodName"`   |
 | `label`, `p` | `Label`   | text from tag body                           |
 | `input`    | `TextField` | `value` attribute; `onchange="methodName"`   |
+| `textarea` | `TextArea`  | multi-line input; `value`/body, `placeholder`; Enter inserts a newline |
+| `password`, `PasswordField` | `PasswordField` | masked `input`; `value`, `placeholder`; `mask` sets the mask glyph (default `\u2022`) |
 | `img`      | `ImageView` | `src` resolved through the loader's `ImageProvider` |
 | `checkbox` | `CheckBox`  | `checked` selects it initially               |
 | `radio`    | `RadioButton` | `selected`/`checked`; `name` groups radios into a `RadioGroup` |
@@ -345,12 +400,61 @@ Supported tags (unknown tags become a generic `Panel` with a warning):
 | `scroll`   | `ScrollPane` | scrollable container; takes children       |
 | `separator`, `hr` | `Separator` | `orientation="horizontal"/"vertical"` |
 
+Tag names are matched case-insensitively, so the Compose-style spellings
+`Button`, `Label`, `ImageView`, `ProgressBar`, `Dropdown`, `RadioButton`,
+`ToggleSwitch` and `Hyperlink` all resolve to the same widgets as the
+lower-case aliases above.
+
 Attributes: `class`, `id`, `style="..."` (inline CSS), `layout="flex"` /
 `layout="flow"` on containers, and `onclick`/`onchange` which are resolved by
 name against a registered controller object via reflection (no-arg or
 component-arg public methods). `head`, `title`, `meta`, `link`, `style`,
 `script` and `base` are document metadata and never become widgets; a `body`
 element, when present, becomes the root container.
+
+### Bindings and control flow
+
+Register the values your markup references, then use `{path}` interpolations,
+`for-each` and `if`/`elif`/`else`:
+
+```java
+UiLoader loader = new UiLoader();
+Signal<String> title = new Signal<>("Glyph-UI");
+SignalList<Task> tasks = new SignalList<>();
+Signal<Boolean> loading = new Signal<>(true);
+
+loader.registerBinding("view.title", title);
+loader.registerBinding("tasks", tasks);
+loader.registerBinding("view.loading", loading);
+
+Panel root = (Panel) loader.load("/demo/ui.glyph");
+```
+
+```glyph
+Column {
+    Text("Welcome to {view.title}", class = "title")
+
+    Row(forEach = "tasks") {
+        Text("{index}. {item.name}")
+    }
+
+    Text("Loading…", if = "view.loading")
+    Text("Ready", else)
+}
+```
+
+- A `{path}` interpolation in content is resolved through the registered
+  `Bindings` and pushed to the widget caption through the `Textual` interface;
+  static text and interpolations can be mixed in one string. The `bind:text`
+  (XML) / `bindText` (DSL) attribute binds a caption without a placeholder.
+  Widgets without a caption warn and ignore the binding, and an unknown path
+  warns once per load.
+- `for-each="items"` builds the element once per list element; each copy sees
+  `item` and `index`, and map entries also expose `item.<key>`. Lists come from
+  `SignalList`, `List` or any `Iterable`.
+- `if`, `elif` and `else` form one chain: the first branch whose condition is
+  truthy is shown, otherwise the `else` branch (if any) is. Branches toggle
+  reactively — no rebuild. A bare `else` is the flag spelling.
 
 ### CSS subset
 

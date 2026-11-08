@@ -12,6 +12,8 @@ import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Menu;
 import io.github.yasmramos.glyphui.ui.MenuItem;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.PasswordField;
+import io.github.yasmramos.glyphui.ui.TextArea;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.TitleBar;
 
@@ -138,6 +140,33 @@ public class App {
             fieldRow.add(field);
             content.add(fieldRow);
             content.add(echo);
+
+            // ---- Masked and multi-line inputs -------------------------------
+            content.add(caption("PasswordField (masked) and TextArea (multi-line)"));
+
+            PasswordField password = new PasswordField();
+            password.setPlaceholder("Password");
+            password.setWidth(COLUMN);
+
+            TextArea notes = new TextArea();
+            notes.setPlaceholder("Notes…");
+            notes.setWidth(COLUMN);
+            notes.setHeight(96.0f);
+            notes.setText("First line\nSecond line");
+
+            Panel passwordRow = row();
+            passwordRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
+                    FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
+            passwordRow.add(password);
+            content.add(passwordRow);
+
+            // The multi-line area needs a taller row than the default one.
+            Panel notesRow = row();
+            notesRow.setHeight(112.0f);
+            notesRow.setLayoutManager(new FlexLayout(FlexLayout.Direction.ROW,
+                    FlexLayout.Justify.FLEX_START, FlexLayout.Align.CENTER));
+            notesRow.add(notes);
+            content.add(notesRow);
 
             // ---- Buttons: intrinsic vs. fixed size --------------------------
             content.add(caption("Buttons (auto-sized and fixed)"));

@@ -30,7 +30,7 @@ import java.util.function.Consumer;
  * first render, so construction and the state machine are safe in headless
  * unit tests.</p>
  */
-public class RadioButton extends Component {
+public class RadioButton extends Component implements Textual {
 
     /** Diameter of the circular indicator, logical units. */
     public static final float INDICATOR_SIZE = 18.0f;

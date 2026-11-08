@@ -26,7 +26,7 @@ import java.util.function.Consumer;
  * first render, so constructing a switch and driving its state machine is safe
  * in headless unit tests.</p>
  */
-public class ToggleSwitch extends Component {
+public class ToggleSwitch extends Component implements Textual {
 
     /** Width of the pill track, logical units. */
     public static final float TRACK_WIDTH = 36.0f;

@@ -1,32 +1,39 @@
-<!--
-  Glyph-UI declarative markup demo (.glyph).
+// Glyph-UI declarative demo (.glyph).
+//
+// This file uses the Compose-style DSL, not HTML-like tags: every widget is a
+// call with an optional argument list and a trailing block of children.
+//
+//   Column(id = "root", gap = 8) {      // a container with a vertical stack
+//       Text("Hello")                   // a positional string is the label
+//       Button("Go", onClick = run)     // named arguments are attributes
+//   }
+//
+// Rules:
+//   - A positional string or bare word becomes the widget's text content.
+//   - A named argument becomes an attribute. camelCase is normalised
+//     (fontSize -> font-size, onClick -> onclick); `flag = true` is a
+//     valueless flag and `flag = false` is dropped.
+//   - {path} is an interpolation captured as a raw binding node.
+//   - Link a stylesheet with the Stylesheet("app.css") header (inline CSS is
+//     not supported, because '{' opens a binding).
+//
+// The loader picks this front-end automatically: any document whose first
+// significant character is not '<' is parsed as the DSL.
 
-  This is NOT a web page: there is no JavaScript engine and no DOM.
-  UiLoader scans this fixed tag subset (div, button, label, p, input, img)
-  into the native widget tree; everything else is styled through app.css
-  (a documented subset of CSS selectors + custom properties).
+Stylesheet("app.css")
 
-  .glyph notes:
-    - Tags are XML-like: <Tag attr="value">children</Tag> or <Tag/>.
-    - {path} is an interpolation. It is captured by the parser as a raw
-      binding node; reactive evaluation is not wired to UiLoader yet.
-    - Inline <style> is NOT supported, because '{' is the interpolation
-      delimiter. Link an external sheet with <link rel="stylesheet" .../>.
--->
-<link rel="stylesheet" href="app.css"/>
-<body>
-    <div id="root" class="column gap-md" layout="flex" style="flex-direction: column;">
-        <label class="title">Glyph-UI</label>
-        <p class="subtitle">Declarative markup + CSS styling on a retained widget tree</p>
+Column(id = "root", class = "page", gap = 12, padding = 24) {
+    Text("Glyph-UI", class = "title")
+    Text("Declarative DSL + CSS styling on a retained widget tree", class = "subtitle")
 
-        <div class="card row gap-sm" layout="flex">
-            <input id="name-field" class="field" placeholder="Your name"/>
-            <button id="greet-btn" class="btn-primary" onclick="sayHello">Greet</button>
-            <button id="dark-btn" class="btn-secondary" onclick="toggleTheme">Dark mode</button>
-        </div>
+    Row(class = "card", gap = 8, padding = 16) {
+        TextField(id = "name-field", class = "field", placeholder = "Your name")
+        PasswordField(id = "password-field", class = "field", placeholder = "Password")
+        Button("Greet", id = "greet-btn", class = "btn-primary", onClick = sayHello)
+        Button("Dark mode", id = "dark-btn", class = "btn-secondary", onClick = toggleTheme)
+    }
 
-        <div class="footer">
-            <label id="status" class="muted">Ready.</label>
-        </div>
-    </div>
-</body>
+    TextArea(id = "notes", class = "field field-multiline", placeholder = "Notes…")
+
+    Text(id = "status", class = "muted", "Ready.")
+}

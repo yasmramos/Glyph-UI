@@ -28,7 +28,7 @@ import java.util.function.Consumer;
  * toggle button and driving its state machine stays safe in headless unit
  * tests.</p>
  */
-public class ToggleButton extends Component {
+public class ToggleButton extends Component implements Textual {
 
     /** Horizontal padding added on each side of the caption when measuring. */
     public static final float HORIZONTAL_PADDING = 12.0f;

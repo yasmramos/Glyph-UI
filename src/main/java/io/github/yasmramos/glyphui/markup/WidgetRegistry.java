@@ -24,6 +24,7 @@ import io.github.yasmramos.glyphui.ui.ListBox;
 import io.github.yasmramos.glyphui.ui.MenuBar;
 import io.github.yasmramos.glyphui.ui.Pagination;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.PasswordField;
 import io.github.yasmramos.glyphui.ui.ProgressBar;
 import io.github.yasmramos.glyphui.ui.ProgressRing;
 import io.github.yasmramos.glyphui.ui.RadioButton;
@@ -40,6 +41,7 @@ import io.github.yasmramos.glyphui.ui.StatusBar;
 import io.github.yasmramos.glyphui.ui.Stepper;
 import io.github.yasmramos.glyphui.ui.Table;
 import io.github.yasmramos.glyphui.ui.Tabs;
+import io.github.yasmramos.glyphui.ui.TextArea;
 import io.github.yasmramos.glyphui.ui.TextField;
 import io.github.yasmramos.glyphui.ui.Toast;
 import io.github.yasmramos.glyphui.ui.ToggleButton;
@@ -168,6 +170,14 @@ public final class WidgetRegistry {
                     FlexLayout.Justify.FLEX_START, FlexLayout.Align.STRETCH));
             return panel;
         });
+        // Compose-style container names: the DSL reads better with Row/Column
+        // than with the HTML-ish div. The layout is set on the panel itself so
+        // `gap`/`padding` work even though the factory runs before the loader
+        // applies common attributes and layout.
+        registry.register("column", (element, ctx) -> flexPanel(
+                FlexLayout.Direction.COLUMN, ctx, element));
+        registry.register("row", (element, ctx) -> flexPanel(
+                FlexLayout.Direction.ROW, ctx, element));
         // A stack has no layout manager: children keep their explicit x/y and
         // are painted in insertion order (last one on top).
         registry.register("stack", (element, ctx) -> new Panel());
@@ -188,7 +198,7 @@ public final class WidgetRegistry {
             return label;
         };
         for (String tag : new String[]{"label", "p", "h1", "h2", "h3", "h4",
-                "h5", "h6", "item"}) {
+                "h5", "h6", "item", "text"}) {
             registry.register(tag, labelled);
         }
 
@@ -199,18 +209,59 @@ public final class WidgetRegistry {
             if (!text.isEmpty()) {
                 field.setText(text);
             }
+            String placeholder = ctx.attr(element, "placeholder");
+            if (!placeholder.isEmpty()) {
+                field.setPlaceholder(placeholder);
+            }
             return field;
         };
         registry.register("input", textField);
-        registry.register("textarea", textField);
+        // Compose-style spelling of the single-line text input.
+        registry.register("textfield", textField);
 
-        registry.register("img", (element, ctx) -> {
+        WidgetFactory textArea = (element, ctx) -> {
+            TextArea area = new TextArea();
+            String value = ctx.attr(element, "value");
+            String text = !value.isEmpty() ? value : ctx.textOf(element);
+            if (!text.isEmpty()) {
+                area.setText(text);
+            }
+            String placeholder = ctx.attr(element, "placeholder");
+            if (!placeholder.isEmpty()) {
+                area.setPlaceholder(placeholder);
+            }
+            return area;
+        };
+        registry.register("textarea", textArea);
+
+        WidgetFactory passwordField = (element, ctx) -> {
+            PasswordField field = new PasswordField();
+            String value = ctx.attr(element, "value");
+            String text = !value.isEmpty() ? value : ctx.textOf(element);
+            if (!text.isEmpty()) {
+                field.setText(text);
+            }
+            String placeholder = ctx.attr(element, "placeholder");
+            if (!placeholder.isEmpty()) {
+                field.setPlaceholder(placeholder);
+            }
+            String mask = ctx.attr(element, "mask");
+            if (!mask.isEmpty()) {
+                field.setMaskChar(mask.charAt(0));
+            }
+            return field;
+        };
+        registry.register("password", passwordField);
+        registry.register("passwordfield", passwordField);
+
+        WidgetFactory imageView = (element, ctx) -> {
             ImageView view = new ImageView();
             String src = ctx.attr(element, "src");
             if (!src.isEmpty()) {
                 UiLoader.ImageProvider provider = ctx.imageProvider();
                 if (provider == null) {
-                    ctx.warn("<img src=\"" + src + "\"> ignored: no ImageProvider set");
+                    ctx.warn("<" + element.getTagName() + " src=\"" + src
+                            + "\"> ignored: no ImageProvider set");
                 } else {
                     Image image = provider.load(src);
                     if (image == null) {
@@ -221,7 +272,11 @@ public final class WidgetRegistry {
                 }
             }
             return view;
-        });
+        };
+        registry.register("img", imageView);
+        // Compose-style spellings of the image widget.
+        registry.register("image", imageView);
+        registry.register("imageview", imageView);
 
         registry.register("checkbox", (element, ctx) -> {
             CheckBox box = new CheckBox(ctx.textOf(element));
@@ -231,7 +286,7 @@ public final class WidgetRegistry {
             return box;
         });
 
-        registry.register("radio", (element, ctx) -> {
+        WidgetFactory radioButton = (element, ctx) -> {
             RadioButton radio = new RadioButton(ctx.textOf(element));
             // A shared `name` makes sibling radios mutually exclusive: they all
             // join the same RadioGroup (HTML's radio semantics).
@@ -243,15 +298,19 @@ public final class WidgetRegistry {
                 radio.setSelected(true);
             }
             return radio;
-        });
+        };
+        registry.register("radio", radioButton);
+        registry.register("radiobutton", radioButton);
 
-        registry.register("switch", (element, ctx) -> {
+        WidgetFactory toggleSwitch = (element, ctx) -> {
             ToggleSwitch toggle = new ToggleSwitch(ctx.textOf(element));
             if (ctx.hasAttr(element, "on") || ctx.hasAttr(element, "checked")) {
                 toggle.setOn(true);
             }
             return toggle;
-        });
+        };
+        registry.register("switch", toggleSwitch);
+        registry.register("toggleswitch", toggleSwitch);
 
         registry.register("slider", (element, ctx) -> {
             Slider slider = new Slider();
@@ -287,14 +346,14 @@ public final class WidgetRegistry {
         registry.register("spinner", spinner);
         registry.register("number", spinner);
 
-        registry.register("progress", (element, ctx) -> {
+        WidgetFactory progressBar = (element, ctx) -> {
             ProgressBar bar = new ProgressBar();
             String value = ctx.attr(element, "value");
             if (!value.isEmpty()) {
                 try {
                     bar.setValue(Float.parseFloat(value.trim()));
                 } catch (NumberFormatException e) {
-                    ctx.warn("Bad value '" + value + "' on <progress>");
+                    ctx.warn("Bad value '" + value + "' on <" + element.getTagName() + ">");
                 }
             }
             if (ctx.hasAttr(element, "indeterminate")) {
@@ -304,16 +363,20 @@ public final class WidgetRegistry {
                 bar.setShowText(true);
             }
             return bar;
-        });
+        };
+        registry.register("progress", progressBar);
+        registry.register("progressbar", progressBar);
 
-        registry.register("select", (element, ctx) -> {
-            Dropdown dropdown = new Dropdown();
+        WidgetFactory dropdown = (element, ctx) -> {
+            Dropdown select = new Dropdown();
             String placeholder = ctx.attr(element, "placeholder");
             if (!placeholder.isEmpty()) {
-                dropdown.setPlaceholder(placeholder);
+                select.setPlaceholder(placeholder);
             }
-            return dropdown;
-        });
+            return select;
+        };
+        registry.register("select", dropdown);
+        registry.register("dropdown", dropdown);
 
         registry.register("scroll", (element, ctx) -> new ScrollPane());
         registry.register("scrollpane", (element, ctx) -> new ScrollPane());
@@ -414,8 +477,9 @@ public final class WidgetRegistry {
         });
 
         // "link" is reserved for document metadata (<link rel=...>), so the
-        // hyperlink widget takes the classic "a" anchor tag.
-        registry.register("a", (element, ctx) -> {
+        // hyperlink widget takes the classic "a" anchor tag plus the
+        // Compose-style "Link"/"Hyperlink" spellings.
+        WidgetFactory hyperlink = (element, ctx) -> {
             Link link = new Link(ctx.textOf(element));
             String target = ctx.attr(element, "href");
             if (target.isEmpty()) {
@@ -431,7 +495,9 @@ public final class WidgetRegistry {
                 link.setAlwaysUnderline(true);
             }
             return link;
-        });
+        };
+        registry.register("a", hyperlink);
+        registry.register("hyperlink", hyperlink);
 
         registry.register("rating", (element, ctx) -> {
             Rating rating = new Rating((int) ctx.parseFloatAttr(element, "max", 5.0f));
@@ -752,6 +818,37 @@ public final class WidgetRegistry {
      */
     public Component create(String tag, Element element, WidgetContext context) {
         return get(tag).create(element, context);
+    }
+
+    /**
+     * Builds a flex panel for the Compose-style {@code Row}/{@code Column}
+     * container tags, honouring the {@code gap} and {@code padding} arguments
+     * directly.
+     *
+     * <p>The loader applies {@code layout="flex"}-style spacing only when the
+     * markup asks for it explicitly, so the DSL container reads its own
+     * spacing here to stay declarative without an extra attribute.</p>
+     *
+     * @param direction the main axis
+     * @param ctx       the loader services (for attribute reads)
+     * @param element   the element being built
+     * @return the configured panel
+     */
+    private static Panel flexPanel(FlexLayout.Direction direction,
+            WidgetContext ctx, Element element) {
+        FlexLayout flex = new FlexLayout(direction,
+                FlexLayout.Justify.FLEX_START, FlexLayout.Align.STRETCH);
+        float gap = ctx.parseFloatAttr(element, "gap", -1.0f);
+        if (gap >= 0.0f) {
+            flex.setGap(gap);
+        }
+        float padding = ctx.parseFloatAttr(element, "padding", -1.0f);
+        if (padding >= 0.0f) {
+            flex.setPadding(padding);
+        }
+        Panel panel = new Panel();
+        panel.setLayoutManager(flex);
+        return panel;
     }
 
     /**

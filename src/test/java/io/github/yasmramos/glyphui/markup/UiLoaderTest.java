@@ -3,6 +3,7 @@ package io.github.yasmramos.glyphui.markup;
 import io.github.yasmramos.glyphui.markup.UiLoader;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.layout.FlowLayout;
+import io.github.yasmramos.glyphui.reactive.Signal;
 import io.github.yasmramos.glyphui.style.StyleProperty;
 import io.github.yasmramos.glyphui.ui.Accordion;
 import io.github.yasmramos.glyphui.ui.Alert;
@@ -232,11 +233,41 @@ class UiLoaderTest {
     }
 
     @Test
-    void bindingInterpolationsWarnAndAreNotResolved() {
+    void bindingInterpolationsResolveReactively() {
         UiLoader loader = new UiLoader();
-        loader.loadFromString("<body><label>Hi {name}</label></body>");
-        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("Binding {name}")),
-                "unsupported interpolations should be reported");
+        Signal<String> name = new Signal<>("Ada");
+        loader.registerBinding("name", name);
+        Component root = loader.loadFromString("<body><label>Hi {name}</label></body>");
+        Label label = findFirstLabel(root);
+        assertNotNull(label, "the label must be built");
+        assertEquals("Hi Ada", label.getText(), "the interpolation resolves on load");
+
+        name.set("Grace");
+        assertEquals("Hi Grace", label.getText(),
+                "a change to the bound signal updates the caption");
+    }
+
+    private static Label findFirstLabel(Component component) {
+        if (component instanceof Label label) {
+            return label;
+        }
+        if (component instanceof Panel panel) {
+            for (Component child : panel.getChildren()) {
+                Label found = findFirstLabel(child);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Test
+    void unknownBindingPathWarnsAndLeavesTextStatic() {
+        UiLoader loader = new UiLoader();
+        loader.loadFromString("<body><label>Hi {missing}</label></body>");
+        assertTrue(loader.getWarnings().stream().anyMatch(w -> w.contains("{missing}")),
+                "an unknown interpolation path should be reported");
     }
 
     @Test
