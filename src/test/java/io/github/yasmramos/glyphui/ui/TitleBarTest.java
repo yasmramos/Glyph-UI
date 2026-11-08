@@ -8,18 +8,21 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for the {@link TitleBar} chrome component: fixed sizing, the
- * left-title / right-controls layout, the content slot, and the null-window
- * guards (so nothing throws when no {@code Application} is running).
+ * three-zone layout (leading menu bar / centred title / trailing controls), the
+ * embedded menu bar, and the null-window guards (so nothing throws when no
+ * {@code Application} is running).
  */
 public class TitleBarTest {
 
-    /** Mirrors {@code TitleBar}'s private left inset. */
+    /** Mirrors {@code TitleBar}'s private leading inset. */
     private static final float PAD_LEFT = 12.0f;
 
     @Test
@@ -41,20 +44,18 @@ public class TitleBarTest {
     }
 
     @Test
-    public void doLayoutPinsControlsRightAndTitleLeft() {
+    public void doLayoutPinsControlsRightAndCentresTitle() {
         TitleBar bar = new TitleBar("Glyph");
         bar.setWidth(400);
         bar.setHeight(TitleBar.BAR_HEIGHT);
         bar.doLayout();
 
         List<Component> kids = bar.getChildren();
-        // Children order: [title, minimize, maximize, close, ...content].
+        // Children order: [title, minimize, maximize, close].
         Component title = kids.get(0);
         Component minimize = kids.get(1);
         Component maximize = kids.get(2);
         Component close = kids.get(3);
-
-        assertEquals(PAD_LEFT, title.getX(), 0.001f);
 
         assertEquals(400 - TitleBar.CONTROL_WIDTH, close.getX(), 0.001f);
         assertEquals(TitleBar.CONTROL_WIDTH, close.getWidth(), 0.001f);
@@ -62,20 +63,66 @@ public class TitleBarTest {
 
         assertEquals(400 - TitleBar.CONTROL_WIDTH * 2, maximize.getX(), 0.001f);
         assertEquals(400 - TitleBar.CONTROL_WIDTH * 3, minimize.getX(), 0.001f);
+
+        // With no leading content the title is centred against the whole bar.
+        float expected = (400 - title.getWidth()) / 2f;
+        assertEquals(expected, title.getX(), 0.5f);
+        assertTrue(title.getX() > PAD_LEFT, "centred title sits right of the inset");
     }
 
     @Test
-    public void addContentFlowsAfterTheTitleAndIsRegistered() {
+    public void menuBarOccupiesTheLeadingZone() {
         TitleBar bar = new TitleBar("T");
-        Label content = new Label("Menu");
+        MenuBar menu = new MenuBar();
+        menu.addMenu("File");
+        bar.setMenuBar(menu);
+
+        assertSame(menu, bar.getMenuBar());
+        assertTrue(menu.isEmbedded(), "a title-bar menu bar is embedded");
+
+        bar.setWidth(400);
+        bar.setHeight(TitleBar.BAR_HEIGHT);
+        bar.doLayout();
+        // The menu bar starts at the leading inset and fills the strip height.
+        assertEquals(PAD_LEFT, menu.getX(), 0.001f);
+        assertEquals(0.0f, menu.getY(), 0.001f);
+        assertEquals(TitleBar.BAR_HEIGHT, menu.getHeight(), 0.001f);
+    }
+
+    @Test
+    public void addContentFlowsAfterTheMenuBarAndIsRegistered() {
+        TitleBar bar = new TitleBar("T");
+        MenuBar menu = new MenuBar();
+        menu.addMenu("File");
+        bar.setMenuBar(menu);
+
+        Label content = new Label("Status");
         bar.addContent(content);
         assertTrue(bar.getChildren().contains(content));
 
         bar.setWidth(400);
         bar.setHeight(TitleBar.BAR_HEIGHT);
         bar.doLayout();
-        // The content widget sits to the right of the title's left inset.
-        assertTrue(content.getX() > PAD_LEFT);
+        // The extra widget sits to the right of the menu bar.
+        assertTrue(content.getX() >= menu.getX() + menu.getWidth());
+
+        bar.removeContent(content);
+        assertFalse(bar.getChildren().contains(content));
+    }
+
+    @Test
+    public void setMenuBarReplacesThePreviousOne() {
+        TitleBar bar = new TitleBar("T");
+        MenuBar first = new MenuBar();
+        MenuBar second = new MenuBar();
+        bar.setMenuBar(first);
+        bar.setMenuBar(second);
+
+        assertSame(second, bar.getMenuBar());
+        assertTrue(bar.getChildren().contains(second));
+        assertFalse(bar.getChildren().contains(first),
+                "the previous menu bar is detached");
+        assertFalse(first.isEmbedded(), "the detached bar leaves embedded mode");
     }
 
     @Test
@@ -108,9 +155,9 @@ public class TitleBarTest {
         bar.setHeight(TitleBar.BAR_HEIGHT);
         bar.doLayout();
 
-        // x=120 is empty chrome (title ends near x=20, controls start at x>=256).
+        // x=200 is empty chrome (leading zone is empty, controls start at x>=256).
         boolean consumed = bar.onMouseEvent(
-                new MouseEvent(MouseEventType.PRESS, 120, 20, MouseButton.LEFT, 1));
+                new MouseEvent(MouseEventType.PRESS, 200, 20, MouseButton.LEFT, 1));
         assertTrue(!consumed);
     }
 }

@@ -117,6 +117,15 @@ during mounting inherit the application by ownership). To unit-test a form's
 structure without an `Application`, call `onAdopted(new Panel())` directly
 (same-package tests can reach the `protected` hook).
 
+`TitleBar` is laid out in three zones (FlatLaf's `FlatTitlePane` model): the
+menu bar and extra widgets at the leading edge, the window title centred, and
+the min/max/close controls pinned trailing. A menu bar put into the strip goes
+through `TitleBar#setMenuBar`, which sets `MenuBar#setEmbedded(true)` — the bar
+drops its fill/border and flattens its triggers so the menus blend in. Keep
+standalone menu bars non-embedded (the default). `Form` wires this up for an
+undecorated window automatically and keeps the menu bar as its own row when the
+window is decorated.
+
 ## Environment
 
 The sandbox can be reset between turns, losing the JDK, Maven and the local

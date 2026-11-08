@@ -26,17 +26,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class FormTest extends TestBase {
 
     @Test
-    public void undecoratedFormMountsTitleBarMenuBarAndContentPane() {
+    public void undecoratedFormEmbedsTheMenuBarInTheTitleBar() {
         Form form = new Form("App", 800, 600).decorated(false);
         form.getMenuBar().addMenu("File");
         Panel root = new Panel();
         form.onAdopted(root);
 
         List<Component> kids = root.getChildren();
-        assertEquals(3, kids.size(), "chrome + menu + content");
+        assertEquals(2, kids.size(), "title bar + content pane");
         assertInstanceOf(TitleBar.class, kids.get(0));
-        assertInstanceOf(MenuBar.class, kids.get(1));
-        assertSame(form.getContentPane(), kids.get(2));
+        assertSame(form.getContentPane(), kids.get(1));
+
+        TitleBar bar = (TitleBar) kids.get(0);
+        assertSame(form.getMenuBar(), bar.getMenuBar(),
+                "the menu bar is embedded into the title bar's leading zone");
+        assertTrue(bar.getMenuBar().isEmbedded(),
+                "an embedded menu bar drops its own chrome");
     }
 
     @Test
@@ -60,6 +65,8 @@ public class FormTest extends TestBase {
         List<Component> kids = root.getChildren();
         assertEquals(2, kids.size());
         assertInstanceOf(MenuBar.class, kids.get(0));
+        assertFalse(((MenuBar) kids.get(0)).isEmbedded(),
+                "a decorated form keeps the menu bar as its own row");
         assertSame(form.getContentPane(), kids.get(1));
     }
 
@@ -100,7 +107,6 @@ public class FormTest extends TestBase {
     @Test
     public void getMenuBarCreatesOneOnFirstUse() {
         Form form = new Form("App", 800, 600);
-        assertNull(form.getTitleBar(), "no title bar until requested or mounted");
         MenuBar bar = form.getMenuBar();
         assertNotNull(bar);
         assertSame(bar, form.getMenuBar(), "created once and cached");
@@ -124,11 +130,13 @@ public class FormTest extends TestBase {
 
         MenuBar bar = new MenuBar();
         form.setMenuBar(bar);
-        assertEquals(3, root.getChildren().size(), "menu bar inserted in place");
-        assertSame(bar, root.getChildren().get(1));
+        assertEquals(2, root.getChildren().size(),
+                "the menu bar is embedded, not a separate row");
+        assertSame(bar, ((TitleBar) root.getChildren().get(0)).getMenuBar());
 
         form.setMenuBar(null);
-        assertEquals(2, root.getChildren().size(), "menu bar removed again");
+        assertNull(((TitleBar) root.getChildren().get(0)).getMenuBar(),
+                "menu bar removed again");
     }
 
     @Test
@@ -144,12 +152,15 @@ public class FormTest extends TestBase {
         }
         // TestBase closes the current application after the test.
         Form form = new Form("ctx", 320, 240).decorated(false);
+        form.addMenu("File");
         form.onAdopted(app.getRootPanel());
 
         assertSame(app, form.getContentPane().context().app(),
                 "content pane must inherit the owning application");
         assertSame(app, form.getTitleBar().context().app(),
                 "title bar must inherit the owning application");
+        assertSame(app, form.getTitleBar().getMenuBar().context().app(),
+                "the embedded menu bar must inherit the owning application too");
     }
 
     @Test
