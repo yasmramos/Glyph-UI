@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseEvent;
@@ -89,6 +90,11 @@ public class SegmentedControl extends Component {
     @Override
     protected String defaultStyleTag() {
         return "segmentedcontrol";
+    }
+
+    @Override
+    protected GlyphCursor defaultCursor() {
+        return GlyphCursor.POINTING_HAND;
     }
 
     @Override

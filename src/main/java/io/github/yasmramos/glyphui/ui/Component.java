@@ -10,6 +10,7 @@ import io.github.yasmramos.glyphui.graphics.Property;
 import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.reactive.Disposable;
 import io.github.yasmramos.glyphui.reactive.DisposableScope;
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.style.Style;
@@ -150,6 +151,14 @@ public abstract class Component implements StyleNode, Disposable {
     protected float height;
     protected boolean visible;
     protected boolean enabled;
+    /**
+     * Pointer shape shown while this component is under the mouse. Widgets
+     * that behave like links or buttons return {@link GlyphCursor#POINTING_HAND}
+     * from {@link #defaultCursor()}; text editors return {@link GlyphCursor#TEXT}.
+     * The application reads it on every pointer move to drive
+     * {@link io.github.yasmramos.glyphui.core.Window#setCursor}.
+     */
+    private GlyphCursor cursorOverride;
     protected Panel parent;
     protected String id;
     protected ComponentState state;
@@ -1338,6 +1347,48 @@ public abstract class Component implements StyleNode, Disposable {
         this.id = id;
         // ID selectors match on this value: re-cascade on the next frame.
         invalidateStyleAndRelayout();
+    }
+
+    /**
+     * Gets the pointer shape shown while this component is under the mouse.
+     *
+     * @return the cursor shape (never null)
+     */
+    public GlyphCursor getCursor() {
+        return cursorOverride != null ? cursorOverride : defaultCursor();
+    }
+
+    /**
+     * Returns the pointer shape this component shows by default.
+     *
+     * <p>Subclasses override this to declare their affordance once instead of
+     * setting it in every constructor: buttons, links and other clickable
+     * widgets return {@link GlyphCursor#POINTING_HAND}, editable text returns
+     * {@link GlyphCursor#TEXT}. The base implementation returns
+     * {@link GlyphCursor#DEFAULT}.</p>
+     *
+     * @return the default cursor shape (never null)
+     */
+    protected GlyphCursor defaultCursor() {
+        return GlyphCursor.DEFAULT;
+    }
+
+    /**
+     * Overrides the pointer shape shown while this component is under the
+     * mouse.
+     *
+     * <p>This is the per-widget half of the toolkit's cursor support: the
+     * application resolves the shape of the component under the pointer on
+     * every move and forwards it to
+     * {@link io.github.yasmramos.glyphui.core.Window#setCursor}. Passing
+     * {@code null} restores the subclass default (see
+     * {@link #defaultCursor()}). A disabled component does not drive the
+     * pointer: its shape is ignored and the default arrow is shown instead.</p>
+     *
+     * @param cursor the desired shape, or null to restore the default
+     */
+    public void setCursor(GlyphCursor cursor) {
+        this.cursorOverride = cursor;
     }
 
     /**

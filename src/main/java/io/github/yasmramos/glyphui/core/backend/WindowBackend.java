@@ -1,5 +1,7 @@
 package io.github.yasmramos.glyphui.core.backend;
 
+import io.github.yasmramos.glyphui.events.GlyphCursor;
+
 /**
  * Backend-agnostic window interface.
  *
@@ -372,6 +374,24 @@ public interface WindowBackend extends AutoCloseable {
      * floating UI (menus) when the window is deactivated.
      */
     void setWindowFocusListener(WindowFocusListener listener);
+
+    /**
+     * Sets the mouse-pointer shape for the window.
+     *
+     * <p>Backends translate the toolkit-owned {@link GlyphCursor} onto their
+     * native cursor vocabulary. The call is a no-op before {@code create()}
+     * succeeds (the headless contract) and when the requested shape is the
+     * one already applied, so callers may invoke it freely on every pointer
+     * move. A backend without cursor support keeps the default shape: the
+     * default body here is a no-op so adding this method does not break
+     * existing {@code WindowBackend} implementations.</p>
+     *
+     * @param cursor the desired pointer shape (null means
+     *               {@link GlyphCursor#DEFAULT})
+     */
+    default void setCursor(GlyphCursor cursor) {
+        // No-op: backends without cursor support keep the default shape.
+    }
 
     // ------------------------------------------------------------------
     // Backend capabilities / rendering hooks
