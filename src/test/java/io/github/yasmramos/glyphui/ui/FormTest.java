@@ -210,4 +210,47 @@ public class FormTest extends TestBase {
         assertEquals(1, root.getChildren().size(),
                 "back to decorated: title bar removed");
     }
+
+    // ------------------------------------------------------------------
+    // Swing-style lifecycle (no explicit Application)
+    // ------------------------------------------------------------------
+
+    @Test
+    public void applicationIsNullUntilTheFormIsShown() {
+        Form form = new Form("App", 800, 600);
+        assertNull(form.getApplication(),
+                "a freshly built form owns no application yet");
+    }
+
+    @Test
+    public void hidingAnUnshownFormDoesNotStartAnApplication() {
+        // setVisible(false) before any show must just hide: it must not create
+        // an application or block. Guards the standalone bootstrap path.
+        Form form = new Form("App", 800, 600);
+        form.setVisible(false);
+        assertNull(form.getApplication(),
+                "hiding a never-shown form must not spin up an application");
+    }
+
+    @Test
+    public void visibleReturnsTheFormForChaining() {
+        Form form = new Form("App", 800, 600);
+        assertSame(form, form.visible(false),
+                "the covariant visible(...) setter keeps the Form type");
+    }
+
+    @Test
+    public void showingAnAlreadyAdoptedFormDoesNotStartASecondApplication() {
+        // When the form has an owner (createForm/init path) setVisible(true)
+        // only presents the window; it must not build a second application and
+        // it must not block. Adoption is simulated with a plain root panel.
+        Form form = new Form("App", 800, 600).decorated(false);
+        Panel root = new Panel();
+        form.onAdopted(root);
+
+        form.setVisible(true);   // returns immediately: the owner drives the loop
+
+        assertNull(form.getApplication(),
+                "an adopted form must not self-start an application");
+    }
 }
