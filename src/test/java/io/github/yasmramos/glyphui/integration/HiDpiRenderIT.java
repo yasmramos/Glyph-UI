@@ -1,4 +1,6 @@
 package io.github.yasmramos.glyphui.integration;
+import io.github.yasmramos.glyphui.core.internal.TestHooks;
+import io.github.yasmramos.glyphui.core.Window;
 
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.graphics.Canvas;
@@ -31,7 +33,7 @@ public class HiDpiRenderIT {
         app = new Application();
         boolean initialized = false;
         try {
-            initialized = app.init("HiDPI IT", 400, 300, true);
+            initialized = TestHooks.initForTesting(app, new Window("HiDPI IT", 400, 300));
         } catch (Throwable t) {
             // JWM/native libraries unavailable in this environment
             Assumptions.abort("JWM native window not available (headless environment); skipping test: " + t);

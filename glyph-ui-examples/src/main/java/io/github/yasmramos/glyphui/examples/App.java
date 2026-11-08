@@ -1,13 +1,12 @@
 package io.github.yasmramos.glyphui.examples;
 
 import io.github.yasmramos.glyphui.core.Application;
-import io.github.yasmramos.glyphui.core.WindowConfig;
 import io.github.yasmramos.glyphui.graphics.Image;
 import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.style.Style;
-import io.github.yasmramos.glyphui.style.StyleProperty;
 import io.github.yasmramos.glyphui.ui.Button;
+import io.github.yasmramos.glyphui.ui.Form;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Menu;
 import io.github.yasmramos.glyphui.ui.MenuItem;
@@ -15,7 +14,6 @@ import io.github.yasmramos.glyphui.ui.Panel;
 import io.github.yasmramos.glyphui.ui.PasswordField;
 import io.github.yasmramos.glyphui.ui.TextArea;
 import io.github.yasmramos.glyphui.ui.TextField;
-import io.github.yasmramos.glyphui.ui.TitleBar;
 
 import java.io.IOException;
 import java.util.Map;
@@ -24,10 +22,12 @@ import java.util.Map;
  * Example application exercising the main widgets: labels, buttons, a text
  * field and nested panels driven by {@link FlexLayout}.
  *
- * <p>The window uses a custom {@link TitleBar} (FlatLaf-style): the native
- * decoration is switched off and our own chrome strip hosts the window title,
- * menu content and the min/max/close controls. Below the bar sits a vertical
- * column of labelled sections, each a horizontal row of controls.</p>
+ * <p>The main window is a {@link Form} — the toolkit's {@code JFrame}-style
+ * top-level window. The form is undecorated, so its own
+ * {@link io.github.yasmramos.glyphui.ui.TitleBar} becomes the chrome: it hosts
+ * the window title, the menu strip and the min/max/close controls. Below the
+ * chrome sits the form's content pane, a vertical column of labelled sections,
+ * each a horizontal row of controls.</p>
  *
  * <p>Moved out of the core library into the standalone
  * {@code glyph-ui-examples} module so the published toolkit jar stays free
@@ -47,46 +47,30 @@ public class App {
         // try-with-resources guarantees they are released in the correct order.
         try (Application app = new Application()) {
 
-            // Undecorated window: the native title bar is removed so our own
-            // TitleBar becomes the chrome (and can host a menu in the strip).
-            WindowConfig config = WindowConfig.create().decorated(false);
-            if (!app.init("Glyph UI — widgets tour", 800, 600, config)) {
-                System.err.println("Failed to initialize application");
-                return;
-            }
-
-            // Root is a full-bleed column: the title bar sits flush at the top
-            // edge and the content panel fills the rest of the window.
-            FlexLayout rootLayout = new FlexLayout(FlexLayout.Direction.COLUMN,
-                    FlexLayout.Justify.FLEX_START, FlexLayout.Align.STRETCH);
-            rootLayout.setPadding(0.0f);
-            rootLayout.setGap(0.0f);
-            Panel root = app.getRootPanel();
-            root.setLayoutManager(rootLayout);
-
-            // ---- Custom title bar with menus --------------------------------
-            TitleBar titleBar = new TitleBar("Glyph UI");
+            // Undecorated Form: the native title bar is removed so the form's
+            // own TitleBar becomes the chrome (and hosts the menu strip).
+            Form form = new Form("Glyph UI — widgets tour", 800, 600)
+                    .decorated(false);
             // Native-menubar look: the menus sit flush against each other, so
             // the gap between items is zero (each button keeps only its own
             // small padding, see menuButton below).
-            titleBar.setItemGap(0.0f);
-            titleBar.addContent(menuButton("Archivo", archivoMenu()));
-            titleBar.addContent(menuButton("Editar", editarMenu()));
-            titleBar.addContent(menuButton("Ver", verMenu()));
-            root.add(titleBar);
+            form.getTitleBar().setItemGap(0.0f);
+            form.getTitleBar().addContent(menuButton("Archivo", archivoMenu()));
+            form.getTitleBar().addContent(menuButton("Editar", editarMenu()));
+            form.getTitleBar().addContent(menuButton("Ver", verMenu()));
+
+            if (!app.init(form)) {
+                System.err.println("Failed to initialize application");
+                return;
+            }
 
             // ---- Content column (grows to fill the space below the bar) ----
             FlexLayout column = new FlexLayout(FlexLayout.Direction.COLUMN,
                     FlexLayout.Justify.FLEX_START, FlexLayout.Align.FLEX_START);
             column.setPadding(24.0f);
             column.setGap(8.0f);
-            Panel content = new Panel(0, 0);
+            Panel content = form.getContentPane();
             content.setLayoutManager(column);
-            // flex-grow:1 makes the panel absorb the height left over after the
-            // fixed-height title bar, keeping its content top-aligned.
-            content.setInlineStyle(
-                    Style.builder().setFloat(StyleProperty.FLEX_GROW, 1.0f).build());
-            root.add(content);
 
             // ---- Header -----------------------------------------------------
             Label title = new Label("Glyph UI");

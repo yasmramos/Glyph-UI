@@ -1,6 +1,5 @@
 package io.github.yasmramos.glyphui.core.backend;
 
-import io.github.yasmramos.glyphui.core.WindowConfig;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.GlyphMods;
 
@@ -59,7 +58,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * (library load, window creation, message loop) is <b>deferred to
  * {@link #enterEventLoop(Runnable)}</b>, called by {@code Application.run()}.
  * Until then the backend is fully headless but already answers geometry
- * queries from the cached configuration (see the headless contract).</p>
+ * queries from its cached creation hints (see the headless contract).</p>
  *
  * <p><strong>Frame pacing:</strong> frames are driven by JWM itself through
  * {@link EventFrame}: each toolkit frame ends with {@code Window.requestFrame
@@ -125,8 +124,8 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     /** Cursor position in logical coords, tracked from mouse events. */
     private double cursorX, cursorY;
 
-    public JwmWindowBackend(String title, int width, int height, WindowConfig config) {
-        super(title, width, height, config);
+    public JwmWindowBackend(String title, int width, int height) {
+        super(title, width, height);
     }
 
     // ------------------------------------------------------------------
@@ -140,7 +139,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
      * the application would never show. This method only records the
      * request; the native bootstrap runs later, from
      * {@link #enterEventLoop(Runnable)}, on the JWM UI thread. Until then
-     * the backend answers every query from the cached configuration
+     * the backend answers every query from its cached creation hints
      * (headless contract), so building the widget tree works unchanged.
      *
      * @return true when the bootstrap has been scheduled (or already ran)
@@ -199,9 +198,9 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     }
 
     /**
-     * Applies the {@link WindowConfig} state that could not be set before
-     * the native window existed (maximize / float / fullscreen / centering /
-     * IME), then shows the window when {@code config.visible} is set —
+     * Applies the creation hints that could not be set before the native
+     * window existed (maximize / float / fullscreen / centering / IME), then
+     * shows the window when the visible hint is set —
      * the step missing from the original bootstrap, and the direct reason
      * nothing ever appeared on screen.
      */
@@ -212,26 +211,26 @@ public class JwmWindowBackend extends AbstractWindowBackend {
         // and is missing WS_SYSMENU / WS_MINIMIZEBOX / WS_MAXIMIZEBOX /
         // WS_THICKFRAME — i.e. no close/minimize/maximize buttons and no
         // resize border. setTitlebarVisible() ORs that exact style set in
-        // (and reapplies the frame), which is precisely config.decorated;
+        // (and reapplies the frame), which is precisely the decorated hint;
         // false strips the whole titlebar, as the option promises.
-        w.setTitlebarVisible(config.decorated);
+        w.setTitlebarVisible(decorated);
 
-        if (config.maximized) {
+        if (maximized) {
             w.maximize();
         }
-        if (config.floating) {
+        if (floating) {
             w.setZOrder(io.github.humbleui.jwm.ZOrder.FLOATING);
         }
-        if (config.fullscreen) {
+        if (fullscreen) {
             w.setFullScreen(true);
         }
-        if (config.center) {
+        if (centered) {
             centerOnPrimaryScreen(w);
         }
         if (textInputEnabled) {
             w.setTextInputEnabled(true);
         }
-        if (config.visible) {
+        if (visible) {
             w.setVisible(true);
         }
     }
@@ -239,7 +238,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     /**
      * Centers the window on the primary monitor's work area. JWM places new
      * windows at the OS default position (CW_USEDEFAULT), so without this
-     * {@code WindowConfig.center} would be ignored on the JWM backend.
+     * the center hint would be ignored on the JWM backend.
      *
      * @param w the freshly created window (UI thread)
      */
@@ -772,6 +771,9 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     @Override
     public void show() {
+        // Cache the creation hint so a show() issued before the native window
+        // exists is honoured at creation (deferred backends like JWM).
+        this.visible = true;
         Window w = jwmWindow;
         if (w != null) {
             w.setVisible(true);
@@ -780,6 +782,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     @Override
     public void hide() {
+        this.visible = false;
         Window w = jwmWindow;
         if (w != null) {
             w.setVisible(false);
@@ -788,9 +791,9 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     @Override
     public void setDecorated(boolean decorated) {
-        // Always remember the intent in config (headless contract: setters
-        // sync the config even without a live window).
-        config.decorated = decorated;
+        // Always remember the intent (headless contract: setters update the
+        // cached hint even without a live window).
+        this.decorated = decorated;
         Window w = jwmWindow;
         if (w != null) {
             w.setTitlebarVisible(decorated);
@@ -800,14 +803,14 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     @Override
     public void setResizable(boolean resizable) {
         // JWM does not expose a runtime resizability toggle; remembered in
-        // the config for recreation-based backends.
-        config.resizable = resizable;
+        // the hint for recreation-based backends.
+        this.resizable = resizable;
     }
 
     @Override
     public void setFloating(boolean floating) {
-        // Remember the intent in config even when headless (see setDecorated).
-        config.floating = floating;
+        // Remember the intent even when headless (see setDecorated).
+        this.floating = floating;
         Window w = jwmWindow;
         if (w != null) {
             w.setZOrder(floating
@@ -851,6 +854,7 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     @Override
     public void setMaximized(boolean maximized) {
+        this.maximized = maximized;
         Window w = jwmWindow;
         if (w != null) {
             if (maximized) {
@@ -871,14 +875,13 @@ public class JwmWindowBackend extends AbstractWindowBackend {
 
     @Override
     public void setFullscreen(boolean fullscreen) {
+        // Cache the creation hint (honoured at creation on deferred backends);
+        // apply immediately when a live window exists.
+        this.fullscreen = fullscreen;
         Window w = jwmWindow;
-        // Headless contract: without a live window this is a guarded no-op
-        // and must not flip the config flag (nothing was actually applied).
-        if (w == null) {
-            return;
+        if (w != null) {
+            w.setFullScreen(fullscreen);
         }
-        w.setFullScreen(fullscreen);
-        config.fullscreen = fullscreen;
     }
 
     // ------------------------------------------------------------------

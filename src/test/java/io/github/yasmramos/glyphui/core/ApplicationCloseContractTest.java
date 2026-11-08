@@ -1,4 +1,6 @@
 package io.github.yasmramos.glyphui.core;
+import io.github.yasmramos.glyphui.core.internal.TestHooks;
+import io.github.yasmramos.glyphui.core.Window;
 
 import io.github.yasmramos.glyphui.SkijaTestSupport;
 import io.github.yasmramos.glyphui.TestBase;
@@ -49,7 +51,7 @@ class ApplicationCloseContractTest extends TestBase {
                 "Skija native library required to initialize an Application");
 
         Application app = new Application();
-        if (!app.init("close-contract-test", 320, 240, true)) {
+        if (!TestHooks.initForTesting(app, new Window("close-contract-test", 320, 240))) {
             // Backend refused to create a window on this host (e.g. no
             // display): nothing to assert, skip instead of failing.
             app.close();
@@ -82,7 +84,7 @@ class ApplicationCloseContractTest extends TestBase {
                 "Skija native library required to initialize an Application");
 
         Application app = new Application();
-        if (!app.init("close-contract-test", 320, 240, true)) {
+        if (!TestHooks.initForTesting(app, new Window("close-contract-test", 320, 240))) {
             app.close();
             Assumptions.abort("Application.init() unavailable on this host");
         }
@@ -101,7 +103,7 @@ class ApplicationCloseContractTest extends TestBase {
                 "Skija native library required to initialize an Application");
 
         Application first = new Application();
-        if (!first.init("first-app", 320, 240, true)) {
+        if (!TestHooks.initForTesting(first, new Window("first-app", 320, 240))) {
             first.close();
             Assumptions.abort("Application.init() unavailable on this host");
         }

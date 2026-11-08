@@ -1,4 +1,6 @@
 package io.github.yasmramos.glyphui.core;
+import io.github.yasmramos.glyphui.core.internal.TestHooks;
+import io.github.yasmramos.glyphui.core.Window;
 
 import io.github.yasmramos.glyphui.SkijaTestSupport;
 import io.github.yasmramos.glyphui.TestBase;
@@ -54,7 +56,7 @@ class AppContextContractTest extends TestBase {
         Assumptions.assumeTrue(SkijaTestSupport.isAvailable(),
                 "Skija native library required to initialize an Application");
         Application app = new Application();
-        if (!app.init("app-context-contract-test", 320, 240, true)) {
+        if (!TestHooks.initForTesting(app, new Window("app-context-contract-test", 320, 240))) {
             app.close();
             Assumptions.abort("Application.init() unavailable on this host");
         }

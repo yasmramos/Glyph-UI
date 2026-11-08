@@ -96,6 +96,27 @@ without that wiring must not rely on them. `TextArea` deliberately keeps Enter
 (inserts `\n`, never submits) and makes Home/End line-relative; every other key
 falls through to `super.onKeyEvent`.
 
+## Top-level windows: `Window` vs `Form`
+
+`core.Window` is the low-level window (the AWT `Frame` analogue); `ui.Form`
+extends it as the high-level top-level window (the Swing `JFrame` analogue).
+`Form` is purely additive and owns the root-panel assembly: a content pane
+(`getContentPane()`), an optional `MenuBar` (`addMenu`), and — for an
+undecorated form — a `TitleBar` used as custom chrome. Its creation-time fluent
+setters are covariant overrides so a chain keeps the `Form` type.
+
+Keep `Window` public. A public class cannot extend a package-private superclass
+from another package (javac rejects it), so `Form` extends the public `Window`
+instead of hiding it; `Window` already crosses the public surface
+(`Application.init(Window)`, the `SurfaceFactory` SPI).
+
+Mounting goes through `Window#onAdopted(Panel)`, a protected no-op hook that
+`Application.init` calls after the root panel is sized and bound to the owning
+`AppContext`; `Form` overrides it to install its chrome (so children added
+during mounting inherit the application by ownership). To unit-test a form's
+structure without an `Application`, call `onAdopted(new Panel())` directly
+(same-package tests can reach the `protected` hook).
+
 ## Environment
 
 The sandbox can be reset between turns, losing the JDK, Maven and the local

@@ -1,7 +1,5 @@
 package io.github.yasmramos.glyphui.core.backend;
 
-import io.github.yasmramos.glyphui.core.WindowConfig;
-
 /**
  * Backend-agnostic window interface.
  *
@@ -234,9 +232,6 @@ public interface WindowBackend extends AutoCloseable {
     /** Updates the title immediately (live window) or caches it. */
     void setTitle(String title);
 
-    /** @return the active window configuration (never null) */
-    WindowConfig getConfig();
-
     /**
      * Updates the cached <b>logical</b> dimensions, deriving the physical
      * framebuffer size from the content scale when no live window exists.
@@ -282,6 +277,13 @@ public interface WindowBackend extends AutoCloseable {
     void minimize();
 
     void setFullscreen(boolean fullscreen);
+
+    /**
+     * Records the "center on the primary monitor" creation hint. Backends
+     * that position windows themselves ignore it. Applied when the native
+     * window is created (deferred on backends like JWM).
+     */
+    void setCentered(boolean centered);
 
     /**
      * @return the window position in screen coordinates as {x, y}, or

@@ -1,4 +1,5 @@
 package io.github.yasmramos.glyphui.integration;
+import io.github.yasmramos.glyphui.core.Window;
 
 import io.github.yasmramos.glyphui.TestBase;
 import io.github.yasmramos.glyphui.core.Application;
@@ -27,7 +28,7 @@ public class InvalidateRepaintIT extends TestBase {
     @BeforeEach
     public void setUp() {
         app = new Application();
-        boolean initialized = app.init("Invalidate IT", 800, 600, true);
+        boolean initialized = TestHooks.initForTesting(app, new Window("Invalidate IT", 800, 600));
         Assumptions.assumeTrue(initialized, "JWM native window not available (headless environment); skipping test");
     }
 

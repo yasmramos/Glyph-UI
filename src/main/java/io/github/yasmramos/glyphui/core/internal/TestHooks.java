@@ -72,6 +72,50 @@ public final class TestHooks {
     // ------------------------------------------------------------------
 
     /**
+     * Initializes the application with an explicit window, forcing the raster
+     * backend. Replaces the former public
+     * {@code init(title, width, height, useRasterSurface)} overload, which was
+     * removed from the frozen surface (see
+     * {@code docs/architecture/api-stability.md} rule 3). Must be called on
+     * the thread that will run {@code run()}.
+     *
+     * @param application a {@code io.github.yasmramos.glyphui.core.Application} instance
+     * @param window      the window to adopt (a
+     *                    {@code io.github.yasmramos.glyphui.core.Window})
+     * @return true when initialization succeeded
+     */
+    public static boolean initForTesting(Object application, Object window) {
+        return initForTesting(application, window, true);
+    }
+
+    /**
+     * Initializes the application with an explicit window, choosing whether
+     * the GPU backend is attempted. Test seam for the removed public raster
+     * flag (see {@link #initForTesting(Object, Object)}).
+     *
+     * @param application     a {@code io.github.yasmramos.glyphui.core.Application} instance
+     * @param window          the window to adopt (a
+     *                        {@code io.github.yasmramos.glyphui.core.Window})
+     * @param useRasterSurface true forces raster, false attempts GPU first
+     * @return true when initialization succeeded
+     */
+    public static boolean initForTesting(Object application, Object window,
+                                         boolean useRasterSurface) {
+        return (boolean) invoke(application, "init",
+                new Class<?>[]{windowClass(), boolean.class},
+                new Object[]{window, useRasterSurface});
+    }
+
+    /** Resolves the toolkit's {@code Window} class reflectively. */
+    private static Class<?> windowClass() {
+        try {
+            return Class.forName("io.github.yasmramos.glyphui.core.Window");
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("Window class missing", e);
+        }
+    }
+
+    /**
      * Renders a single frame on the given application without entering the
      * event loop. Must be called on the application's UI thread (or before
      * {@code run()} starts). Intended exclusively for tests.
@@ -157,18 +201,50 @@ public final class TestHooks {
                 throw new IllegalStateException(
                         "Test hook '" + methodName + "' not accessible", e);
             } catch (InvocationTargetException e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof RuntimeException) {
-                    throw (RuntimeException) cause;
-                }
-                if (cause instanceof Error) {
-                    throw (Error) cause;
-                }
-                throw new IllegalStateException(
-                        "Test hook '" + methodName + "' failed", cause);
+                throw unwrap(methodName, e);
             }
         }
-        throw new IllegalStateException(
+        throw missing(methodName, target);
+    }
+
+    /**
+     * Multi-parameter reflective invocation: resolves
+     * {@code methodName(paramTypes)} by walking the hierarchy so overloads
+     * with a distinct parameter list are reached unambiguously.
+     */
+    private static Object invoke(Object target, String methodName,
+                                 Class<?>[] paramTypes, Object[] args) {
+        for (Class<?> c = target.getClass(); c != null; c = c.getSuperclass()) {
+            try {
+                Method m = c.getDeclaredMethod(methodName, paramTypes);
+                m.setAccessible(true);
+                return m.invoke(target, args);
+            } catch (NoSuchMethodException e) {
+                // keep walking up
+            } catch (IllegalAccessException e) {
+                throw new IllegalStateException(
+                        "Test hook '" + methodName + "' not accessible", e);
+            } catch (InvocationTargetException e) {
+                throw unwrap(methodName, e);
+            }
+        }
+        throw missing(methodName, target);
+    }
+
+    private static RuntimeException unwrap(String methodName, InvocationTargetException e) {
+        Throwable cause = e.getCause();
+        if (cause instanceof RuntimeException) {
+            return (RuntimeException) cause;
+        }
+        if (cause instanceof Error) {
+            throw (Error) cause;
+        }
+        return new IllegalStateException(
+                "Test hook '" + methodName + "' failed", cause);
+    }
+
+    private static IllegalStateException missing(String methodName, Object target) {
+        return new IllegalStateException(
                 "Test hook '" + methodName + "' is missing on "
                         + target.getClass().getName()
                         + "; internal shim drifted from TestHooks");
