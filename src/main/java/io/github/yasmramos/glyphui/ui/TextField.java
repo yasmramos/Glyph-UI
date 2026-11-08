@@ -1,6 +1,7 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.core.Application;
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseButton;
@@ -38,6 +39,11 @@ public class TextField extends Component
     @Override
     protected String defaultStyleTag() {
         return "input";
+    }
+
+    @Override
+    protected GlyphCursor defaultCursor() {
+        return GlyphCursor.TEXT;
     }
 
     /** Toolkit key codes (GlyphKeys wire values) used inline below. */

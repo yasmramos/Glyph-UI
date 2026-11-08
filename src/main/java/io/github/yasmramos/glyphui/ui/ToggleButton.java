@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
@@ -82,6 +83,11 @@ public class ToggleButton extends Component implements Textual {
     @Override
     protected String defaultStyleTag() {
         return "togglebutton";
+    }
+
+    @Override
+    protected GlyphCursor defaultCursor() {
+        return GlyphCursor.POINTING_HAND;
     }
 
     @Override

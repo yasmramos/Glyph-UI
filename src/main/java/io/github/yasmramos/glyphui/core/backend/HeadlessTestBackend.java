@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.core.backend;
 
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 
 /**
  * In-memory {@link WindowBackend} used by unit and characterization tests.
@@ -29,6 +30,10 @@ public class HeadlessTestBackend implements WindowBackend {
     private boolean created;
     private boolean destroyed;
     private String clipboard = "";
+    /** Last pointer shape requested through {@link #setCursor}; {@code null} until set. */
+    public GlyphCursor lastCursor;
+    /** How many times a shape actually reached the native layer (dedup check). */
+    public int cursorApplyCount;
 
     // --- Registered listeners --------------------------------------------
     public FramebufferSizeListener framebufferSizeListener;
@@ -227,6 +232,12 @@ public class HeadlessTestBackend implements WindowBackend {
     @Override
     public String getClipboardString() {
         return clipboard;
+    }
+
+    @Override
+    public void setCursor(GlyphCursor cursor) {
+        this.lastCursor = cursor;
+        this.cursorApplyCount++;
     }
 
     // --- GL / presentation ----------------------------------------------------

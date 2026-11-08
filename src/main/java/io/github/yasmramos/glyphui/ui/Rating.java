@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
@@ -82,6 +83,11 @@ public class Rating extends Component {
     @Override
     protected String defaultStyleTag() {
         return "rating";
+    }
+
+    @Override
+    protected GlyphCursor defaultCursor() {
+        return GlyphCursor.POINTING_HAND;
     }
 
     @Override

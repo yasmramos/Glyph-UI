@@ -2,6 +2,7 @@ package io.github.yasmramos.glyphui.core;
 
 import io.github.yasmramos.glyphui.core.backend.JwmWindowBackend;
 import io.github.yasmramos.glyphui.core.backend.WindowBackend;
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.ui.Panel;
 
 /**
@@ -680,5 +681,22 @@ public class Window implements AutoCloseable {
     public void setWindowFocusListener(WindowBackend.WindowFocusListener listener) {
         checkThread();
         backend.setWindowFocusListener(listener);
+    }
+
+    /**
+     * Sets the mouse-pointer shape for the window.
+     *
+     * <p>Applications normally do not call this directly: the toolkit
+     * resolves the shape from the widget under the pointer on every mouse
+     * move (see {@link io.github.yasmramos.glyphui.ui.Component#setCursor}).
+     * The method is public for custom renderers and for applications that
+     * drive the pointer themselves.</p>
+     *
+     * @param cursor the desired shape (null is treated as
+     *               {@link GlyphCursor#DEFAULT})
+     */
+    public void setCursor(GlyphCursor cursor) {
+        checkThread();
+        backend.setCursor(cursor);
     }
 }
