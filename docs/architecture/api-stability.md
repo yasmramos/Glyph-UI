@@ -136,9 +136,15 @@ Added to the public surface:
 - `Window#isDecorated()` and the `Window#onAdopted(Panel)` extension hook
   (protected; called by `Application.init` once the root panel is sized and
   bound, and overridden by `Form` to mount its chrome).
+- `TitleBar#getMenuBar()` / `setMenuBar(MenuBar)` and
+  `MenuBar#isEmbedded()` / `setEmbedded(boolean)`: the title strip is laid out
+  in three zones (leading menu bar, centred title, trailing window controls),
+  following FlatLaf's title pane, and an embedded menu bar drops its own chrome
+  so the menus blend into the strip.
 
 No removals: existing code that builds a plain `Window` keeps working exactly
-as before.
+as before, and a standalone `MenuBar` keeps its toolbar-like chrome (embedded
+mode is off by default).
 
 ## Consequences
 

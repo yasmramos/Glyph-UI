@@ -30,6 +30,13 @@ import java.util.List;
  * bar its native behaviour for free: once a menu is open, sliding the pointer
  * onto a sibling trigger switches to that menu without another click (see
  * {@link PopupLayer}).</p>
+ *
+ * <p><strong>Embedded mode.</strong> A menu bar dropped into a window's title
+ * strip (see {@link TitleBar#setMenuBar(MenuBar)}) is set
+ * {@link #setEmbedded(boolean) embedded}: the bar's own fill and bottom border
+ * are dropped and its triggers become flat (transparent until hover), so the
+ * menus blend into the title bar the way FlatLaf embeds a menu bar into its
+ * title pane. Standalone bars keep the toolbar-like chrome.</p>
  */
 public class MenuBar extends Panel {
 
@@ -45,6 +52,12 @@ public class MenuBar extends Panel {
     /** The menus owned by this bar, in insertion order. */
     private final List<Menu> menus = new ArrayList<>();
 
+    /** Row layout, reconfigured when the embedded flag flips. */
+    private final MenuBarLayout layout = new MenuBarLayout();
+
+    /** When true the bar drops its chrome and flattens its triggers. */
+    private boolean embedded;
+
     private Integer borderColorOverride;
 
     private Paint bgPaint;
@@ -55,7 +68,7 @@ public class MenuBar extends Panel {
      */
     public MenuBar() {
         super();
-        setLayoutManager(new MenuBarLayout());
+        setLayoutManager(layout);
         // The bar is chrome: it never takes focus itself, only the menus do.
         setFocusable(false);
     }
@@ -81,6 +94,7 @@ public class MenuBar extends Panel {
         Menu menu = new Menu();
         Button trigger = new Button(label);
         trigger.setStyleTag("menubar-item");
+        applyTriggerStyle(trigger);
         trigger.setOnClick(menu::toggle);
         menu.setTrigger(trigger);
         add(trigger);
@@ -105,14 +119,58 @@ public class MenuBar extends Panel {
     }
 
     /**
+     * Whether this bar is embedded in a title strip. An embedded bar is
+     * transparent (no fill, no bottom border) and its triggers are flat, so it
+     * blends into the host chrome. See {@link TitleBar#setMenuBar(MenuBar)}.
+     *
+     * @return true when the bar is embedded
+     */
+    public boolean isEmbedded() {
+        return embedded;
+    }
+
+    /**
+     * Toggles embedded mode: drops the bar's fill and bottom border and
+     * flattens its triggers (and any added afterwards) so the menus blend into
+     * the host chrome. Off by default; {@link TitleBar} turns it on when it
+     * adopts a menu bar.
+     *
+     * @param embedded true to embed the bar in a title strip
+     */
+    public void setEmbedded(boolean embedded) {
+        if (this.embedded == embedded) {
+            return;
+        }
+        this.embedded = embedded;
+        layout.setGap(embedded ? 0.0f : ITEM_GAP);
+        layout.setPadding(embedded ? 0.0f : CONTENT_PADDING);
+        layout.setAlignItems(embedded ? FlexLayout.Align.STRETCH : FlexLayout.Align.CENTER);
+        for (Button trigger : triggers) {
+            applyTriggerStyle(trigger);
+        }
+        invalidateLayout();
+        invalidate();
+    }
+
+    /** Applies the trigger chrome for the current mode (flat when embedded). */
+    private void applyTriggerStyle(Button trigger) {
+        trigger.setNormalColor(embedded ? 0x00000000 : null);
+        trigger.setBorderColor(embedded ? 0x00000000 : null);
+        trigger.setBorderRadius(embedded ? 0.0f : null);
+    }
+
+    /**
      * Gets the strip fill. Resolution order: a CSS {@code background}
      * declaration, then an explicit {@link Panel#setBackgroundColor(int)
-     * override}, then the theme control surface.
+     * override}, then the theme control surface. An embedded bar has no fill.
      *
      * @return the fill color (ARGB)
      */
     @Override
     public int getBackgroundColor() {
+        if (embedded) {
+            return 0x00000000;
+        }
         Style s = getComputedStyle();
         if (s != null && s.has(StyleProperty.BACKGROUND)) {
             return s.getInt(StyleProperty.BACKGROUND, getTheme().getControlNormalColor());
@@ -121,11 +179,14 @@ public class MenuBar extends Panel {
     }
 
     /**
-     * Gets the bottom border color.
+     * Gets the bottom border color. An embedded bar has no border.
      *
      * @return the border color (ARGB)
      */
     public int getBorderColor() {
+        if (embedded) {
+            return 0x00000000;
+        }
         return resolveIntStyle(StyleProperty.BORDER_COLOR, borderColorOverride,
                 getTheme().getBorderColor());
     }
@@ -141,22 +202,45 @@ public class MenuBar extends Panel {
     }
 
     @Override
+    public float getPreferredWidth() {
+        float total = 2.0f * padding();
+        List<Component> kids = getChildren();
+        for (int i = 0; i < kids.size(); i++) {
+            total += kids.get(i).getPreferredWidth();
+            if (i > 0) {
+                total += gap();
+            }
+        }
+        return total;
+    }
+
+    @Override
     public float getPreferredHeight() {
         float tallest = 0.0f;
         for (Component child : getChildren()) {
             tallest = Math.max(tallest, child.getPreferredHeight());
         }
-        return tallest + 2.0f * CONTENT_PADDING;
+        return tallest + 2.0f * padding();
+    }
+
+    private float padding() {
+        return embedded ? 0.0f : CONTENT_PADDING;
+    }
+
+    private float gap() {
+        return embedded ? 0.0f : ITEM_GAP;
     }
 
     @Override
     protected void render(Canvas canvas) {
         doLayout();
         ensurePaints();
-        bgPaint.setColor(getBackgroundColor());
-        canvas.drawRect(0, 0, width, height, bgPaint);
-        borderPaint.setColor(getBorderColor());
-        canvas.drawRect(0, height - 1.0f, width, 1.0f, borderPaint);
+        if (!embedded) {
+            bgPaint.setColor(getBackgroundColor());
+            canvas.drawRect(0, 0, width, height, bgPaint);
+            borderPaint.setColor(getBorderColor());
+            canvas.drawRect(0, height - 1.0f, width, 1.0f, borderPaint);
+        }
 
         int saveCount = canvas.save();
         canvas.clipRect(0, 0, width, height);
