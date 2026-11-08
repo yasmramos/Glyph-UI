@@ -1,6 +1,5 @@
 package io.github.yasmramos.glyphui.core.backend;
 
-import io.github.yasmramos.glyphui.core.WindowConfig;
 import io.github.yasmramos.glyphui.events.GlyphMods;
 
 /**
@@ -22,8 +21,24 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     protected String title;
     protected boolean shouldClose;
 
-    /** Active configuration (hints + behaviour); never null. */
-    protected final WindowConfig config;
+    // --- Creation-time window hints ---------------------------------------
+    // These replace the former shared WindowConfig object: the backend keeps
+    // only the values it actually applies, and both Window's fluent setters
+    // and the runtime attribute setters update them here.
+    /** Title bar / borders shown at creation. */
+    protected boolean decorated = true;
+    /** User resizing allowed at creation. */
+    protected boolean resizable = true;
+    /** Always-on-top at creation. */
+    protected boolean floating;
+    /** Start maximized at creation. */
+    protected boolean maximized;
+    /** Start fullscreen at creation. */
+    protected boolean fullscreen;
+    /** Center on the primary monitor at creation. */
+    protected boolean centered = true;
+    /** Shown at creation. */
+    protected boolean visible = true;
 
     // --- Listener registry ------------------------------------------------
     protected WindowSizeListener windowSizeListener;
@@ -41,7 +56,7 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     protected int posX;
     protected int posY;
 
-    protected AbstractWindowBackend(String title, int width, int height, WindowConfig config) {
+    protected AbstractWindowBackend(String title, int width, int height) {
         this.title = title;
         this.windowWidth = width;
         this.windowHeight = height;
@@ -49,11 +64,6 @@ public abstract class AbstractWindowBackend implements WindowBackend {
         this.framebufferWidth = width;
         this.framebufferHeight = height;
         this.shouldClose = false;
-        this.config = config != null ? config : new WindowConfig();
-        // The constructor arguments are the source of truth for geometry/title
-        this.config.title = title;
-        this.config.width = width;
-        this.config.height = height;
     }
 
     // ------------------------------------------------------------------
@@ -162,8 +172,8 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     }
 
     @Override
-    public WindowConfig getConfig() {
-        return config;
+    public void setCentered(boolean centered) {
+        this.centered = centered;
     }
 
     // ------------------------------------------------------------------

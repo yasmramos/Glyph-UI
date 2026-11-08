@@ -92,47 +92,87 @@ public class Window implements AutoCloseable {
     }
 
     /**
-     * Creates a new Window with the default {@link WindowConfig}
-     * (visible, resizable, decorated, OpenGL 3.2 core, centered).
+     * Creates a new Window with defaults (visible, resizable, decorated,
+     * centered).
      *
      * @param title the window title
      * @param width the window width (logical)
      * @param height the window height (logical)
      */
     public Window(String title, int width, int height) {
-        this(title, width, height, new WindowConfig());
+        this.backend = new JwmWindowBackend(title, width, height);
+    }
+
+    // ------------------------------------------------------------------
+    // Fluent creation-time configuration
+    // ------------------------------------------------------------------
+    // These mirror the method names the former WindowConfig exposed, so
+    // migrating is a rename of the construction site:
+    //     new Window(title, w, h).decorated(false).resizable(true)
+    // Each one delegates to the corresponding runtime setter (which caches
+    // the hint on the backend) and returns this window for chaining.
+
+    /** Sets the window title. @return this window */
+    public Window title(String title) {
+        setTitle(title);
+        return this;
+    }
+
+    /** Sets the logical window size. @return this window */
+    public Window size(int width, int height) {
+        setSize(width, height);
+        return this;
+    }
+
+    /** Toggles title bar / borders. @return this window */
+    public Window decorated(boolean decorated) {
+        setDecorated(decorated);
+        return this;
+    }
+
+    /** Toggles user resizing. @return this window */
+    public Window resizable(boolean resizable) {
+        setResizable(resizable);
+        return this;
+    }
+
+    /** Sets initial visibility. @return this window */
+    public Window visible(boolean visible) {
+        if (visible) {
+            show();
+        } else {
+            hide();
+        }
+        return this;
+    }
+
+    /** Toggles always-on-top. @return this window */
+    public Window floating(boolean floating) {
+        setFloating(floating);
+        return this;
+    }
+
+    /** Starts maximized or restored. @return this window */
+    public Window maximized(boolean maximized) {
+        setMaximized(maximized);
+        return this;
+    }
+
+    /** Enters/exits fullscreen on the primary monitor. @return this window */
+    public Window fullscreen(boolean fullscreen) {
+        setFullscreen(fullscreen);
+        return this;
     }
 
     /**
-     * Creates a new Window with an explicit configuration.
+     * Centers the window on the primary monitor when it is created.
      *
-     * @param title the window title
-     * @param width the window width (logical)
-     * @param height the window height (logical)
-     * @param config the window configuration (a null value falls back to
-     * defaults)
+     * @return this window
      */
-    public Window(String title, int width, int height, WindowConfig config) {
-        this.backend = new JwmWindowBackend(
-            title, width, height, config != null ? config : new WindowConfig());
-    }
-
-    /**
-     * Gets the active window configuration. Mutating the returned object
-     * affects the next {@link #create()} (and, for runtime-safe fields such as
-     * fullscreen mode, the live window through the backend).
-     *
-     * <p><strong>Contract after {@link #create()}:</strong> the same instance
-     * originally supplied to the constructor is returned; it reflects the
-     * creation-time settings, not necessarily the live window state (for
-     * example, a deferred native-window backend may still report pre-create
-     * values until the loop starts).</p>
-     *
-     * @return the configuration (never null)
-     */
-    public WindowConfig getConfig() {
+    public Window centered(boolean centered) {
         checkThread();
-        return backend.getConfig();
+        backend.setCentered(centered);
+        return this;
     }
 
     // ------------------------------------------------------------------
@@ -145,13 +185,7 @@ public class Window implements AutoCloseable {
      */
     public boolean create() {
         checkThread();
-        boolean ok = backend.create();
-        if (ok) {
-            // Seed the tracked maximized flag from whatever the backend applied
-            // at creation time (WindowConfig.maximized).
-            this.maximized = getConfig().maximized;
-        }
-        return ok;
+        return backend.create();
     }
 
     /**

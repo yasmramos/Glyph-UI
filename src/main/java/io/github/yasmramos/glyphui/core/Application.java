@@ -104,7 +104,6 @@ public class Application implements AutoCloseable {
     private volatile boolean open = true;
 
     private double lastFrameTime;
-    private boolean useRasterSurface;
 
     /**
      * When true, the GPU backend is skipped and a raster surface is used
@@ -367,16 +366,18 @@ public class Application implements AutoCloseable {
     }
 
     /**
-     * Initializes the application with default window settings.
+     * Initializes the application with default window settings (a visible,
+     * resizable, decorated, centered 800x600 window titled "Glyph UI").
      *
      * @return true if initialization was successful
      */
     public boolean init() {
-        return init("Glyph UI", 800, 600);
+        return init(new Window("Glyph UI", 800, 600));
     }
 
     /**
-     * Initializes the application.
+     * Initializes the application with a window built from the given title and
+     * logical size, using the default window attributes.
      *
      * @param title the window title
      * @param width the window width
@@ -384,26 +385,26 @@ public class Application implements AutoCloseable {
      * @return true if initialization was successful
      */
     public boolean init(String title, int width, int height) {
-        return init(title, width, height, null, false);
+        return init(new Window(title, width, height));
     }
 
     /**
-     * Initializes the application with an explicit window configuration — for
-     * example a {@code decorated(false)} window that supplies its own custom
-     * title bar instead of the native one.
+     * Initializes the application with an explicit window. Configure the
+     * window's attributes through its fluent setters before passing it in;
+     * the window then becomes the application's single source of truth for
+     * title, size and creation-time attributes:
      *
-     * @param title the window title
-     * @param width the window width
-     * @param height the window height
-     * @param config the window configuration (null uses defaults)
-     * @return true if initialization was successful
-     */
-    public boolean init(String title, int width, int height, WindowConfig config) {
-        return init(title, width, height, config, false);
-    }
-
-    /**
-     * Initializes the application.
+     * <pre>{@code
+     * Window window = new Window("My App", 1280, 720)
+     *         .decorated(false)
+     *         .resizable(true);
+     * try (Application app = new Application()) {
+     *     if (!app.init(window)) {
+     *         return;
+     *     }
+     *     app.run();
+     * }
+     * }</pre>
      *
      * <p><strong>Behaviour notes (read before wiring an app):</strong></p>
      * <ul>
@@ -420,34 +421,29 @@ public class Application implements AutoCloseable {
      *       a failed init leaves no trace (see the cleanup below).</li>
      * </ul>
      *
-     * @param title  the window title
-     * @param width  the window width
-     * @param height the window height
-     * @param useRasterSurface if true, forces the raster backend and skips the
-     * GPU initialization attempt entirely (for testing)
+     * @param window the window to adopt (must not be null)
      * @return true if initialization was successful
      */
-    public boolean init(String title, int width, int height, boolean useRasterSurface) {
-        return init(title, width, height, null, useRasterSurface);
+    public boolean init(Window window) {
+        return init(window, false);
     }
 
     /**
-     * Full initialization entry point: explicit window configuration plus
-     * surface selection.
+     * Initializes the application, optionally forcing the raster backend.
+     * Package-private test seam: production code uses {@link #init(Window)}.
+     * The public surface no longer exposes the raster flag (see
+     * {@code docs/architecture/api-stability.md} rule 3); tests reach this
+     * overload through {@code core.internal.TestHooks}.
      *
-     * @param title the window title
-     * @param width the window width
-     * @param height the window height
-     * @param config the window configuration (null uses defaults)
+     * @param window the window to adopt (must not be null)
      * @param useRasterSurface if true, forces the raster backend and skips the
      * GPU initialization attempt entirely (for testing)
      * @return true if initialization was successful
      */
-    public boolean init(String title, int width, int height, WindowConfig config,
-            boolean useRasterSurface) {
+    boolean init(Window newWindow, boolean useRasterSurface) {
         // Idempotency guard: a second init() would leak the previous window,
         // surface and DirectContext (two GL contexts, orphaned native handles).
-        if (running || window != null) {
+        if (running || this.window != null) {
             throw new IllegalStateException("Application already initialized; "
                     + "call close() before re-initializing");
         }
@@ -455,12 +451,12 @@ public class Application implements AutoCloseable {
             this.forceRasterSurface = useRasterSurface;
 
             // Create window
-            window = new Window(title, width, height, config);
-            if (!window.create()) {
+            this.window = newWindow;
+            if (!newWindow.create()) {
                 // Do not leave a half-initialized application behind: release
                 // the (failed) window so a later close()/re-init is consistent.
-                window.destroy();
-                window = null;
+                newWindow.destroy();
+                this.window = null;
                 return false;
             }
 
@@ -1252,8 +1248,9 @@ public class Application implements AutoCloseable {
      *
      * <p><strong>Not part of the frozen public API:</strong> reserved for the
      * toolkit's own render loop and integration tests. Application code should
-     * configure windows through {@code Application} / {@code WindowConfig}
-     * instead (see {@code docs/architecture/api-stability.md}).</p>
+     * configure the window through {@link Window}'s fluent setters and hand it
+     * to {@link #init(Window)} instead (see
+     * {@code docs/architecture/api-stability.md}).</p>
      *
      * @return the window, or null before init
      */
