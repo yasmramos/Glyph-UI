@@ -511,39 +511,46 @@ public final class Theme {
         public Builder mode(Mode mode) {
             this.mode = mode;
             if (mode == Mode.LIGHT) {
-                this.backgroundColor = Color.makeARGB(255, 245, 245, 245);
-                this.foregroundColor = Color.makeARGB(255, 25, 25, 25);
-                this.accentColor = Color.makeARGB(255, 0, 120, 215);
-                this.controlNormalColor = Color.makeARGB(255, 225, 225, 225);
-                this.controlHoverColor = Color.makeARGB(255, 205, 205, 205);
-                this.controlPressedColor = Color.makeARGB(255, 185, 185, 185);
-                this.controlDisabledColor = Color.makeARGB(255, 235, 235, 235);
-                this.controlTextColor = Color.makeARGB(255, 25, 25, 25);
-                this.controlTextDisabledColor = Color.makeARGB(255, 160, 160, 160);
-                this.borderColor = Color.makeARGB(255, 150, 150, 150);
+                // Modern-web light palette: a cool neutral ("slate") ramp with
+                // an indigo primary. The page is a faint off-white so white
+                // control surfaces read as raised, and borders are hairlines
+                // rather than the heavy grey of a native toolkit.
+                this.backgroundColor = Color.makeARGB(255, 248, 250, 252);
+                this.foregroundColor = Color.makeARGB(255, 15, 23, 42);
+                this.accentColor = Color.makeARGB(255, 79, 70, 229);
+                this.controlNormalColor = Color.makeARGB(255, 255, 255, 255);
+                this.controlHoverColor = Color.makeARGB(255, 241, 245, 249);
+                this.controlPressedColor = Color.makeARGB(255, 226, 232, 240);
+                this.controlDisabledColor = Color.makeARGB(255, 241, 245, 249);
+                this.controlTextColor = Color.makeARGB(255, 15, 23, 42);
+                this.controlTextDisabledColor = Color.makeARGB(255, 148, 163, 184);
+                this.borderColor = Color.makeARGB(255, 226, 232, 240);
                 // Text-entry surface: a clean white well so the field reads as
                 // an editable area rather than a hole in the background.
                 this.inputBackgroundColor = Color.makeARGB(255, 255, 255, 255);
                 // Title-bar chrome: a hair darker than the page so the bar
                 // reads as a distinct strip above the content.
-                this.titleBarBackgroundColor = Color.makeARGB(255, 235, 235, 235);
+                this.titleBarBackgroundColor = Color.makeARGB(255, 241, 245, 249);
             } else {
-                this.backgroundColor = Color.makeARGB(255, 30, 30, 30);
-                this.foregroundColor = Color.makeARGB(255, 240, 240, 240);
-                this.accentColor = Color.makeARGB(255, 0, 122, 255);
-                this.controlNormalColor = Color.makeARGB(255, 60, 60, 60);
-                this.controlHoverColor = Color.makeARGB(255, 80, 80, 80);
-                this.controlPressedColor = Color.makeARGB(255, 100, 100, 100);
-                this.controlDisabledColor = Color.makeARGB(255, 50, 50, 50);
-                this.controlTextColor = Color.makeARGB(255, 255, 255, 255);
-                this.controlTextDisabledColor = Color.makeARGB(255, 150, 150, 150);
-                this.borderColor = Color.makeARGB(255, 120, 120, 120);
+                // Modern-web dark palette: a deep slate page (not pure black)
+                // with a brighter indigo primary, so surfaces stay legible
+                // without the flat "console" look of a black background.
+                this.backgroundColor = Color.makeARGB(255, 15, 23, 42);
+                this.foregroundColor = Color.makeARGB(255, 226, 232, 240);
+                this.accentColor = Color.makeARGB(255, 99, 102, 241);
+                this.controlNormalColor = Color.makeARGB(255, 30, 41, 59);
+                this.controlHoverColor = Color.makeARGB(255, 51, 65, 85);
+                this.controlPressedColor = Color.makeARGB(255, 71, 85, 105);
+                this.controlDisabledColor = Color.makeARGB(255, 30, 41, 59);
+                this.controlTextColor = Color.makeARGB(255, 241, 245, 249);
+                this.controlTextDisabledColor = Color.makeARGB(255, 100, 116, 139);
+                this.borderColor = Color.makeARGB(255, 51, 65, 85);
                 // Text-entry surface: slightly above the page background so the
                 // field reads as an editable well instead of vanishing into it.
-                this.inputBackgroundColor = Color.makeARGB(255, 42, 42, 42);
+                this.inputBackgroundColor = Color.makeARGB(255, 30, 41, 59);
                 // Title-bar chrome: a hair darker than the page so the bar
                 // reads as a distinct strip above the content.
-                this.titleBarBackgroundColor = Color.makeARGB(255, 24, 24, 24);
+                this.titleBarBackgroundColor = Color.makeARGB(255, 2, 6, 23);
             }
             return this;
         }
