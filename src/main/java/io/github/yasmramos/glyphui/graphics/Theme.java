@@ -61,6 +61,7 @@ public final class Theme {
     private final int borderColor;
     private final int inputBackgroundColor;
     private final int titleBarBackgroundColor;
+    private final int shadowColor;
     private final float controlCornerRadius;
     private final float focusRingRadius;
     private final float padding;
@@ -96,6 +97,7 @@ public final class Theme {
         this.borderColor = b.borderColor;
         this.inputBackgroundColor = b.inputBackgroundColor;
         this.titleBarBackgroundColor = b.titleBarBackgroundColor;
+        this.shadowColor = b.shadowColor;
         this.controlCornerRadius = b.controlCornerRadius;
         this.focusRingRadius = b.focusRingRadius;
         this.padding = b.padding;
@@ -220,6 +222,7 @@ public final class Theme {
         b.borderColor = borderColor;
         b.inputBackgroundColor = inputBackgroundColor;
         b.titleBarBackgroundColor = titleBarBackgroundColor;
+        b.shadowColor = shadowColor;
         b.controlCornerRadius = controlCornerRadius;
         b.focusRingRadius = focusRingRadius;
         b.padding = padding;
@@ -310,6 +313,18 @@ public final class Theme {
      */
     public int getTitleBarBackgroundColor() {
         return titleBarBackgroundColor;
+    }
+
+    /**
+     * Gets the drop-shadow color used by elevated surfaces (cards, dialogs,
+     * popups, dropdowns, tooltips). It is a translucent black by default so a
+     * single token reads correctly over any page background; the alpha carries
+     * the elevation strength.
+     *
+     * @return shadow color (ARGB, translucent)
+     */
+    public int getShadowColor() {
+        return shadowColor;
     }
 
     /** @return corner radius for controls, logical units */
@@ -409,6 +424,7 @@ public final class Theme {
                 && borderColor == other.borderColor
                 && inputBackgroundColor == other.inputBackgroundColor
                 && titleBarBackgroundColor == other.titleBarBackgroundColor
+                && shadowColor == other.shadowColor
                 && Float.compare(controlCornerRadius, other.controlCornerRadius) == 0
                 && Float.compare(focusRingRadius, other.focusRingRadius) == 0
                 && Float.compare(padding, other.padding) == 0
@@ -433,6 +449,7 @@ public final class Theme {
         result = 31 * result + borderColor;
         result = 31 * result + inputBackgroundColor;
         result = 31 * result + titleBarBackgroundColor;
+        result = 31 * result + shadowColor;
         result = 31 * result + Float.floatToIntBits(controlCornerRadius);
         result = 31 * result + Float.floatToIntBits(focusRingRadius);
         result = 31 * result + Float.floatToIntBits(padding);
@@ -473,6 +490,7 @@ public final class Theme {
         private int borderColor;
         private int inputBackgroundColor;
         private int titleBarBackgroundColor;
+        private int shadowColor;
         private float controlCornerRadius;
         private float focusRingRadius;
         private float padding;
@@ -511,39 +529,52 @@ public final class Theme {
         public Builder mode(Mode mode) {
             this.mode = mode;
             if (mode == Mode.LIGHT) {
-                this.backgroundColor = Color.makeARGB(255, 245, 245, 245);
-                this.foregroundColor = Color.makeARGB(255, 25, 25, 25);
-                this.accentColor = Color.makeARGB(255, 0, 120, 215);
-                this.controlNormalColor = Color.makeARGB(255, 225, 225, 225);
-                this.controlHoverColor = Color.makeARGB(255, 205, 205, 205);
-                this.controlPressedColor = Color.makeARGB(255, 185, 185, 185);
-                this.controlDisabledColor = Color.makeARGB(255, 235, 235, 235);
-                this.controlTextColor = Color.makeARGB(255, 25, 25, 25);
-                this.controlTextDisabledColor = Color.makeARGB(255, 160, 160, 160);
-                this.borderColor = Color.makeARGB(255, 150, 150, 150);
+                // Modern-web light palette: a cool neutral ("slate") ramp with
+                // an indigo primary. The page is a faint off-white so white
+                // control surfaces read as raised, and borders are hairlines
+                // rather than the heavy grey of a native toolkit.
+                this.backgroundColor = Color.makeARGB(255, 248, 250, 252);
+                this.foregroundColor = Color.makeARGB(255, 15, 23, 42);
+                this.accentColor = Color.makeARGB(255, 79, 70, 229);
+                this.controlNormalColor = Color.makeARGB(255, 255, 255, 255);
+                this.controlHoverColor = Color.makeARGB(255, 241, 245, 249);
+                this.controlPressedColor = Color.makeARGB(255, 226, 232, 240);
+                this.controlDisabledColor = Color.makeARGB(255, 241, 245, 249);
+                this.controlTextColor = Color.makeARGB(255, 15, 23, 42);
+                this.controlTextDisabledColor = Color.makeARGB(255, 148, 163, 184);
+                this.borderColor = Color.makeARGB(255, 226, 232, 240);
                 // Text-entry surface: a clean white well so the field reads as
                 // an editable area rather than a hole in the background.
                 this.inputBackgroundColor = Color.makeARGB(255, 255, 255, 255);
                 // Title-bar chrome: a hair darker than the page so the bar
                 // reads as a distinct strip above the content.
-                this.titleBarBackgroundColor = Color.makeARGB(255, 235, 235, 235);
+                this.titleBarBackgroundColor = Color.makeARGB(255, 241, 245, 249);
+                // Elevated surfaces: a soft slate shadow instead of the old
+                // hard black, so cards and dialogs lift off the page.
+                this.shadowColor = Color.makeARGB(38, 15, 23, 42);
             } else {
-                this.backgroundColor = Color.makeARGB(255, 30, 30, 30);
-                this.foregroundColor = Color.makeARGB(255, 240, 240, 240);
-                this.accentColor = Color.makeARGB(255, 0, 122, 255);
-                this.controlNormalColor = Color.makeARGB(255, 60, 60, 60);
-                this.controlHoverColor = Color.makeARGB(255, 80, 80, 80);
-                this.controlPressedColor = Color.makeARGB(255, 100, 100, 100);
-                this.controlDisabledColor = Color.makeARGB(255, 50, 50, 50);
-                this.controlTextColor = Color.makeARGB(255, 255, 255, 255);
-                this.controlTextDisabledColor = Color.makeARGB(255, 150, 150, 150);
-                this.borderColor = Color.makeARGB(255, 120, 120, 120);
+                // Modern-web dark palette: a deep slate page (not pure black)
+                // with a brighter indigo primary, so surfaces stay legible
+                // without the flat "console" look of a black background.
+                this.backgroundColor = Color.makeARGB(255, 15, 23, 42);
+                this.foregroundColor = Color.makeARGB(255, 226, 232, 240);
+                this.accentColor = Color.makeARGB(255, 99, 102, 241);
+                this.controlNormalColor = Color.makeARGB(255, 30, 41, 59);
+                this.controlHoverColor = Color.makeARGB(255, 51, 65, 85);
+                this.controlPressedColor = Color.makeARGB(255, 71, 85, 105);
+                this.controlDisabledColor = Color.makeARGB(255, 30, 41, 59);
+                this.controlTextColor = Color.makeARGB(255, 241, 245, 249);
+                this.controlTextDisabledColor = Color.makeARGB(255, 100, 116, 139);
+                this.borderColor = Color.makeARGB(255, 51, 65, 85);
                 // Text-entry surface: slightly above the page background so the
                 // field reads as an editable well instead of vanishing into it.
-                this.inputBackgroundColor = Color.makeARGB(255, 42, 42, 42);
+                this.inputBackgroundColor = Color.makeARGB(255, 30, 41, 59);
                 // Title-bar chrome: a hair darker than the page so the bar
                 // reads as a distinct strip above the content.
-                this.titleBarBackgroundColor = Color.makeARGB(255, 24, 24, 24);
+                this.titleBarBackgroundColor = Color.makeARGB(255, 2, 6, 23);
+                // Elevated surfaces: a stronger black shadow, since dark
+                // surfaces need more contrast to read as raised.
+                this.shadowColor = Color.makeARGB(96, 0, 0, 0);
             }
             return this;
         }
@@ -560,6 +591,7 @@ public final class Theme {
         public Builder borderColor(int argb) { this.borderColor = argb; return this; }
         public Builder inputBackgroundColor(int argb) { this.inputBackgroundColor = argb; return this; }
         public Builder titleBarBackgroundColor(int argb) { this.titleBarBackgroundColor = argb; return this; }
+        public Builder shadowColor(int argb) { this.shadowColor = argb; return this; }
         public Builder controlCornerRadius(float r) { this.controlCornerRadius = r; return this; }
         public Builder focusRingRadius(float r) { this.focusRingRadius = r; return this; }
         public Builder padding(float p) { this.padding = p; return this; }

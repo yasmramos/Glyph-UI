@@ -2093,12 +2093,10 @@ public abstract class Component implements StyleNode, Disposable {
         try {
             paint.setColor(getTheme().getAccentColor());
             paint.setStroke(true);
-            paint.setStrokeWidth(1.5f);
+            // A solid 2px ring, as modern web UIs use for :focus-visible — a
+            // dashed outline reads as a legacy toolkit artefact.
+            paint.setStrokeWidth(2.0f);
             paint.setAntiAlias(true);
-            // The dash effect is an immutable native object shared by every
-            // focus ring in the process; it must never be closed here (or by
-            // Paint.close(), which does not own its PathEffect).
-            paint.setPathEffect(FOCUS_DASH_EFFECT);
             canvas.drawRRect(1.0f, 1.0f, Math.max(0.0f, width - 2.0f),
                     Math.max(0.0f, height - 2.0f),
                     getTheme().getFocusRingRadius(), getTheme().getFocusRingRadius(), paint);
@@ -2106,13 +2104,6 @@ public abstract class Component implements StyleNode, Disposable {
             paint.close();
         }
     }
-
-    /**
-     * Shared dashed path effect for focus rings (created once, never closed
-     * per-frame).
-     */
-    private static final io.github.humbleui.skija.PathEffect FOCUS_DASH_EFFECT
-            = io.github.humbleui.skija.PathEffect.makeDash(new float[]{4.0f, 3.0f}, 0.0f);
 
     /**
      * Handles mouse events.

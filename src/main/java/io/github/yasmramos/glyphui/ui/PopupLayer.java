@@ -1,10 +1,8 @@
 package io.github.yasmramos.glyphui.ui;
 
-import io.github.humbleui.skija.Paint;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
-import io.github.yasmramos.glyphui.graphics.Canvas;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,10 +40,6 @@ import java.util.List;
  * {@code Application} routes hover to the page underneath.</p>
  */
 public class PopupLayer extends Panel {
-
-    // Drop-shadow paints, created lazily on first render.
-    private Paint haloPaint;
-    private Paint dropPaint;
 
     /**
      * Menus that belong to this layer, including closed ones. Needed for the
@@ -350,32 +344,5 @@ public class PopupLayer extends Panel {
         float parentOffsetX = absX - trigger.getX();
         float parentOffsetY = absY - trigger.getY();
         return trigger.contains(windowX - parentOffsetX, windowY - parentOffsetY);
-    }
-
-    @Override
-    protected void render(Canvas canvas) {
-        // Drop shadows are painted first, in this layer's LOCAL space (the
-        // framework template already translated the origin), so the popups
-        // rendered by super() cover their own shadow.
-        if (haloPaint == null) {
-            haloPaint = new Paint();
-            haloPaint.setColor(0x38000000);
-        }
-        if (dropPaint == null) {
-            dropPaint = new Paint();
-            dropPaint.setColor(0x50000000);
-        }
-        for (Component child : children) {
-            if (!child.isVisible()) {
-                continue;
-            }
-            float left = child.getX();
-            float top = child.getY();
-            canvas.drawRect(left - 3.0f, top - 2.0f,
-                    child.getWidth() + 6.0f, child.getHeight() + 5.0f, haloPaint);
-            canvas.drawRect(left + 2.0f, top + 3.0f,
-                    child.getWidth(), child.getHeight(), dropPaint);
-        }
-        super.render(canvas);
     }
 }

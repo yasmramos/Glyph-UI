@@ -13,6 +13,7 @@ import io.github.yasmramos.glyphui.core.backend.RasterSurfaceFactory;
 import io.github.yasmramos.glyphui.core.backend.SurfaceFactory;
 import io.github.yasmramos.glyphui.core.backend.SurfaceResult;
 import io.github.yasmramos.glyphui.graphics.Canvas;
+import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.ComponentState;
 import io.github.yasmramos.glyphui.ui.Form;
@@ -1802,8 +1803,10 @@ public class Application implements AutoCloseable {
         try {
             // Clear once, on the identity CTM, so the whole PHYSICAL surface
             // is covered. (A second clear through the wrapper was redundant
-            // and polluted the save/restore stack.)
-            nativeCanvas.clear(Color.makeARGB(255, 30, 30, 30));
+            // and polluted the save/restore stack.) The colour comes from the
+            // current theme so switching to a light palette paints a light
+            // page instead of the hard-coded dark grey.
+            nativeCanvas.clear(Theme.current().getBackgroundColor());
 
             // HiDPI: map logical UI coordinates to physical device pixels
             nativeCanvas.scale(contentScaleX, contentScaleY);
