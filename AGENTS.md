@@ -74,3 +74,32 @@ Both directives work in the XML and DSL front-ends. The DSL also splits `{...}`
 inside string literals (`Text("Hi {name}")`) into `TextNode` + `BindingNode`
 children, matching the XML content behaviour.
 
+## Subclassing the text inputs
+
+`PasswordField` and `TextArea` both extend `TextField`. `TextField` exposes one
+extension point for subclasses: `protected String displayText()` returns the
+string actually painted and measured, while the buffer (and the caret index)
+stays unmasked — that is how `PasswordField` masks without breaking editing.
+`caret`/`selectionAnchor` are `protected` so a subclass can reimplement caret
+movement.
+
+Do NOT widen `TextField.getFont()`/`getFieldPadding()` (or other helpers that
+return native Skija types): a `protected` method returning `skija.Font` leaks a
+native type through the frozen API and fails `ApiSurfaceLeakageTest`. Subclasses
+that need a font resolve it themselves via `resolveFont(Theme.FontRole.BODY)` /
+`getTheme().getFont(...)`.
+
+`TextField` handles Ctrl+A/C/X/V with `event.getKeyChar()` lower-cased, so tests
+must pass the real key char (e.g. `'a'`), not `'\0'`. Ctrl+C/X/V run through the
+static `TextField.setClipboardHooks` installed by `Application`; unit tests
+without that wiring must not rely on them. `TextArea` deliberately keeps Enter
+(inserts `\n`, never submits) and makes Home/End line-relative; every other key
+falls through to `super.onKeyEvent`.
+
+## Environment
+
+The sandbox can be reset between turns, losing the JDK, Maven and the local
+`~/.m2` cache. Recover with
+`apt-get update && apt-get install -y openjdk-21-jdk-headless maven libegl1 libgles2`,
+then run the first Maven command online so the dependencies re-download before
+switching back to `-o`.

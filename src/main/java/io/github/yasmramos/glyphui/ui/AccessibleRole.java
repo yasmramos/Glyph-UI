@@ -152,5 +152,11 @@ public enum AccessibleRole {
     RANGE_SLIDER,
 
     /** A thin information strip along a window edge ({@link StatusBar}). */
-    STATUS_BAR
+    STATUS_BAR,
+
+    /** A single-line field whose characters are masked ({@link PasswordField}). */
+    PASSWORD_FIELD,
+
+    /** A multi-line editable text area ({@link TextArea}). */
+    TEXT_AREA
 }

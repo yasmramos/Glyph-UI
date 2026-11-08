@@ -28,9 +28,12 @@ Column(id = "root", class = "page", gap = 12, padding = 24) {
 
     Row(class = "card", gap = 8, padding = 16) {
         TextField(id = "name-field", class = "field", placeholder = "Your name")
+        PasswordField(id = "password-field", class = "field", placeholder = "Password")
         Button("Greet", id = "greet-btn", class = "btn-primary", onClick = sayHello)
         Button("Dark mode", id = "dark-btn", class = "btn-secondary", onClick = toggleTheme)
     }
+
+    TextArea(id = "notes", class = "field field-multiline", placeholder = "Notes…")
 
     Text(id = "status", class = "muted", "Ready.")
 }
