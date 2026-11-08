@@ -18,7 +18,7 @@ import java.util.List;
 
 /**
  * A custom, undecorated-window title bar — the piece that lets an application
- * put arbitrary content (a menu bar, buttons, status text, …) directly in the
+ * put its chrome (a menu bar, window controls, extra widgets) directly in the
  * window's title strip, the way FlatLaf's title pane does.
  *
  * <p>Pair it with an undecorated window
@@ -28,15 +28,33 @@ import java.util.List;
  * crisp vector icons, and supports dragging on its empty area to move the
  * window plus a double-click to toggle maximize.</p>
  *
- * <p>Layout is managed manually ({@link #doLayout()}): the window title sits at
- * the left, application content flows immediately after it, and the control
- * cluster is pinned to the right edge. This keeps the bar self-sizing without
- * depending on nested auto-measuring panels.</p>
+ * <p><strong>Zone layout.</strong> Following FlatLaf's title pane, the strip is
+ * split into three zones rather than a single left-to-right flow:</p>
+ *
+ * <ul>
+ *   <li><b>Leading zone</b> (left) — the embedded {@link MenuBar}, when one is
+ *       set with {@link #setMenuBar(MenuBar)}, followed by any widgets added
+ *       with {@link #addContent(Component)}. The menus are the leading content
+ *       of the strip, exactly as a native menu bar sits at the window's left.</li>
+ *   <li><b>Center zone</b> — the window title, centred in the space left
+ *       between the leading zone and the controls (and centred within the whole
+ *       bar when there is room, so it reads as a window title rather than a
+ *       label glued to the menus).</li>
+ *   <li><b>Trailing zone</b> (right) — the minimize / maximize / close
+ *       controls, pinned to the right edge.</li>
+ * </ul>
+ *
+ * <p>An embedded menu bar is set to {@link MenuBar#setEmbedded(boolean)
+ * embedded} mode: its own fill and border are dropped and its triggers become
+ * flat, so the menus blend into the title strip. The bar lays its zones out
+ * manually ({@link #doLayout()}) to stay self-sizing without depending on
+ * nested auto-measuring panels.</p>
  *
  * <p>Use it as the first child of a top-level {@link Panel} whose layout
  * stretches children to the full width (e.g. a {@link FlexLayout} row/column
  * with {@link FlexLayout.Align#STRETCH}); the bar reports a fixed preferred
- * height so it reads as a thin chrome strip above the scrollable content.</p>
+ * height so it reads as a thin chrome strip above the content. {@link Form}
+ * installs and wires it automatically for an undecorated window.</p>
  */
 public class TitleBar extends Panel {
 
@@ -46,10 +64,13 @@ public class TitleBar extends Panel {
     /** Width of each window-control button. */
     public static final float CONTROL_WIDTH = 48.0f;
 
-    /** Left inset before the title text. */
+    /** Left inset before the leading zone. */
     private static final float PAD_LEFT = 12.0f;
 
-    /** Default gap between adjacent title-bar items (title, content widgets). */
+    /** Right inset between the title and the control cluster. */
+    private static final float PAD_TRAILING = 8.0f;
+
+    /** Default gap between adjacent leading items (menu bar, extra widgets). */
     private static final float DEFAULT_ITEM_GAP = 8.0f;
 
     /** Two presses closer than this (nanos) count as a double-click. */
@@ -64,7 +85,10 @@ public class TitleBar extends Panel {
     private final Label titleLabel;
     private final List<Component> content = new ArrayList<>();
 
-    /** Gap between adjacent content widgets (and after the title). */
+    /** Optional embedded menu bar occupying the leading zone; null when none. */
+    private MenuBar menuBar;
+
+    /** Gap between adjacent leading items (menu bar, extra widgets). */
     private float itemGap = DEFAULT_ITEM_GAP;
     private final ControlButton minimizeButton;
     private final ControlButton maximizeButton;
@@ -144,7 +168,7 @@ public class TitleBar extends Panel {
     // ------------------------------------------------------------------
 
     /**
-     * Updates the window title shown at the left of the bar.
+     * Updates the window title shown in the bar's centre zone.
      *
      * @param title the new title text (null renders as empty)
      */
@@ -155,8 +179,46 @@ public class TitleBar extends Panel {
     }
 
     /**
-     * Adds an application widget (e.g. a menu-bar button) into the bar's
-     * content area, placed after the title and before the window controls.
+     * The embedded menu bar shown in the leading zone, or {@code null} when
+     * none has been installed.
+     *
+     * @return the embedded menu bar, or null
+     */
+    public MenuBar getMenuBar() {
+        return menuBar;
+    }
+
+    /**
+     * Installs a menu bar in the bar's leading zone, replacing any previous one
+     * (pass {@code null} to remove it). The menu bar is switched to
+     * {@link MenuBar#setEmbedded(boolean) embedded} mode so its chrome blends
+     * into the title strip, and is stretched to the strip height so its
+     * triggers' hover highlight spans the whole bar.
+     *
+     * @param menuBar the menu bar to embed, or null to remove it
+     */
+    public void setMenuBar(MenuBar menuBar) {
+        if (this.menuBar == menuBar) {
+            return;
+        }
+        if (this.menuBar != null) {
+            this.menuBar.setEmbedded(false);
+            super.remove(this.menuBar);
+        }
+        this.menuBar = menuBar;
+        if (menuBar != null) {
+            menuBar.setEmbedded(true);
+            super.add(menuBar);
+        }
+        markLayoutDirty();
+        invalidate();
+    }
+
+    /**
+     * Adds an application widget into the bar's leading zone, placed after the
+     * embedded menu bar and before the centred title. Use it for a leading
+     * icon, a back button or any extra chrome; the menu bar itself goes through
+     * {@link #setMenuBar(MenuBar)}.
      *
      * @param component the widget to add (ignored when null or already present)
      */
@@ -166,22 +228,27 @@ public class TitleBar extends Panel {
         }
         content.add(component);
         super.add(component);
+        markLayoutDirty();
+        invalidate();
     }
 
     /**
-     * Removes a previously added content widget.
+     * Removes a previously added leading-zone widget.
      *
      * @param component the widget to remove (no-op if not present)
      */
     public void removeContent(Component component) {
         if (content.remove(component)) {
             super.remove(component);
+            markLayoutDirty();
+            invalidate();
         }
     }
 
     /**
-     * Returns the horizontal gap (logical units) between adjacent content
-     * widgets, and between the title and the first widget.
+     * Returns the horizontal gap (logical units) between adjacent leading-zone
+     * items (the embedded menu bar and the widgets added with
+     * {@link #addContent(Component)}).
      *
      * @return the current item gap
      */
@@ -190,10 +257,10 @@ public class TitleBar extends Panel {
     }
 
     /**
-     * Sets the horizontal gap between adjacent content widgets. Use {@code 0}
-     * for a native-menubar look where the items sit flush against each other;
-     * negative values are clamped to {@code 0}. Takes effect on the next
-     * layout pass.
+     * Sets the horizontal gap between adjacent leading-zone items. Use
+     * {@code 0} for a native-menubar look where the items sit flush against
+     * each other; negative values are clamped to {@code 0}. Takes effect on the
+     * next layout pass.
      *
      * @param itemGap the gap in logical units (clamped to &ge; 0)
      */
@@ -208,10 +275,9 @@ public class TitleBar extends Panel {
     // ------------------------------------------------------------------
     @Override
     public float getPreferredWidth() {
-        float total = PAD_LEFT + titleLabel.getPreferredWidth();
-        for (Component c : content) {
-            total += c.getPreferredWidth() + itemGap;
-        }
+        float total = PAD_LEFT + leadingWidth();
+        total += titleLabel.getPreferredWidth();
+        total += PAD_TRAILING;
         total += CONTROL_WIDTH * 3;
         return Math.max(total, BAR_HEIGHT);
     }
@@ -229,10 +295,23 @@ public class TitleBar extends Panel {
         return new Dimension(w, BAR_HEIGHT);
     }
 
+    /** Total width of the leading zone (menu bar plus extra widgets). */
+    private float leadingWidth() {
+        float width = 0.0f;
+        if (menuBar != null) {
+            width = menuBar.getPreferredWidth();
+        }
+        for (Component c : content) {
+            width += (width > 0.0f ? itemGap : 0.0f) + c.getPreferredWidth();
+        }
+        return width;
+    }
+
     /**
-     * Positions the bar's children: the three window controls pinned to the
-     * right edge (close rightmost), the title at the left, and the application
-     * content flowing after the title. Called every frame from render().
+     * Positions the bar's children in three zones, FlatLaf-style: the menu bar
+     * and extra widgets at the leading (left) edge, the title centred, and the
+     * three window controls pinned to the trailing (right) edge (close
+     * rightmost). Called every frame from render().
      */
     @Override
     public void doLayout() {
@@ -242,7 +321,7 @@ public class TitleBar extends Panel {
         float barWidth = width;
         float barHeight = height;
 
-        // Controls, right to left: close | maximize | minimize.
+        // Trailing zone: controls, right to left (close | maximize | minimize).
         float right = barWidth;
         right -= CONTROL_WIDTH;
         placeControl(closeButton, right, barHeight);
@@ -250,27 +329,54 @@ public class TitleBar extends Panel {
         placeControl(maximizeButton, right, barHeight);
         right -= CONTROL_WIDTH;
         placeControl(minimizeButton, right, barHeight);
+        float trailingStart = right;
 
-        // Title at the left, vertically centred at its measured height.
-        Dimension td = titleLabel.measure(Float.MAX_VALUE, Float.MAX_VALUE);
-        float titleW = Math.max(0, td.width);
-        titleLabel.setX(PAD_LEFT);
-        titleLabel.setY((barHeight - Math.max(0, td.height)) / 2f);
-        titleLabel.setWidth(titleW);
-        titleLabel.setHeight(Math.max(0, td.height));
-
-        // Content widgets flow after the title and fill the bar height so their
-        // hover highlight spans the full strip (menubar-style).
-        float left = PAD_LEFT + titleW + itemGap;
+        // Leading zone: menu bar first, then extra widgets, each filling the
+        // bar height so a menu trigger's hover highlight spans the full strip.
+        float left = PAD_LEFT;
+        if (menuBar != null) {
+            float menuWidth = menuBar.getPreferredWidth();
+            menuBar.setX(left);
+            menuBar.setY(0);
+            menuBar.setWidth(menuWidth);
+            menuBar.setHeight(barHeight);
+            left += menuWidth;
+        }
         for (Component c : content) {
             Dimension d = c.measure(Float.MAX_VALUE, Float.MAX_VALUE);
             float cw = Math.max(0, d.width);
+            if (left > PAD_LEFT) {
+                left += itemGap;
+            }
             c.setX(left);
             c.setY(0);
             c.setWidth(cw);
             c.setHeight(barHeight);
-            left += cw + itemGap;
+            left += cw;
         }
+        float leadingEnd = left;
+
+        // Centre zone: the title, centred in the space left between the leading
+        // zone and the controls. When the whole bar has room, centre it against
+        // the full width so it reads as a window title (FlatLaf's behaviour).
+        Dimension td = titleLabel.measure(Float.MAX_VALUE, Float.MAX_VALUE);
+        float titleW = Math.max(0, td.width);
+        float freeStart = leadingEnd + PAD_TRAILING;
+        float freeEnd = trailingStart - PAD_TRAILING;
+        float freeWidth = Math.max(0.0f, freeEnd - freeStart);
+
+        float titleX;
+        float windowCenteredX = (barWidth - titleW) / 2f;
+        if (titleW <= freeWidth && windowCenteredX >= freeStart && windowCenteredX + titleW <= freeEnd) {
+            titleX = windowCenteredX;
+        } else {
+            titleX = freeStart + Math.max(0.0f, (freeWidth - titleW) / 2f);
+        }
+        float clippedW = Math.min(titleW, Math.max(0.0f, freeEnd - titleX));
+        titleLabel.setX(titleX);
+        titleLabel.setY((barHeight - Math.max(0, td.height)) / 2f);
+        titleLabel.setWidth(clippedW);
+        titleLabel.setHeight(Math.max(0, td.height));
     }
 
     private void placeControl(ControlButton button, float left, float barHeight) {
@@ -307,7 +413,7 @@ public class TitleBar extends Panel {
             }
         }
 
-        // Give children (title, content, controls) first refusal.
+        // Give children (menu bar, title, content, controls) first refusal.
         boolean consumed = super.onMouseEvent(event);
         if (consumed) {
             if (event.getType() == MouseEventType.PRESS) {
