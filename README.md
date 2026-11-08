@@ -200,22 +200,44 @@ bar is embedded into the title bar (FlatLaf-style): the menus sit at the left,
 the window title is centred, and the min/max/close controls are pinned right.
 
 ```java
-import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.ui.Form;
 
-try (Application app = new Application()) {
-    Form form = app.createForm("My App", 1280, 720)
+public static void main(String[] args) {
+    Form form = new Form("My App", 1280, 720)
             .decorated(false);   // no native title bar: Form's TitleBar is used
-    form.addMenu("File").addItem("Quit", () -> form.requestClose());
+    form.addMenu("File").addItem("Quit", () -> form.dispose());
     form.add(new Button("Click Me!"));
-    app.run();
+    form.setVisible(true);       // shows the window and runs until it closes
 }
 ```
+
+`setVisible(true)` is the Swing-style entry point: for a form that has no
+application yet it creates one and runs the event loop on the calling (main)
+thread until the window closes — no `Application` object to wire up. **It
+blocks**: the windowing backend requires the process main thread and owns its
+native message loop, so there is no separate event-dispatch thread to hand the
+loop to. Call it last, from `main`. If you already have an `Application`, use
+`app.createForm(...)` instead (see below); then `setVisible(true)` just shows
+the window and the application's `run()` drives the loop.
 
 The title bar is laid out in three zones — the leading menu bar, the centred
 title, and the trailing window controls — so menus never collide with the
 title. A **decorated** form keeps the native title bar and shows the menu bar
 as a separate row underneath it.
+
+When an `Application` object is already at hand, `createForm(...)` creates the
+form and initializes the application in one call (throwing on failure rather
+than returning a boolean):
+
+```java
+import io.github.yasmramos.glyphui.core.Application;
+
+try (Application app = new Application()) {
+    Form form = app.createForm("My App", 1280, 720).decorated(false);
+    form.addMenu("File").addItem("Quit", () -> form.requestClose());
+    app.run();
+}
+```
 
 When you need full control (a bespoke title bar, extra leading chrome such as a
 back button, or an existing content panel), `Form` and `TitleBar` still let you

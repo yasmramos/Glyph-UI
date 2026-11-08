@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.core.Window;
 import io.github.yasmramos.glyphui.layout.FlexLayout;
 import io.github.yasmramos.glyphui.style.Style;
@@ -38,20 +39,22 @@ import java.util.Objects;
  *       chrome and shows no title bar.</li>
  * </ul>
  *
- * <p>Typical use:</p>
+ * <p>Typical use — the Swing-style standalone form, with no {@code Application}
+ * in sight:</p>
  *
  * <pre>{@code
- * try (Application app = new Application()) {
- *     Form form = app.createForm("My App", 1024, 720).decorated(false);
- *     form.addMenu("File").addItem("Quit", () -> form.requestClose());
+ * public static void main(String[] args) {
+ *     Form form = new Form("My App", 1024, 720).decorated(false);
+ *     form.addMenu("File").addItem("Quit", () -> form.dispose());
  *     form.add(new Label("Hello, Glyph UI"));
- *     app.run();
+ *     form.setVisible(true);   // shows the window and runs until it closes
  * }
  * }</pre>
  *
- * <p>Prefer {@code Application#createForm} over {@code new Form(...)}: it
- * creates the form and initializes the application in one call, so the window
- * and the application lifecycle stay in step.</p>
+ * <p>Or, when an application object is already at hand, the one-call factory
+ * keeps the two in step: {@code app.createForm("My App", 1024, 720)}. Both
+ * paths produce the same window; the difference is only who owns the
+ * application and drives the event loop.</p>
  *
  * <p><strong>Fluent setters return {@code Form}.</strong> The creation-time
  * setters inherited from {@link Window} are overridden with a covariant return
@@ -71,6 +74,12 @@ public class Form extends Window {
 
     /** Root panel once the application has adopted this form; null before. */
     private Panel rootPanel;
+
+    /** The application that owns this form; null until the form is shown. */
+    private Application application;
+
+    /** True when this form started its own application (standalone use). */
+    private boolean ownsApplication;
 
     /**
      * Creates a form with the given title and logical size, using the default
@@ -205,6 +214,11 @@ public class Form extends Window {
     @Override
     protected void onAdopted(Panel rootPanel) {
         this.rootPanel = rootPanel;
+        // The application bound the root panel before calling this hook, so the
+        // context tells us who adopted the form (createForm/init path).
+        if (rootPanel.getContext() != null) {
+            this.application = rootPanel.getContext().app();
+        }
         FlexLayout layout = new FlexLayout(FlexLayout.Direction.COLUMN,
                 FlexLayout.Justify.FLEX_START, FlexLayout.Align.STRETCH);
         layout.setPadding(0.0f);
@@ -246,6 +260,108 @@ public class Form extends Window {
                     .setFloat(StyleProperty.FLEX_GROW, 1.0f).build());
         }
         rootPanel.add(contentPane);
+    }
+
+    // ------------------------------------------------------------------
+    // Swing-style lifecycle: show and run without an explicit Application
+    // ------------------------------------------------------------------
+
+    /**
+     * Shows this form and, when it is not already owned by an application,
+     * starts one and runs the event loop on the calling thread until the window
+     * closes — the Swing-style entry point that hides {@code Application} from
+     * the caller:
+     *
+     * <pre>{@code
+     * Form form = new Form("My App", 1024, 720);
+     * form.add(new Label("Hello"));
+     * form.setVisible(true);   // returns after the window is closed
+     * }</pre>
+     *
+     * <p><strong>It blocks.</strong> The toolkit's windowing backend (JWM)
+     * requires the process main thread and owns its native message loop, so
+     * there is no separate event-dispatch thread to hand the loop to (unlike
+     * Swing's EDT). {@code setVisible(true)} therefore shows the window and
+     * keeps the calling thread inside the loop until {@link #dispose()} (or the
+     * window's close button) ends it. Call it last, from {@code main}.</p>
+     *
+     * <p>When the form is already owned by an application — the
+     * {@code Application#createForm} path, or a form passed to
+     * {@code Application.init(Window)} — this method only shows the window and
+     * returns; that application's {@code run()} drives the loop instead.</p>
+     *
+     * @param visible true to show and run; false to hide (or, for a self-owned
+     *                form, to close it and end the loop)
+     */
+    public void setVisible(boolean visible) {
+        if (visible) {
+            if (rootPanel != null) {
+                // Already adopted by an application (createForm/init path): the
+                // owner drives the loop, so just present the window.
+                super.show();
+                return;
+            }
+            showAndRun();
+            return;
+        }
+        if (ownsApplication) {
+            // Self-owned loop: asking to hide is asking to end the program.
+            requestClose();
+            return;
+        }
+        super.hide();
+    }
+
+    /**
+     * Closes this form, releasing its native resources. For a standalone form
+     * (shown with {@link #setVisible(boolean)}) this ends the event loop and
+     * returns control to {@code main}; for a form owned by an application it
+     * behaves like {@link Window#close()}.
+     */
+    public void dispose() {
+        if (ownsApplication) {
+            requestClose();
+            return;
+        }
+        close();
+    }
+
+    /**
+     * Creates an application, adopts this form and runs its event loop until
+     * the window closes, then releases the application. Called by
+     * {@link #setVisible(boolean)} when the form has no owner yet.
+     */
+    private void showAndRun() {
+        Application app = new Application();
+        if (!app.init(this)) {
+            app.close();
+            throw new IllegalStateException("Failed to initialize the Form window");
+        }
+        application = app;
+        ownsApplication = true;
+        try {
+            app.run();
+        } finally {
+            app.close();
+            // close() disposed the root panel tree; drop the references so a
+            // later setVisible(true) starts from a clean slate instead of
+            // touching disposed widgets.
+            rootPanel = null;
+            application = null;
+            ownsApplication = false;
+        }
+    }
+
+    /**
+     * The application that owns this form, or {@code null} when it has not been
+     * shown yet. For a standalone form this is the application
+     * {@link #setVisible(boolean)} created and is cleared again once the loop
+     * ends.
+     *
+     * @return the owning application, or null
+     */
+    public Application getApplication() {
+        return application;
     }
 
     // ------------------------------------------------------------------
@@ -307,7 +423,7 @@ public class Form extends Window {
 
     @Override
     public Form visible(boolean visible) {
-        super.visible(visible);
+        setVisible(visible);
         return this;
     }
 

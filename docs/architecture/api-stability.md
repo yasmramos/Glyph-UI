@@ -147,6 +147,12 @@ Added to the public surface:
   create a `Form` and initialize the application in one call. Throws
   `IllegalStateException` when the application is already initialized or the
   window cannot be created (the boolean `init(Window)` path is unchanged).
+- `Form#setVisible(boolean)` / `Form#dispose()` / `Form#getApplication()`: the
+  Swing-style standalone lifecycle. `setVisible(true)` creates an internal
+  `Application` when the form has none and runs the event loop on the calling
+  (main) thread until the window closes; when the form already has an owner it
+  only presents the window. `dispose()` ends the loop (or closes the form), and
+  `getApplication()` exposes the owner (null before the first show).
 
 No removals: existing code that builds a plain `Window` keeps working exactly
 as before, and a standalone `MenuBar` keeps its toolbar-like chrome (embedded

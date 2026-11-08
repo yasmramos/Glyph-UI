@@ -435,10 +435,10 @@ public class Application implements AutoCloseable {
 
     /**
      * Creates a {@link Form} and initializes this application with it in a
-     * single call — the recommended way to start an application. The form is
-     * the toolkit's {@code JFrame}-style top-level window and becomes the
-     * application's window; keep using the returned reference to add menus and
-     * widgets:
+     * single call — the explicit-path way to start an application when an
+     * {@code Application} object is already at hand. The form is the toolkit's
+     * {@code JFrame}-style top-level window and becomes the application's
+     * window; keep using the returned reference to add menus and widgets:
      *
      * <pre>{@code
      * try (Application app = new Application()) {
@@ -448,6 +448,11 @@ public class Application implements AutoCloseable {
      *     app.run();
      * }
      * }</pre>
+     *
+     * <p>For Swing-style standalone use where no {@code Application} is wanted,
+     * build the form and show it instead — {@code new Form(...)} followed by
+     * {@link Form#setVisible(boolean)}; that path creates the application
+     * internally and runs the loop. Both produce the same window.</p>
      *
      * <p>The form is created undecorated-ready: creation-time attributes
      * (decoration, resizability, …) can still be set on the returned form
