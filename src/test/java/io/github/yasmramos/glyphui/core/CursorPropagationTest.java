@@ -8,6 +8,7 @@ import io.github.yasmramos.glyphui.ui.Button;
 import io.github.yasmramos.glyphui.ui.Component;
 import io.github.yasmramos.glyphui.ui.Label;
 import io.github.yasmramos.glyphui.ui.Panel;
+import io.github.yasmramos.glyphui.ui.SplitPane;
 import io.github.yasmramos.glyphui.ui.TextField;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -185,5 +186,41 @@ class CursorPropagationTest extends TestBase {
         assertEquals(GlyphCursor.CROSSHAIR, button.getCursor());
         button.setCursor(null);
         assertEquals(GlyphCursor.POINTING_HAND, button.getCursor());
+    }
+
+    @Test
+    void aPositionDependentCursorIsResolvedWithLocalCoordinates() {
+        initOrSkip();
+        SplitPane pane = new SplitPane(SplitPane.Orientation.HORIZONTAL,
+                new Panel(), new Panel());
+        place(pane, 0, 0, 200, 100);
+        app.getRootPanel().add(pane);
+
+        // The divider sits at 200 * 0.5 = 100; local coordinates match window
+        // coordinates because the pane is at the root origin.
+        backend.cursorPosListener.onCursorPos(101, 50);
+        assertEquals(GlyphCursor.RESIZE_EW, backend.lastCursor,
+                "the divider must show the resize cursor");
+
+        backend.cursorPosListener.onCursorPos(10, 50);
+        assertEquals(GlyphCursor.DEFAULT, backend.lastCursor,
+                "off the divider the pointer falls back to the arrow");
+    }
+
+    @Test
+    void aPositionDependentCursorUsesNestedLocalCoordinates() {
+        initOrSkip();
+        Panel container = new Panel();
+        place(container, 40, 30, 300, 200);
+        SplitPane pane = new SplitPane(SplitPane.Orientation.HORIZONTAL,
+                new Panel(), new Panel());
+        place(pane, 10, 20, 200, 100);
+        container.add(pane);
+        app.getRootPanel().add(container);
+
+        // Divider is 100 into the pane's local space: window x = 40 + 10 + 100.
+        backend.cursorPosListener.onCursorPos(151, 100);
+        assertEquals(GlyphCursor.RESIZE_EW, backend.lastCursor,
+                "local coordinates must account for every ancestor origin");
     }
 }
