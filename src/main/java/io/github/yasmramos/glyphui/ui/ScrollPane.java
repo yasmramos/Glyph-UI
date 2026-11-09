@@ -4,16 +4,17 @@ import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 
 /**
  * A minimal vertical scroll container.
  *
  * <p>Children keep their own layout coordinates; the pane paints them shifted
- * up by {@link #getScrollY()} and clips to its bounds. There is no scrollbar
- * (the toolkit has no wheel event yet): callers scroll through
- * {@link #setScrollY(float)} / {@link #scrollBy(float)} or the arrow and page
- * keys while the pane is focused.</p>
+ * up by {@link #getScrollY()} and clips to its bounds. There is no scrollbar:
+ * the pane scrolls through the mouse wheel (the application routes a
+ * {@link ScrollEvent} to it), {@link #setScrollY(float)} / {@link #scrollBy(float)}
+ * or the arrow and page keys while the pane is focused.</p>
  */
 public class ScrollPane extends Panel {
 
@@ -129,6 +130,44 @@ public class ScrollPane extends Panel {
                 event.getX(), event.getY() + (int) scrollY,
                 event.getButton(), event.getClickCount());
         return super.onMouseEvent(shifted) || inside;
+    }
+
+    @Override
+    public boolean onScroll(ScrollEvent event) {
+        if (!visible || !enabled) {
+            return false;
+        }
+        if (!contains(event.getX(), event.getY())) {
+            return false;
+        }
+        // A child that scrolls itself (a nested ScrollPane, a list) gets the
+        // gesture first; only when no child consumes it does this pane move,
+        // so a wheel over an inner scroller does not scroll both. Children are
+        // hit-tested in their unscrolled layout space, exactly as in
+        // onMouseEvent, so the scroll offset is added here.
+        int localX = event.getX() - (int) x;
+        int localY = event.getY() - (int) y;
+        ScrollEvent childEvent = new ScrollEvent(
+                event.getDeltaX(), event.getDeltaY(), localX, localY + (int) scrollY);
+        for (int i = children.size() - 1; i >= 0; i--) {
+            Component child = children.get(i);
+            if (!child.isVisible() || !child.isEnabled()) {
+                continue;
+            }
+            if (child.contains(childEvent.getX(), childEvent.getY())
+                    && child.onScroll(childEvent)) {
+                return true;
+            }
+        }
+        if (event.getDeltaY() == 0f) {
+            return false;
+        }
+        // Only consume the gesture when the pane actually moved: at the top or
+        // bottom (or with nothing to scroll) the leftover delta bubbles up to
+        // an enclosing scroller.
+        float before = scrollY;
+        scrollBy(event.getDeltaY() * LINE_STEP);
+        return scrollY != before;
     }
 
     @Override

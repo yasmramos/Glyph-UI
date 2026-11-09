@@ -673,6 +673,18 @@ public class Window implements AutoCloseable {
     }
 
     /**
+     * Registers the scroll (mouse-wheel) listener (null removes). The callback
+     * reports notch deltas and the pointer position; the application routes the
+     * gesture to the widget under the pointer.
+     *
+     * @param listener the listener, or null to remove the current one
+     */
+    public void setScrollListener(WindowBackend.ScrollListener listener) {
+        checkThread();
+        backend.setScrollListener(listener);
+    }
+
+    /**
      * Registers the window-focus listener (null removes). The callback fires
      * when the window is activated or deactivated, e.g. after Alt+Tab or a
      * click on another application; the toolkit uses it to dismiss open

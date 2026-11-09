@@ -356,6 +356,37 @@ public interface WindowBackend extends AutoCloseable {
     void setCursorPosListener(CursorPosListener listener);
 
     /**
+     * Receives mouse-wheel (and trackpad) scroll gestures.
+     *
+     * <p>The wheel is a gesture rather than a button, so it has its own
+     * listener instead of being folded into {@link MouseListener}: a backend
+     * reports the notch deltas and the pointer position, and the toolkit routes
+     * the gesture to the widget under the pointer. A backend without wheel
+     * support simply never fires it; the default body here is a no-op so adding
+     * this method does not break existing {@code WindowBackend}
+     * implementations.</p>
+     */
+    @FunctionalInterface
+    interface ScrollListener {
+        /**
+         * @param deltaX the horizontal delta in notches (positive scrolls right)
+         * @param deltaY the vertical delta in notches (positive scrolls down)
+         * @param x      logical X coordinate
+         * @param y      logical Y coordinate
+         */
+        void onScroll(float deltaX, float deltaY, double x, double y);
+    }
+
+    /**
+     * Registers the scroll listener (null removes).
+     *
+     * @param listener the listener, or null to remove the current one
+     */
+    default void setScrollListener(ScrollListener listener) {
+        // No-op: backends without wheel support never fire scroll gestures.
+    }
+
+    /**
      * Receives window focus changes (the user switched to another
      * application, minimized the window, ...). Backends without native focus
      * events never fire it.

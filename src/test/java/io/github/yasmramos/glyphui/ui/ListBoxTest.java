@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Property;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -210,5 +211,54 @@ class ListBoxTest extends TestBase {
         list.onKeyEvent(key(GlyphKeys.DOWN));
 
         assertEquals(0, list.getSelectedIndex());
+    }
+
+    @Test
+    void theWheelScrollsTheVisibleWindowWithoutChangingSelection() {
+        ListBox list = new ListBox();
+        for (int i = 0; i < 20; i++) {
+            list.addItem("Item " + i);
+        }
+        // Three rows fit, so the wheel can scroll the window.
+        list.setWidth(160.0f);
+        list.setHeight(3 * ListBox.ROW_HEIGHT);
+        list.setSelectedIndex(0);
+
+        boolean consumed = list.onScroll(new ScrollEvent(0f, 2f, 20, 5));
+
+        assertTrue(consumed);
+        assertEquals(0, list.getSelectedIndex(),
+                "the wheel scrolls the view without moving the selection");
+        // The window scrolled two rows, so the top visible row is now row 2:
+        // clicking it selects row 2 rather than row 0.
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(2, list.getSelectedIndex());
+    }
+
+    @Test
+    void theWheelClampsAtBothEndsAndReportsWhetherItMoved() {
+        ListBox list = new ListBox();
+        for (int i = 0; i < 6; i++) {
+            list.addItem("Item " + i);
+        }
+        list.setWidth(160.0f);
+        list.setHeight(3 * ListBox.ROW_HEIGHT);
+
+        assertTrue(list.onScroll(new ScrollEvent(0f, 100f, 20, 5)),
+                "a scroll that moves the window is consumed");
+        // Already at the bottom: nothing left to scroll.
+        assertFalse(list.onScroll(new ScrollEvent(0f, 1f, 20, 5)),
+                "a scroll at the end of the list is not consumed");
+
+        assertTrue(list.onScroll(new ScrollEvent(0f, -100f, 20, 5)));
+        assertFalse(list.onScroll(new ScrollEvent(0f, -1f, 20, 5)));
+    }
+
+    @Test
+    void aListThatFitsDoesNotConsumeTheWheel() {
+        ListBox list = sizedList(3);
+        assertFalse(list.onScroll(new ScrollEvent(0f, 1f, 20, 5)),
+                "nothing to scroll means the gesture bubbles up");
     }
 }

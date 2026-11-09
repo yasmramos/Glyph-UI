@@ -11,6 +11,7 @@ import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.FocusManager;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Theme;
 import io.github.yasmramos.glyphui.style.Style;
@@ -1027,6 +1028,34 @@ public class Panel extends Component {
                 continue;
             }
             if (child.onMouseEvent(localEvent)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean onScroll(ScrollEvent event) {
+        if (!visible || !enabled) {
+            return false;
+        }
+
+        // Same coordinate model as onMouseEvent: children are hit-tested in
+        // this panel's space, so the event is shifted into that space first
+        // and the top-most child under the pointer gets first refusal.
+        int localX = event.getX() - (int) x;
+        int localY = event.getY() - (int) y;
+        ScrollEvent localEvent = new ScrollEvent(event.getDeltaX(), event.getDeltaY(), localX, localY);
+
+        for (int i = children.size() - 1; i >= 0; i--) {
+            Component child = children.get(i);
+            if (!child.isVisible() || !child.isEnabled()) {
+                continue;
+            }
+            if (!child.contains(localX, localY)) {
+                continue;
+            }
+            if (child.onScroll(localEvent)) {
                 return true;
             }
         }
