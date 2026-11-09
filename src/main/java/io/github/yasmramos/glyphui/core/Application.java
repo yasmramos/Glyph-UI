@@ -6,6 +6,7 @@ import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.MouseEventType;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseButton;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.GlyphMods;
@@ -932,6 +933,22 @@ public class Application implements AutoCloseable {
             requestRepaint();
         });
 
+        // Mouse-wheel scrolling. The wheel is a gesture rather than a button:
+        // the gesture is routed to the deepest component under the pointer
+        // (popups first, so a wheel over an open menu scrolls it), and the
+        // first widget that consumes the delta wins. When nothing consumes it
+        // the gesture is simply dropped.
+        window.setScrollListener((dx, dy, x, y) -> {
+            ScrollEvent event = new ScrollEvent(dx, dy, (int) x, (int) y);
+            if (popupLayer.onScroll(event)) {
+                requestRepaint();
+                return;
+            }
+            if (rootPanel.onScroll(event)) {
+                requestRepaint();
+            }
+        });
+
         // Window deactivation dismisses floating UI. Without this, clicking
         // another application while a menu is open leaves the menu on screen
         // until the user clicks back inside the window (no press is delivered
@@ -1290,19 +1307,22 @@ public class Application implements AutoCloseable {
     /**
      * Converts a toolkit mouse button id to a Glyph MouseButton enum value.
      *
+     * <p>The mapping is total: ids {@code 0/1/2} are left/right/middle, and any
+     * other id (a backend without a vocabulary for the button, e.g. an extra
+     * thumb button) falls back to left. Wheel notches never reach this method:
+     * they arrive on the separate {@link WindowBackend.ScrollListener}, so a
+     * wheel flick can no longer be collapsed onto the left button and click the
+     * widget under the pointer.</p>
+     *
      * @param button the toolkit button id (0 = left, 1 = right, 2 = middle)
      * @return the corresponding MouseButton
      */
     private MouseButton convertMouseButton(int button) {
         return switch (button) {
-            case 1 ->
-                MouseButton.RIGHT;
-            case 2 ->
-                MouseButton.MIDDLE;
-            default ->
-                MouseButton.LEFT;
-        }; // toolkit button id: right
-        // toolkit button id: middle
+            case 1 -> MouseButton.RIGHT;
+            case 2 -> MouseButton.MIDDLE;
+            default -> MouseButton.LEFT;
+        };
     }
 
     /**

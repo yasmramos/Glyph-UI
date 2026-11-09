@@ -6,6 +6,7 @@ import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Property;
@@ -38,6 +39,10 @@ import java.util.logging.Logger;
  * parent), Home/End jump to the bounds and Enter/Space toggles. Selection
  * changes fire {@link #setOnSelect(Consumer) the selection handler} and update
  * {@link #selectedNodeProperty()}.</p>
+ *
+ * <p>The mouse wheel scrolls the visible rows one row per notch without moving
+ * the selection; when the tree already fits, the gesture is left unconsumed so
+ * an enclosing scroll container can take it.</p>
  */
 public class TreeView extends Component {
 
@@ -569,6 +574,27 @@ public class TreeView extends Component {
             requestRepaint();
         }
         return isInside;
+    }
+
+    @Override
+    public boolean onScroll(ScrollEvent event) {
+        if (!visible || !enabled || event.getDeltaY() == 0f) {
+            return false;
+        }
+        // One notch scrolls one row without moving the selection, so the wheel
+        // is a pure view gesture (matching ListBox).
+        int max = maxFirstVisible();
+        if (max == 0) {
+            return false;
+        }
+        int rows = Math.round(event.getDeltaY());
+        int target = Math.max(0, Math.min(firstVisible + rows, max));
+        if (target == firstVisible) {
+            return false;
+        }
+        firstVisible = target;
+        invalidatePaint();
+        return true;
     }
 
     @Override

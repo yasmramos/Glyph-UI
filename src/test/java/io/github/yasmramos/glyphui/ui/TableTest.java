@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Property;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -306,5 +307,37 @@ class TableTest extends TestBase {
     @Test
     void accessibleRoleIsTable() {
         assertEquals(AccessibleRole.TABLE, new Table().getAccessibleRole());
+    }
+
+    @Test
+    void theWheelScrollsTheBodyWithoutChangingSelection() {
+        Table table = new Table("Name", "Value");
+        for (int i = 0; i < 20; i++) {
+            table.addRow("Row " + i, String.valueOf(i));
+        }
+        // Three body rows fit below the header.
+        table.setWidth(200.0f);
+        table.setHeight(Table.HEADER_HEIGHT + 3 * Table.ROW_HEIGHT);
+        table.setSelectedIndex(0);
+
+        boolean consumed = table.onScroll(new ScrollEvent(0f, 2f, 20, 40));
+
+        assertTrue(consumed);
+        assertEquals(0, table.getSelectedIndex(),
+                "the wheel scrolls the view without moving the selection");
+    }
+
+    @Test
+    void theWheelClampsAtTheEndOfTheBody() {
+        Table table = new Table("Name", "Value");
+        for (int i = 0; i < 6; i++) {
+            table.addRow("Row " + i, String.valueOf(i));
+        }
+        table.setWidth(200.0f);
+        table.setHeight(Table.HEADER_HEIGHT + 3 * Table.ROW_HEIGHT);
+
+        assertTrue(table.onScroll(new ScrollEvent(0f, 100f, 20, 40)));
+        assertFalse(table.onScroll(new ScrollEvent(0f, 1f, 20, 40)),
+                "a scroll at the end of the body is not consumed");
     }
 }

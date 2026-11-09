@@ -6,6 +6,7 @@ import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Property;
@@ -32,6 +33,10 @@ import java.util.logging.Logger;
  * the pointer) and the keyboard: the arrow keys move it, Page Up/Down jump a
  * screen, and Home/End go to the bounds. Moving the selection fires the
  * {@link #setOnSelect(IntConsumer) selection handler}.</p>
+ *
+ * <p>The mouse wheel scrolls the visible window one row per notch without
+ * moving the selection; when the list already fits, the gesture is left
+ * unconsumed so an enclosing scroll container can take it.</p>
  *
  * <p>The selected index is observable through {@link #selectedIndexProperty()}.
  * A value of {@code -1} means "nothing selected".</p>
@@ -472,6 +477,28 @@ public class ListBox extends Component {
             requestRepaint();
         }
         return isInside;
+    }
+
+    @Override
+    public boolean onScroll(ScrollEvent event) {
+        if (!visible || !enabled || event.getDeltaY() == 0f) {
+            return false;
+        }
+        // One wheel notch scrolls one row; the selected item is intentionally
+        // left untouched so the wheel scrolls the view without changing what
+        // is selected (the modern web listbox behaviour).
+        int max = maxFirstVisible();
+        if (max == 0) {
+            return false;
+        }
+        int rows = Math.round(event.getDeltaY());
+        int target = Math.max(0, Math.min(firstVisible + rows, max));
+        if (target == firstVisible) {
+            return false;
+        }
+        firstVisible = target;
+        invalidatePaint();
+        return true;
     }
 
     @Override

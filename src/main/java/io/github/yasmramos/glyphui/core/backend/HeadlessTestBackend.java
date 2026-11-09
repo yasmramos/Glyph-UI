@@ -40,6 +40,7 @@ public class HeadlessTestBackend implements WindowBackend {
     public ContentScaleListener contentScaleListener;
     public MouseListener mouseListener;
     public CursorPosListener cursorPosListener;
+    public ScrollListener scrollListener;
     public KeyListener keyListener;
     public CharListener charListener;
     public TextInputListener textInputListener;
@@ -298,6 +299,11 @@ public class HeadlessTestBackend implements WindowBackend {
     @Override
     public void setCursorPosListener(CursorPosListener listener) {
         this.cursorPosListener = listener;
+    }
+
+    @Override
+    public void setScrollListener(ScrollListener listener) {
+        this.scrollListener = listener;
     }
 
     @Override

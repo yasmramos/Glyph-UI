@@ -5,6 +5,7 @@ import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Property;
@@ -38,6 +39,10 @@ import java.util.logging.Logger;
  * {@link #setOnSelect(IntConsumer) selection handler} and updates
  * {@link #selectedIndexProperty()}. A value of {@code -1} means "nothing
  * selected".</p>
+ *
+ * <p>The mouse wheel scrolls the visible body one row per notch without moving
+ * the selection; when the body already fits, the gesture is left unconsumed so
+ * an enclosing scroll container can take it.</p>
  */
 public class Table extends Component {
 
@@ -653,6 +658,27 @@ public class Table extends Component {
             requestRepaint();
         }
         return isInside;
+    }
+
+    @Override
+    public boolean onScroll(ScrollEvent event) {
+        if (!visible || !enabled || event.getDeltaY() == 0f) {
+            return false;
+        }
+        // One notch scrolls one row without moving the selection, so the wheel
+        // is a pure view gesture (matching ListBox).
+        int max = maxFirstVisible();
+        if (max == 0) {
+            return false;
+        }
+        int rows = Math.round(event.getDeltaY());
+        int target = Math.max(0, Math.min(firstVisible + rows, max));
+        if (target == firstVisible) {
+            return false;
+        }
+        firstVisible = target;
+        invalidatePaint();
+        return true;
     }
 
     @Override

@@ -10,7 +10,7 @@ A modern UI toolkit built on Skija and JWM for Java 17+.
 - Window management and event handling via JWM (io.github.humbleui:jwm)
 - Component-based UI architecture
 - Support for rounded corners, custom colors, and text rendering
-- Event system for mouse and keyboard input
+- Event system for mouse, keyboard and mouse-wheel (scroll) input
 - Layout managers for automatic component positioning
 - Cross-platform support (Windows, Linux, macOS)
 
@@ -68,6 +68,13 @@ JWM owns the process UI thread: its native message loop is started by
 `Application.init()`, which stays fully headless until then. Frames are
 blitted from the CPU surface onto the window layer via
 `WindowBackend.present(...)`.
+
+Mouse-wheel gestures arrive as `ScrollEvent`s on `Window.setScrollListener`.
+The wheel is a gesture rather than a button: it is routed to the deepest
+component under the pointer (popups first), and the first widget that consumes
+the delta wins. `ScrollPane`, `ListBox`, `Table` and `TreeView` scroll on it;
+a widget with nothing to scroll leaves the gesture unconsumed so an enclosing
+scroller can take it.
 
 ### Visual quality
 
@@ -190,6 +197,7 @@ src/main/java/io/github/yasmramos/glyphui/
 ├── events/
 │   ├── MouseEvent.java       # Mouse event class
 │   ├── KeyEvent.java         # Key event class
+│   ├── ScrollEvent.java      # Mouse-wheel scroll gesture
 │   ├── MouseEventType.java   # Mouse event type enum
 │   ├── MouseButton.java      # Mouse button enum
 │   ├── KeyEventType.java     # Key event type enum

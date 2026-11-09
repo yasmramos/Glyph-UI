@@ -12,6 +12,7 @@ import io.github.yasmramos.glyphui.reactive.Disposable;
 import io.github.yasmramos.glyphui.reactive.DisposableScope;
 import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.style.Style;
 import io.github.yasmramos.glyphui.style.StyleNode;
@@ -2232,6 +2233,24 @@ public abstract class Component implements StyleNode, Disposable {
      * components should stop; {@code false} otherwise
      */
     public abstract boolean onMouseEvent(MouseEvent event);
+
+    /**
+     * Handles a mouse-wheel (or trackpad) scroll gesture.
+     *
+     * <p>The default returns {@code false}, so the gesture bubbles to the
+     * nearest ancestor that scrolls (e.g. a {@link ScrollPane}). A widget that
+     * owns a scroll offset overrides this and returns {@code true} once it has
+     * consumed the delta. Coordinates follow the same convention as
+     * {@link #onMouseEvent}: a container shifts the event into its own local
+     * space before handing it to a child, so an implementation that is not a
+     * container can treat the coordinates as already relative to itself.</p>
+     *
+     * @param event the scroll event
+     * @return {@code true} if the event was consumed
+     */
+    public boolean onScroll(ScrollEvent event) {
+        return false;
+    }
 
     /**
      * Handles key events.
