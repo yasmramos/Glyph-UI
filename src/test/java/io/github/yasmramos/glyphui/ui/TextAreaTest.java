@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.RasterCanvasTestFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -232,5 +233,57 @@ class TextAreaTest extends TestBase {
 
         assertTrue(area.getCaret() >= 6,
                 "clicking near the bottom must place the caret on the last line");
+    }
+
+    @Test
+    void theWheelScrollsLongTextAndStopsAtTheEnd() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+
+        // setText reveals the caret (bottom); start from the top explicitly.
+        assertTrue(area.onScroll(new ScrollEvent(0f, -1000f, 10, 10)),
+                "the wheel scrolls back to the top");
+        assertTrue(area.onScroll(new ScrollEvent(0f, 3f, 10, 10)),
+                "a wheel that moves a long buffer is consumed");
+        assertTrue(area.onScroll(new ScrollEvent(0f, 1000f, 10, 10)),
+                "a large wheel clamps to the last line and is consumed");
+        assertFalse(area.onScroll(new ScrollEvent(0f, 3f, 10, 10)),
+                "scrolling past the end is a no-op once the bottom is reached");
+    }
+
+    @Test
+    void aBufferThatFitsDoesNotConsumeTheWheel() {
+        area.setText("only one line");
+
+        assertFalse(area.onScroll(new ScrollEvent(0f, 3f, 10, 10)),
+                "nothing to scroll means the gesture bubbles up");
+    }
+
+    @Test
+    void theScrollbarPaintsOnTheTrailingEdge() {
+        // width 200: bar spans [190, 198).
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+        ScrollbarRaster.assertBarPaintsOnTrailingEdge(area, 190);
+    }
+
+    @Test
+    void draggingTheThumbScrollsTheText() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+
+        // setText reveals the caret (bottom); start at the top so the thumb is
+        // at the top of the track before the drag.
+        area.onScroll(new ScrollEvent(0f, -1000f, 10, 10));
+
+        // Press the thumb near the top of the bar and drag it to the bottom.
+        area.onMouseEvent(new MouseEvent(MouseEventType.PRESS, 195, 10, MouseButton.LEFT, 1));
+        area.onMouseEvent(new MouseEvent(MouseEventType.DRAG, 195, 200, MouseButton.LEFT, 1));
+        area.onMouseEvent(new MouseEvent(MouseEventType.RELEASE, 195, 200, MouseButton.LEFT, 0));
+
+        // Scrolled to the end, so a click near the top lands on a late line.
+        area.onMouseEvent(new MouseEvent(MouseEventType.PRESS, 8, 12, MouseButton.LEFT, 1));
+        assertTrue(area.getCaret() >= 9, "the thumb drag scrolled the buffer to the end");
     }
 }
