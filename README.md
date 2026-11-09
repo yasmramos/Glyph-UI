@@ -72,14 +72,14 @@ blitted from the CPU surface onto the window layer via
 Mouse-wheel gestures arrive as `ScrollEvent`s on `Window.setScrollListener`.
 The wheel is a gesture rather than a button: it is routed to the deepest
 component under the pointer (popups first), and the first widget that consumes
-the delta wins. `ScrollPane`, `ListBox`, `Table` and `TreeView` scroll on it;
-a widget with nothing to scroll leaves the gesture unconsumed so an enclosing
-scroller can take it.
+the delta wins. `ScrollPane`, `ListBox`, `Table`, `TreeView` and `TextArea`
+scroll on it; a widget with nothing to scroll leaves the gesture unconsumed so
+an enclosing scroller can take it.
 
-`ScrollPane` draws a thin overlay scrollbar when its content overflows, the way
-a modern web page does: the bar is painted on top of the content so it never
-takes layout space, it fades in on hover, the thumb can be dragged and pressing
-the track pages towards the click.
+The scrolling containers draw a thin overlay scrollbar when their content
+overflows, the way a modern web page does: the bar is painted on top of the
+content so it never takes layout space, it fades in on hover, the thumb can be
+dragged and pressing the track pages towards the click.
 
 ### Visual quality
 
