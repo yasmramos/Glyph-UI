@@ -177,11 +177,18 @@ class StyleEngineCacheInvalidationTest {
         @DisplayName("Panel.getBackgroundColor resolves via the theme chain, not raw Theme.current()")
         void panelUsesGetThemeNotCurrent() throws Exception {
             String source = java.nio.file.Files.readString(
-                    java.nio.file.Path.of("src/main/java/io/github/yasmramos/glyphui/ui/Panel.java"));
+                            java.nio.file.Path.of(
+                                    "src/main/java/io/github/yasmramos/glyphui/ui/Panel.java"))
+                    // Normalize CRLF/CR so the brace search below is
+                    // line-ending agnostic: a Windows checkout must not turn
+                    // this source scan into a StringIndexOutOfBoundsException.
+                    .replace("\r\n", "\n")
+                    .replace('\r', '\n');
             int methodStart = source.indexOf("public int getBackgroundColor() {");
             assertTrue(methodStart >= 0, "test premise: method found in Panel source");
             // Method body ends at the closing brace on its own column-4 indent.
             int bodyEnd = source.indexOf("\n    }\n", methodStart);
+            assertTrue(bodyEnd > methodStart, "test premise: method body terminator found");
             String body = source.substring(methodStart, bodyEnd);
             assertTrue(body.contains("getTheme()") || body.contains("resolveAncestorThemeContext()"),
                     "Panel.getBackgroundColor() must resolve through the theme chain "
