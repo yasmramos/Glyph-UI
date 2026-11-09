@@ -3,6 +3,9 @@ package io.github.yasmramos.glyphui.core.logging;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 
@@ -31,7 +34,13 @@ class SLF4JStyleFormatterTest {
     void rendersCoreColumns() {
         String line = formatter.format(record(Level.INFO, "app.core", "started"));
 
-        assertTrue(line.startsWith("00:00:00.000 "), "millis=0 renders as 00:00:00.000");
+        // The formatter prints local wall-clock time, so the expected stamp must
+        // be computed in the same zone the test host runs in (not a fixed UTC).
+        String expectedTime = DateTimeFormatter.ofPattern("HH:mm:ss.SSS")
+                .withZone(ZoneId.systemDefault())
+                .format(Instant.EPOCH);
+        assertTrue(line.startsWith(expectedTime + " "),
+                "millis=0 renders as " + expectedTime);
         assertTrue(line.contains("[" + Thread.currentThread().getName() + "]"),
                 "the emitting thread name is included");
         assertTrue(line.contains("INFO "), "INFO is padded to five characters");
