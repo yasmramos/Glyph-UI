@@ -76,6 +76,11 @@ the delta wins. `ScrollPane`, `ListBox`, `Table` and `TreeView` scroll on it;
 a widget with nothing to scroll leaves the gesture unconsumed so an enclosing
 scroller can take it.
 
+`ScrollPane` draws a thin overlay scrollbar when its content overflows, the way
+a modern web page does: the bar is painted on top of the content so it never
+takes layout space, it fades in on hover, the thumb can be dragged and pressing
+the track pages towards the click.
+
 ### Visual quality
 
 Rendering defaults to a smooth, modern look; jagged edges are treated as a
