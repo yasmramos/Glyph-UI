@@ -82,6 +82,8 @@ public class Table extends Component {
     /** Index of the top-most visible body row. */
     private int firstVisible;
 
+    private final OverlayScrollbar scrollbar = new OverlayScrollbar();
+
     private IntConsumer onSelect;
     private Property<Integer> selectedIndexProperty;
 
@@ -479,6 +481,36 @@ public class Table extends Component {
         return Math.max(0, rows.size() - visibleRows());
     }
 
+    /** Height of the body viewport (everything below the header). */
+    private float bodyHeight() {
+        return Math.max(0.0f, height - HEADER_HEIGHT);
+    }
+
+    /** Body content height, offset by the header so the bar sits below it. */
+    private float scrollContentHeight() {
+        return HEADER_HEIGHT + rows.size() * ROW_HEIGHT;
+    }
+
+    /** The body scroll offset in pixels, mirroring {@link #firstVisible}. */
+    private float scrollOffsetPixels() {
+        return firstVisible * ROW_HEIGHT;
+    }
+
+    /** The largest body offset the table accepts, in pixels. */
+    private float scrollMaxPixels() {
+        return maxFirstVisible() * ROW_HEIGHT;
+    }
+
+    /** Moves the visible body window by whole rows, clamped to the range. */
+    private void scrollRows(int delta) {
+        int max = maxFirstVisible();
+        int target = Math.max(0, Math.min(firstVisible + delta, max));
+        if (target != firstVisible) {
+            firstVisible = target;
+            invalidatePaint();
+        }
+    }
+
     /** Scrolls the window so the selected row is inside it. */
     private void ensureSelectionVisible() {
         if (selectedIndex < 0) {
@@ -634,7 +666,14 @@ public class Table extends Component {
             return false;
         }
         boolean isInside = contains(event.getX(), event.getY());
+        float localX = event.getX() - x;
+        float localY = event.getY() - y;
         ComponentState oldState = state;
+
+        // The overlay bar sits above the body, so it gets the pointer first.
+        if (handleScrollbar(event, isInside, localX, localY)) {
+            return true;
+        }
 
         switch (event.getType()) {
             case MOVE -> setState(isInside ? ComponentState.HOVER : ComponentState.IDLE);
@@ -658,6 +697,63 @@ public class Table extends Component {
             requestRepaint();
         }
         return isInside;
+    }
+
+    /**
+     * Gives the overlay scrollbar the pointer before the body rows. A press on
+     * the thumb starts a drag, a press on the track pages by a viewport, and a
+     * drag maps the pointer back to whole rows.
+     *
+     * @return true when the event was consumed by the bar
+     */
+    private boolean handleScrollbar(MouseEvent event, boolean isInside,
+            float localX, float localY) {
+        switch (event.getType()) {
+            case PRESS -> {
+                if (isInside && event.getButton() == MouseButton.LEFT) {
+                    OverlayScrollbar.Press where = scrollbar.press(localX, localY,
+                            width, bodyHeight(), HEADER_HEIGHT, scrollContentHeight(),
+                            scrollOffsetPixels(), scrollMaxPixels());
+                    if (where != OverlayScrollbar.Press.NONE) {
+                        requestFocusFromPointer();
+                        if (where == OverlayScrollbar.Press.TRACK_BEFORE) {
+                            scrollRows(-visibleRows());
+                        } else if (where == OverlayScrollbar.Press.TRACK_AFTER) {
+                            scrollRows(visibleRows());
+                        }
+                        invalidatePaint();
+                        return true;
+                    }
+                }
+            }
+            case DRAG -> {
+                if (scrollbar.isDragging() && event.getButton() == MouseButton.LEFT) {
+                    float target = scrollbar.drag(localY, bodyHeight(), HEADER_HEIGHT,
+                            scrollContentHeight(), scrollMaxPixels());
+                    if (!Float.isNaN(target)) {
+                        firstVisible = Math.max(0, Math.min(
+                                Math.round(target / ROW_HEIGHT), maxFirstVisible()));
+                        invalidatePaint();
+                        return true;
+                    }
+                }
+            }
+            case RELEASE -> {
+                if (scrollbar.release()) {
+                    invalidatePaint();
+                    return true;
+                }
+            }
+            case MOVE -> {
+                if (scrollbar.setHover(scrollbar.isOverTrack(localX, localY,
+                        width, bodyHeight(), HEADER_HEIGHT, scrollContentHeight()))) {
+                    invalidatePaint();
+                }
+            }
+            default -> {
+            }
+        }
+        return false;
     }
 
     @Override
@@ -791,6 +887,9 @@ public class Table extends Component {
         borderPaint.setColor(getTheme().getBorderColor());
         canvas.drawRect(0.5f, 0.5f, Math.max(0.0f, width - 1.0f),
                 Math.max(0.0f, height - 1.0f), borderPaint);
+
+        scrollbar.render(canvas, width, bodyHeight(), HEADER_HEIGHT,
+                scrollContentHeight(), scrollOffsetPixels(), scrollMaxPixels(), getTheme());
     }
 
     private void ensurePaints() {
@@ -825,6 +924,7 @@ public class Table extends Component {
 
     @Override
     protected void onDispose() {
+        scrollbar.dispose();
         closeQuietly(bgPaint);
         bgPaint = null;
         closeQuietly(headerPaint);

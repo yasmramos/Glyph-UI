@@ -363,4 +363,51 @@ class TreeViewTest extends TestBase {
         assertFalse(tree.onScroll(new ScrollEvent(0f, 1f, 20, 5)),
                 "a scroll at the end of the tree is not consumed");
     }
+
+    @Test
+    void draggingTheThumbScrollsTheTree() {
+        TreeView tree = twentyRootsThreeRows();
+
+        // The bar is 8 wide on the trailing edge, 2 in from the right.
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 194, 4));
+        tree.onMouseEvent(mouse(MouseEventType.DRAG, 194, 200));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 194, 200));
+
+        // Scrolled to the end (20 nodes, 3 visible, so the top row is index 17).
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(17, tree.getSelectedRow(),
+                "the thumb drag scrolled the tree to the end");
+    }
+
+    @Test
+    void pressingTheTrackPagesTheTree() {
+        TreeView tree = twentyRootsThreeRows();
+
+        // A press below the thumb pages down by a viewport (three rows).
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 194, 60));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 194, 60));
+
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(3, tree.getSelectedRow(),
+                "a track press paged the window down by one viewport");
+    }
+
+    private static TreeView twentyRootsThreeRows() {
+        TreeView tree = new TreeView();
+        for (int i = 0; i < 20; i++) {
+            tree.addRoot("Node " + i);
+        }
+        tree.refresh();
+        tree.setWidth(200.0f);
+        tree.setHeight(3 * TreeView.ROW_HEIGHT);
+        return tree;
+    }
+
+    @Test
+    void theScrollbarPaintsOnTheTrailingEdge() {
+        // width 200: bar spans [190, 198).
+        ScrollbarRaster.assertBarPaintsOnTrailingEdge(twentyRootsThreeRows(), 190);
+    }
 }

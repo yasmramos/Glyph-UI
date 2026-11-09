@@ -61,6 +61,8 @@ public class ListBox extends Component {
     /** Index of the top-most visible row. */
     private int firstVisible;
 
+    private final OverlayScrollbar scrollbar = new OverlayScrollbar();
+
     private IntConsumer onSelect;
     private Property<Integer> selectedIndexProperty;
 
@@ -306,6 +308,31 @@ public class ListBox extends Component {
         return Math.max(0, items.size() - visibleRows());
     }
 
+    /** Total pixel height of the rows, for sizing the scrollbar. */
+    private float scrollContentHeight() {
+        return items.size() * ROW_HEIGHT;
+    }
+
+    /** The scroll offset expressed in pixels, mirroring {@link #firstVisible}. */
+    private float scrollOffsetPixels() {
+        return firstVisible * ROW_HEIGHT;
+    }
+
+    /** The largest offset the list accepts, in pixels. */
+    private float scrollMaxPixels() {
+        return maxFirstVisible() * ROW_HEIGHT;
+    }
+
+    /** Moves the visible window by whole rows, clamped to the item range. */
+    private void scrollRows(int delta) {
+        int max = maxFirstVisible();
+        int target = Math.max(0, Math.min(firstVisible + delta, max));
+        if (target != firstVisible) {
+            firstVisible = target;
+            invalidatePaint();
+        }
+    }
+
     /** Scrolls the window so the selected row is inside it. */
     private void ensureSelectionVisible() {
         if (selectedIndex < 0) {
@@ -414,6 +441,9 @@ public class ListBox extends Component {
         borderPaint.setColor(getTheme().getBorderColor());
         canvas.drawRect(0.5f, 0.5f, Math.max(0.0f, width - 1.0f),
                 Math.max(0.0f, height - 1.0f), borderPaint);
+
+        scrollbar.render(canvas, width, height, 0.0f, scrollContentHeight(),
+                scrollOffsetPixels(), scrollMaxPixels(), getTheme());
     }
 
     private void ensurePaints() {
@@ -453,7 +483,14 @@ public class ListBox extends Component {
             return false;
         }
         boolean isInside = contains(event.getX(), event.getY());
+        float localX = event.getX() - x;
+        float localY = event.getY() - y;
         ComponentState oldState = state;
+
+        // The overlay bar sits above the rows, so it gets the pointer first.
+        if (handleScrollbar(event, isInside, localX, localY)) {
+            return true;
+        }
 
         switch (event.getType()) {
             case MOVE -> setState(isInside ? ComponentState.HOVER : ComponentState.IDLE);
@@ -477,6 +514,63 @@ public class ListBox extends Component {
             requestRepaint();
         }
         return isInside;
+    }
+
+    /**
+     * Gives the overlay scrollbar the pointer before the rows. A press on the
+     * thumb starts a drag, a press on the track pages by a viewport, and a drag
+     * maps the pointer back to whole rows.
+     *
+     * @return true when the event was consumed by the bar
+     */
+    private boolean handleScrollbar(MouseEvent event, boolean isInside,
+            float localX, float localY) {
+        switch (event.getType()) {
+            case PRESS -> {
+                if (isInside && event.getButton() == MouseButton.LEFT) {
+                    OverlayScrollbar.Press where = scrollbar.press(localX, localY,
+                            width, height, 0.0f, scrollContentHeight(),
+                            scrollOffsetPixels(), scrollMaxPixels());
+                    if (where != OverlayScrollbar.Press.NONE) {
+                        requestFocusFromPointer();
+                        if (where == OverlayScrollbar.Press.TRACK_BEFORE) {
+                            scrollRows(-visibleRows());
+                        } else if (where == OverlayScrollbar.Press.TRACK_AFTER) {
+                            scrollRows(visibleRows());
+                        }
+                        invalidatePaint();
+                        return true;
+                    }
+                }
+            }
+            case DRAG -> {
+                if (scrollbar.isDragging() && event.getButton() == MouseButton.LEFT) {
+                    float target = scrollbar.drag(localY, height, 0.0f,
+                            scrollContentHeight(), scrollMaxPixels());
+                    if (!Float.isNaN(target)) {
+                        firstVisible = Math.max(0, Math.min(
+                                Math.round(target / ROW_HEIGHT), maxFirstVisible()));
+                        invalidatePaint();
+                        return true;
+                    }
+                }
+            }
+            case RELEASE -> {
+                if (scrollbar.release()) {
+                    invalidatePaint();
+                    return true;
+                }
+            }
+            case MOVE -> {
+                if (scrollbar.setHover(scrollbar.isOverTrack(localX, localY,
+                        width, height, 0.0f, scrollContentHeight()))) {
+                    invalidatePaint();
+                }
+            }
+            default -> {
+            }
+        }
+        return false;
     }
 
     @Override
@@ -548,6 +642,7 @@ public class ListBox extends Component {
 
     @Override
     protected void onDispose() {
+        scrollbar.dispose();
         if (bgPaint != null) {
             bgPaint.close();
             bgPaint = null;

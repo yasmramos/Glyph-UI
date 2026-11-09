@@ -8,7 +8,6 @@ import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
 import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Canvas;
-import io.github.humbleui.skija.Paint;
 
 /**
  * A minimal vertical scroll container with an overlay scrollbar.
@@ -33,26 +32,11 @@ public class ScrollPane extends Panel {
     public static final float LINE_STEP = 24.0f;
 
     /** Width of the overlay scrollbar, logical units. */
-    public static final float SCROLLBAR_WIDTH = 8.0f;
-
-    /** Inset between the scrollbar and the pane edges, logical units. */
-    private static final float SCROLLBAR_MARGIN = 2.0f;
-
-    /** Smallest thumb height, so the thumb stays grabbable, logical units. */
-    private static final float SCROLLBAR_MIN_THUMB = 24.0f;
-
-    /** Corner radius of the track and thumb, logical units. */
-    private static final float SCROLLBAR_RADIUS = SCROLLBAR_WIDTH / 2.0f;
+    public static final float SCROLLBAR_WIDTH = OverlayScrollbar.WIDTH;
 
     private float scrollY;
 
-    private boolean scrollbarHover;
-    private boolean scrollbarDragging;
-    private boolean scrollbarPressed;
-    private float scrollbarGrabOffset;
-
-    private Paint scrollbarTrackPaint;
-    private Paint scrollbarThumbPaint;
+    private final OverlayScrollbar scrollbar = new OverlayScrollbar();
 
     /**
      * Creates an empty scroll pane with no explicit bounds.
@@ -115,91 +99,18 @@ public class ScrollPane extends Panel {
      *         therefore shows the overlay scrollbar
      */
     public boolean isScrollbarVisible() {
-        return getMaxScrollY() > 0.0f && scrollbarTrackHeight() > 0.0f;
+        return scrollbar.isVisible(height, contentHeight());
     }
 
-    private float scrollbarTrackX() {
-        return width - SCROLLBAR_MARGIN - SCROLLBAR_WIDTH;
-    }
-
-    private float scrollbarTrackTop() {
-        return SCROLLBAR_MARGIN;
-    }
-
-    private float scrollbarTrackHeight() {
-        return Math.max(0.0f, height - 2.0f * SCROLLBAR_MARGIN);
-    }
-
-    private float scrollbarThumbHeight() {
-        float contentHeight = height + getMaxScrollY();
-        float ratio = contentHeight > 0.0f ? height / contentHeight : 1.0f;
-        return Math.max(SCROLLBAR_MIN_THUMB, scrollbarTrackHeight() * ratio);
-    }
-
-    private float scrollbarThumbY() {
-        float travel = scrollbarTrackHeight() - scrollbarThumbHeight();
-        if (travel <= 0.0f) {
-            return scrollbarTrackTop();
-        }
-        float max = getMaxScrollY();
-        float fraction = max > 0.0f ? scrollY / max : 0.0f;
-        return scrollbarTrackTop() + fraction * travel;
-    }
-
-    private boolean isOverScrollbar(float localX, float localY) {
-        if (!isScrollbarVisible()) {
-            return false;
-        }
-        float trackX = scrollbarTrackX();
-        return localX >= trackX && localX < trackX + SCROLLBAR_WIDTH
-                && localY >= scrollbarTrackTop()
-                && localY < scrollbarTrackTop() + scrollbarTrackHeight();
-    }
-
-    private boolean isOverThumb(float localX, float localY) {
-        float thumbY = scrollbarThumbY();
-        return localX >= scrollbarTrackX()
-                && localX < scrollbarTrackX() + SCROLLBAR_WIDTH
-                && localY >= thumbY && localY < thumbY + scrollbarThumbHeight();
-    }
-
-    /** Maps a pointer position on the track to a scroll offset while dragging. */
-    private void dragScrollbarTo(float localY) {
-        float travel = scrollbarTrackHeight() - scrollbarThumbHeight();
-        if (travel <= 0.0f) {
-            return;
-        }
-        float top = scrollbarTrackTop();
-        float thumbY = Math.max(top, Math.min(localY - scrollbarGrabOffset, top + travel));
-        setScrollY((thumbY - top) / travel * getMaxScrollY());
-    }
-
-    private void ensureScrollbarPaints() {
-        if (scrollbarTrackPaint == null || scrollbarTrackPaint.isClosed()) {
-            scrollbarTrackPaint = new Paint();
-            scrollbarTrackPaint.setAntiAlias(true);
-        }
-        if (scrollbarThumbPaint == null || scrollbarThumbPaint.isClosed()) {
-            scrollbarThumbPaint = new Paint();
-            scrollbarThumbPaint.setAntiAlias(true);
-        }
-    }
-
-    private static int withAlpha(int argb, int alpha) {
-        return (alpha << 24) | (argb & 0x00FFFFFF);
+    /** The total height the children occupy, used to size the scrollbar. */
+    private float contentHeight() {
+        return height + getMaxScrollY();
     }
 
     @Override
     protected void onDispose() {
         super.onDispose();
-        if (scrollbarTrackPaint != null) {
-            scrollbarTrackPaint.close();
-            scrollbarTrackPaint = null;
-        }
-        if (scrollbarThumbPaint != null) {
-            scrollbarThumbPaint.close();
-            scrollbarThumbPaint = null;
-        }
+        scrollbar.dispose();
     }
 
     /**
@@ -246,33 +157,8 @@ public class ScrollPane extends Panel {
      * content clip so it does not scroll with the children.
      */
     private void renderScrollbar(Canvas canvas) {
-        if (!isScrollbarVisible()) {
-            return;
-        }
-        ensureScrollbarPaints();
-
-        float trackX = scrollbarTrackX();
-        float trackTop = scrollbarTrackTop();
-        float trackHeight = scrollbarTrackHeight();
-
-        // The track stays faint until the pointer is on the bar, matching the
-        // web convention of a scrollbar that only asserts itself on hover.
-        int trackAlpha = (scrollbarHover || scrollbarDragging) ? 0x40 : 0x1A;
-        scrollbarTrackPaint.setColor(withAlpha(getTheme().getForegroundColor(), trackAlpha));
-        canvas.drawRRect(trackX, trackTop, SCROLLBAR_WIDTH, trackHeight,
-                SCROLLBAR_RADIUS, SCROLLBAR_RADIUS, scrollbarTrackPaint);
-
-        int thumbAlpha;
-        if (scrollbarDragging) {
-            thumbAlpha = 0xC0;
-        } else if (scrollbarHover) {
-            thumbAlpha = 0xA0;
-        } else {
-            thumbAlpha = 0x66;
-        }
-        scrollbarThumbPaint.setColor(withAlpha(getTheme().getForegroundColor(), thumbAlpha));
-        canvas.drawRRect(trackX, scrollbarThumbY(), SCROLLBAR_WIDTH, scrollbarThumbHeight(),
-                SCROLLBAR_RADIUS, SCROLLBAR_RADIUS, scrollbarThumbPaint);
+        scrollbar.render(canvas, width, height, 0.0f, contentHeight(), scrollY,
+                getMaxScrollY(), getTheme());
     }
 
     /**
@@ -286,7 +172,7 @@ public class ScrollPane extends Panel {
         if (!visible || !contains(px, py)) {
             return null;
         }
-        if (isOverScrollbar(px - x, py - y)) {
+        if (scrollbar.isOverTrack(px - x, py - y, width, height, 0.0f, contentHeight())) {
             return this;
         }
         return super.getComponentAt(px, py);
@@ -307,41 +193,44 @@ public class ScrollPane extends Panel {
         // pointer to an offset even after it leaves the bar.
         switch (event.getType()) {
             case PRESS -> {
-                if (inside && event.getButton() == MouseButton.LEFT
-                        && isOverScrollbar(localX, localY)) {
-                    requestFocusFromPointer();
-                    scrollbarPressed = true;
-                    if (isOverThumb(localX, localY)) {
-                        scrollbarDragging = true;
-                        scrollbarGrabOffset = localY - scrollbarThumbY();
-                    } else {
-                        // Page towards the click: a track press above the thumb
-                        // scrolls up by a viewport, below it scrolls down.
-                        float page = Math.max(height, LINE_STEP);
-                        scrollBy(localY < scrollbarThumbY() ? -page : page);
+                if (inside && event.getButton() == MouseButton.LEFT) {
+                    OverlayScrollbar.Press where = scrollbar.press(
+                            localX, localY, width, height, 0.0f, contentHeight(),
+                            scrollY, getMaxScrollY());
+                    if (where != OverlayScrollbar.Press.NONE) {
+                        requestFocusFromPointer();
+                        if (where != OverlayScrollbar.Press.THUMB) {
+                            // Page towards the click: a track press above the
+                            // thumb scrolls up by a viewport, below it scrolls
+                            // down.
+                            float page = Math.max(height, LINE_STEP);
+                            scrollBy(where == OverlayScrollbar.Press.TRACK_BEFORE
+                                    ? -page : page);
+                        }
+                        invalidatePaint();
+                        return true;
                     }
-                    invalidatePaint();
-                    return true;
                 }
             }
             case DRAG -> {
-                if (scrollbarDragging && event.getButton() == MouseButton.LEFT) {
-                    dragScrollbarTo(localY);
-                    return true;
+                if (scrollbar.isDragging() && event.getButton() == MouseButton.LEFT) {
+                    float target = scrollbar.drag(localY, height, 0.0f, contentHeight(),
+                            getMaxScrollY());
+                    if (!Float.isNaN(target)) {
+                        setScrollY(target);
+                        return true;
+                    }
                 }
             }
             case RELEASE -> {
-                if (scrollbarPressed || scrollbarDragging) {
-                    scrollbarPressed = false;
-                    scrollbarDragging = false;
+                if (scrollbar.release()) {
                     invalidatePaint();
                     return true;
                 }
             }
             case MOVE -> {
-                boolean over = isOverScrollbar(localX, localY);
-                if (over != scrollbarHover) {
-                    scrollbarHover = over;
+                if (scrollbar.setHover(scrollbar.isOverTrack(
+                        localX, localY, width, height, 0.0f, contentHeight()))) {
                     invalidatePaint();
                 }
             }

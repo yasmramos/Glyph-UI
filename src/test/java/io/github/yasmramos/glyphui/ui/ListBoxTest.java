@@ -261,4 +261,59 @@ class ListBoxTest extends TestBase {
         assertFalse(list.onScroll(new ScrollEvent(0f, 1f, 20, 5)),
                 "nothing to scroll means the gesture bubbles up");
     }
+
+    @Test
+    void draggingTheThumbScrollsTheList() {
+        ListBox list = sixItemsThreeRows();
+
+        // The bar is 8 wide on the trailing edge, 2 in from the right.
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 154, 4));
+        list.onMouseEvent(mouse(MouseEventType.DRAG, 154, 200));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 154, 200));
+
+        // Scrolled to the end, so the top row is now the fourth item.
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(3, list.getSelectedIndex(),
+                "the thumb drag scrolled the window to the end");
+    }
+
+    @Test
+    void pressingTheTrackPagesTheList() {
+        ListBox list = sixItemsThreeRows();
+
+        // A press below the thumb pages down by a viewport (three rows).
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 154, 60));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 154, 60));
+
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(3, list.getSelectedIndex(),
+                "a track press paged the window down by one viewport");
+    }
+
+    @Test
+    void aPressOnTheTrailingEdgeOfAFittingListStillSelectsARow() {
+        ListBox list = sizedList(3);
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 154, 5));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 154, 5));
+        assertEquals(0, list.getSelectedIndex(),
+                "with no bar the trailing edge behaves like any other row");
+    }
+
+    private static ListBox sixItemsThreeRows() {
+        ListBox list = new ListBox();
+        for (int i = 0; i < 6; i++) {
+            list.addItem("Item " + i);
+        }
+        list.setWidth(160.0f);
+        list.setHeight(3 * ListBox.ROW_HEIGHT);
+        return list;
+    }
+
+    @Test
+    void theScrollbarPaintsOnTheTrailingEdge() {
+        // width 160: bar spans [150, 158).
+        ScrollbarRaster.assertBarPaintsOnTrailingEdge(sixItemsThreeRows(), 150);
+    }
 }
