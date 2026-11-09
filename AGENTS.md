@@ -22,6 +22,17 @@ can drag the bundle ratio below the gate.
 The Surefire reports in `target/surefire-reports/*.xml` are the quickest way to
 aggregate results without reading the Maven log.
 
+Keep tests independent of the host environment, since CI and developer
+machines differ:
+
+- Do not assert a fixed wall-clock string: the JUL formatter prints local time
+  (`ZoneId.systemDefault()`), so derive the expected stamp with the same zone
+  (a hard-coded `00:00:00.000` only holds on a UTC host).
+- A test that scans source text must normalize line endings
+  (`.replace("\r\n", "\n").replace('\r', '\n')`) before searching for a
+  multi-line needle such as `"\n    }\n"`; a CRLF checkout otherwise makes
+  `indexOf` return `-1` and `substring` throw.
+
 ## Conventions
 
 - All code, comments, Javadoc and docs in English.
