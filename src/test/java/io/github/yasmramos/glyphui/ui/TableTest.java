@@ -340,4 +340,48 @@ class TableTest extends TestBase {
         assertFalse(table.onScroll(new ScrollEvent(0f, 1f, 20, 40)),
                 "a scroll at the end of the body is not consumed");
     }
+
+    @Test
+    void draggingTheThumbScrollsTheBody() {
+        Table table = sixRowsThreeVisible();
+
+        // The bar runs down the body, below the header (28 tall).
+        table.onMouseEvent(mouse(MouseEventType.PRESS, 194, 30));
+        table.onMouseEvent(mouse(MouseEventType.DRAG, 194, 200));
+        table.onMouseEvent(mouse(MouseEventType.RELEASE, 194, 200));
+
+        // Scrolled to the end, so the top body row is now the fourth row.
+        table.onMouseEvent(mouse(MouseEventType.PRESS, 20, 30));
+        table.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 30));
+        assertEquals(3, table.getSelectedIndex(),
+                "the thumb drag scrolled the body to the end");
+    }
+
+    @Test
+    void aPressOnTheHeaderIsNotOnTheBar() {
+        Table table = sixRowsThreeVisible();
+
+        // The header is above the body viewport, so the bar does not cover it:
+        // the press selects a row the normal way (row -1 for the header).
+        table.onMouseEvent(mouse(MouseEventType.PRESS, 194, 10));
+        table.onMouseEvent(mouse(MouseEventType.RELEASE, 194, 10));
+        assertEquals(-1, table.getSelectedIndex(),
+                "a press on the header does not start a thumb drag");
+    }
+
+    private static Table sixRowsThreeVisible() {
+        Table table = new Table("Name", "Value");
+        for (int i = 0; i < 6; i++) {
+            table.addRow("Row " + i, String.valueOf(i));
+        }
+        table.setWidth(200.0f);
+        table.setHeight(Table.HEADER_HEIGHT + 3 * Table.ROW_HEIGHT);
+        return table;
+    }
+
+    @Test
+    void theScrollbarPaintsOnTheTrailingEdge() {
+        // width 200: bar spans [190, 198), starting below the header.
+        ScrollbarRaster.assertBarPaintsOnTrailingEdge(sixRowsThreeVisible(), 190);
+    }
 }
