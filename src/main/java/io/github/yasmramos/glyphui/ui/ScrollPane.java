@@ -15,8 +15,8 @@ import io.github.yasmramos.glyphui.graphics.Canvas;
  * <p>Children keep their own layout coordinates; the pane paints them shifted
  * up by {@link #getScrollY()} and clips to its bounds. The pane scrolls through
  * the mouse wheel (the application routes a {@link ScrollEvent} to it),
- * {@link #setScrollY(float)} / {@link #scrollBy(float)} or the arrow and page
- * keys while the pane is focused.</p>
+ * {@link #setScrollY(float)} / {@link #scrollBy(float)} or the arrow, page and
+ * Home/End keys while the pane is focused.</p>
  *
  * <p>When the children are taller than the viewport the pane draws a thin
  * overlay scrollbar on its trailing edge, the way a modern web page does. The
@@ -299,6 +299,8 @@ public class ScrollPane extends Panel {
             case GlyphKeys.DOWN -> scrollBy(LINE_STEP);
             case GlyphKeys.PAGE_UP -> scrollBy(-page);
             case GlyphKeys.PAGE_DOWN -> scrollBy(page);
+            case GlyphKeys.HOME -> setScrollY(0.0f);
+            case GlyphKeys.END -> setScrollY(getMaxScrollY());
             default -> super.onKeyEvent(event);
         }
     }
