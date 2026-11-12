@@ -137,6 +137,17 @@ class ScrollPaneTest extends TestBase {
     }
 
     @Test
+    void homeAndEndJumpToTheContentEnds() {
+        ScrollPane pane = overflowingPane();
+
+        pane.onKeyEvent(key(GlyphKeys.END));
+        assertEquals(200.0f, pane.getScrollY(), "End goes to the bottom of the content");
+
+        pane.onKeyEvent(key(GlyphKeys.HOME));
+        assertEquals(0.0f, pane.getScrollY(), "Home goes back to the top");
+    }
+
+    @Test
     void aPressOnTheThumbStartsADragThatMovesTheOffset() {
         ScrollPane pane = overflowingPane();
         // The thumb starts at the top of the track; grabbing it near its middle
