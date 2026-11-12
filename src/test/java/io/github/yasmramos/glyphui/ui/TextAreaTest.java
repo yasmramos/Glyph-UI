@@ -57,6 +57,17 @@ class TextAreaTest extends TestBase {
         return key(keyCode, ' ');
     }
 
+    private static String lines(int count) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            if (i > 0) {
+                sb.append('\n');
+            }
+            sb.append('l').append(i);
+        }
+        return sb.toString();
+    }
+
     @Test
     void reportsTheTextAreaAccessibleRole() {
         assertEquals(AccessibleRole.TEXT_AREA, area.getAccessibleRole());
@@ -141,6 +152,50 @@ class TextAreaTest extends TestBase {
 
         area.onKeyEvent(key(GlyphKeys.END)); // end of the last line
         assertEquals(9, area.getCaret());
+    }
+
+    @Test
+    void ctrlHomeAndEndJumpToTheBufferEnds() {
+        area.setText("abc\ndefgh\nij");
+
+        area.onKeyEvent(key(GlyphKeys.END, ' ', KeyModifier.CTRL));
+        assertEquals(area.getText().length(), area.getCaret(),
+                "Ctrl+End goes to the buffer end, not the line end");
+
+        area.onKeyEvent(key(GlyphKeys.HOME, ' ', KeyModifier.CTRL));
+        assertEquals(0, area.getCaret(),
+                "Ctrl+Home goes to the buffer start, not the line start");
+    }
+
+    @Test
+    void pageDownAndPageUpMoveByAViewport() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText(lines(20));
+        area.onKeyEvent(key(GlyphKeys.HOME, ' ', KeyModifier.CTRL)); // caret 0
+
+        area.onKeyEvent(key(GlyphKeys.PAGE_DOWN));
+        int afterPageDown = area.getCaret();
+        assertTrue(afterPageDown > 0, "Page Down advances the caret");
+        assertTrue(area.getText().charAt(afterPageDown - 1) == '\n',
+                "Page Down keeps the original column (0) at the target line start");
+
+        area.onKeyEvent(key(GlyphKeys.PAGE_UP));
+        assertEquals(0, area.getCaret(), "Page Up returns to the first line");
+    }
+
+    @Test
+    void repeatedPageDownClampsToTheEnd() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText(lines(20));
+        area.onKeyEvent(key(GlyphKeys.HOME, ' ', KeyModifier.CTRL));
+
+        for (int i = 0; i < 50; i++) {
+            area.onKeyEvent(key(GlyphKeys.PAGE_DOWN));
+        }
+        assertEquals(area.getText().length(), area.getCaret(),
+                "Page Down clamps to the end of the buffer");
     }
 
     @Test
