@@ -241,8 +241,75 @@ class ScrollPaneTest extends TestBase {
                 // absent well away from it.
                 assertTrue(hasInk(pixmap, 92, 0, 100, 100),
                         "the overlay bar must paint on the trailing edge");
-                assertFalse(hasInk(pixmap, 0, 0, 80, 100),
+                // Stop above the bottom fade band, which now tints the whole
+                // width; the point is that the bar does not bleed into the
+                // content columns further left.
+                assertFalse(hasInk(pixmap, 0, 0, 80, 90),
                         "the content area must not be tinted by the bar");
+            }
+            pane.dispose();
+        } finally {
+            holder[0].close();
+        }
+    }
+
+    @Test
+    void theBottomEdgeFadesWhileContentRemainsBelowTheFold() {
+        Assumptions.assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host");
+        Surface[] holder = new Surface[1];
+        Canvas canvas = RasterCanvasTestFactory.create(holder);
+        try {
+            canvas.clear(0xFFFFFFFF);
+            ScrollPane pane = overflowingPane();
+            pane.renderInternal(canvas);
+            canvas.flush();
+
+            try (Pixmap pixmap = new Pixmap()) {
+                assertTrue(holder[0].peekPixels(pixmap), "peekPixels should succeed");
+                // At the top there is nothing hidden above, so only the bottom
+                // edge is dimmed: the top row stays clean, the last row is the
+                // darkest and the fade weakens going up.
+                int top = pixmap.getColor(40, 0);
+                int mid = pixmap.getColor(40, 95);
+                int edge = pixmap.getColor(40, 99);
+                int above = pixmap.getColor(40, 89);
+                assertEquals(0x00FFFFFF, top & 0x00FFFFFF,
+                        "nothing is hidden above, so the top edge stays clean");
+                assertTrue((edge & 0x00FFFFFF) != 0x00FFFFFF,
+                        "the bottom edge must be tinted when content continues");
+                assertTrue(((edge & 0x00FFFFFF) & 0xFF) < ((mid & 0x00FFFFFF) & 0xFF),
+                        "the fade must get stronger towards the edge");
+                assertEquals(0x00FFFFFF, above & 0x00FFFFFF,
+                        "the fade must not reach well above the edge");
+            }
+            pane.dispose();
+        } finally {
+            holder[0].close();
+        }
+    }
+
+    @Test
+    void theTopEdgeFadesOnlyOnceThePaneHasScrolled() {
+        Assumptions.assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host");
+        Surface[] holder = new Surface[1];
+        Canvas canvas = RasterCanvasTestFactory.create(holder);
+        try {
+            canvas.clear(0xFFFFFFFF);
+            ScrollPane pane = overflowingPane();
+            pane.setScrollY(50.0f);
+            pane.renderInternal(canvas);
+            canvas.flush();
+
+            try (Pixmap pixmap = new Pixmap()) {
+                assertTrue(holder[0].peekPixels(pixmap), "peekPixels should succeed");
+                int strong = pixmap.getColor(40, 0);
+                int below = pixmap.getColor(40, 20);
+                assertTrue((strong & 0x00FFFFFF) != 0x00FFFFFF,
+                        "the top edge must be tinted once the pane has scrolled");
+                assertEquals(0x00FFFFFF, below & 0x00FFFFFF,
+                        "the top fade must stop a few pixels in");
             }
             pane.dispose();
         } finally {
