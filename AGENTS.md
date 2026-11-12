@@ -129,6 +129,17 @@ without that wiring must not rely on them. `TextArea` deliberately keeps Enter
 (inserts `\n`, never submits) and makes Home/End line-relative; every other key
 falls through to `super.onKeyEvent`.
 
+## Native types in internal plumbing
+
+Widgets that need Skija directly (gradients, shaders, native paints) keep it in a
+package-private helper in `io.github.yasmramos.glyphui.ui`, not on a widget's
+public surface — the same pattern as `OverlayScrollbar` (bar geometry) and
+`EdgeShadow` (the scroll edge fade). `ApiSurfaceLeakageTest` only forbids native
+types in `public`/`protected` signatures, so a `final class` with
+package-private methods is the sanctioned home for this plumbing. Widgets pass
+the `Canvas` facade, the `Theme` and plain floats; the helper owns the native
+`Paint`/`Shader` and releases them from the widget's `onDispose()`.
+
 ## Top-level windows: `Window` vs `Form`
 
 `core.Window` is the low-level window (the AWT `Frame` analogue); `ui.Form`

@@ -24,7 +24,9 @@ import io.github.yasmramos.glyphui.graphics.Canvas;
  * from the children. The thumb can be dragged, and pressing the track pages
  * towards the click; the scroll offset stays the single source of truth, so the
  * thumb always reflects the same {@link #getScrollY()} the keyboard and the
- * wheel move.</p>
+ * wheel move. A soft gradient dims the top edge once the pane has scrolled and
+ * the bottom edge while content remains below the fold, the way a modern page
+ * hints that there is more to see.</p>
  */
 public class ScrollPane extends Panel {
 
@@ -37,6 +39,7 @@ public class ScrollPane extends Panel {
     private float scrollY;
 
     private final OverlayScrollbar scrollbar = new OverlayScrollbar();
+    private final EdgeShadow edgeShadow = new EdgeShadow();
 
     /**
      * Creates an empty scroll pane with no explicit bounds.
@@ -111,6 +114,7 @@ public class ScrollPane extends Panel {
     protected void onDispose() {
         super.onDispose();
         scrollbar.dispose();
+        edgeShadow.dispose();
     }
 
     /**
@@ -149,6 +153,21 @@ public class ScrollPane extends Panel {
         }
 
         renderScrollbar(canvas);
+        renderEdgeShadow(canvas);
+    }
+
+    /**
+     * Dims the edge where more content is hidden: the top only once the pane has
+     * scrolled down, the bottom only while content still sits below the fold.
+     * Drawn after the scrollbar so the fade covers the full width.
+     */
+    private void renderEdgeShadow(Canvas canvas) {
+        if (scrollY > 0.0f) {
+            edgeShadow.render(canvas, width, height, EdgeShadow.Edge.TOP, getTheme());
+        }
+        if (scrollY < getMaxScrollY()) {
+            edgeShadow.render(canvas, width, height, EdgeShadow.Edge.BOTTOM, getTheme());
+        }
     }
 
     /**

@@ -81,6 +81,12 @@ overflows, the way a modern web page does: the bar is painted on top of the
 content so it never takes layout space, it fades in on hover, the thumb can be
 dragged and pressing the track pages towards the click.
 
+`ScrollPane` also dims the edge where more content is hidden — the top only once
+it has scrolled, the bottom only while content remains below the fold — with a
+short gradient rather than a hard line. The fade is a linear gradient anchored
+to the edge and needs no extra state: it is derived from the same scroll offset
+the wheel, the keyboard and the scrollbar drag already move.
+
 ### Visual quality
 
 Rendering defaults to a smooth, modern look; jagged edges are treated as a
