@@ -171,6 +171,15 @@ or `isFinished()` would lie to the frame loop. `AnimatedValue` (package-private)
 is the shared easing value: smooth-step, fixed duration, `isFinished()` when
 settled.
 
+Interactive controls fade their fill instead of snapping on hover/press. They
+carry an `AnimatedColor` (package-private, built on `AnimatedValue`) and call
+`color.sync(this, this, targetColor)` while painting: the first paint seeds the
+colour with the live state (no fade on appearance), a later state change starts
+the run and registers the widget as the animatable. `ColorBlend.lerp` (ARGB) and
+`ColorBlend.lerpByte` (one byte-scale value, e.g. a scrollbar alpha) are the
+single blend helpers — do not re-add a private `blend(...)` per widget.
+`Button`, `CheckBox` and `RadioButton` follow this.
+
 ## Top-level windows: `Window` vs `Form`
 
 `core.Window` is the low-level window (the AWT `Frame` analogue); `ui.Form`

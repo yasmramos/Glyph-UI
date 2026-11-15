@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
@@ -24,7 +25,7 @@ import java.util.function.Consumer;
  * safe in headless unit tests. Clicking or pressing Space toggles
  * {@link #isChecked()} and notifies the optional change listener.</p>
  */
-public class CheckBox extends Component implements Textual {
+public class CheckBox extends Component implements Textual, Animatable {
 
     /** Edge length of the square indicator. */
     public static final float BOX_SIZE = 18.0f;
@@ -40,6 +41,9 @@ public class CheckBox extends Component implements Textual {
     private Paint borderPaint;
     private Paint markPaint;
     private Paint textPaint;
+
+    /** The box fill, eased so hover and the check toggle fade in. */
+    private final AnimatedColor boxColor = new AnimatedColor(0);
 
     /**
      * Creates an unchecked check box with an empty caption and no explicit
@@ -236,7 +240,7 @@ public class CheckBox extends Component implements Textual {
                 : (state == ComponentState.HOVER
                         ? getTheme().getControlHoverColor()
                         : getTheme().getInputBackgroundColor());
-        boxPaint.setColor(fill);
+        boxPaint.setColor(boxColor.sync(this, this, fill));
         canvas.drawRect(0, boxY, box, box, boxPaint);
 
         borderPaint.setColor(getTheme().getBorderColor());
@@ -315,6 +319,25 @@ public class CheckBox extends Component implements Textual {
             setState(ComponentState.IDLE);
             toggle();
         }
+    }
+
+    /**
+     * Advances the box fill fade by one frame. {@link Animatable}
+     * implementation: the application drives it while a transition runs.
+     *
+     * @param deltaSeconds seconds elapsed since the previous frame
+     */
+    @Override
+    public void advance(float deltaSeconds) {
+        boxColor.advance(deltaSeconds);
+    }
+
+    /**
+     * @return true when the box fill has settled
+     */
+    @Override
+    public boolean isFinished() {
+        return boxColor.isFinished();
     }
 
     @Override
