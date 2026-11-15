@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -232,6 +233,31 @@ class NewWidgetsRasterTest extends TestBase {
         } finally {
             bar.dispose();
         }
+    }
+
+    @Test
+    @DisplayName("SegmentedControl eases the selected block between segments")
+    void segmentedControlGlidesTheSelectedBlock() {
+        SegmentedControl control = new SegmentedControl("Day", "Week");
+        control.setX(0);
+        control.setY(0);
+        control.setWidth(160);
+        control.setHeight(28);
+
+        // First paint places the block on the first segment: no glide.
+        control.renderInternal(canvas);
+        canvas.flush();
+        assertTrue(control.isFinished(), "the first paint places the block in place");
+
+        // Selecting another segment starts a glide; a caller drives it to settle.
+        control.setSelectedIndex(1);
+        control.renderInternal(canvas);
+        canvas.flush();
+        assertFalse(control.isFinished(), "selecting another segment must start a glide");
+        control.advance(1.0f);
+        assertTrue(control.isFinished(), "the glide settles once its duration elapses");
+
+        control.dispose();
     }
 
     private boolean anyPixelNotIn(int excluded, int x0, int y0, int x1, int y1) {
