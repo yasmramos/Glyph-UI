@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
@@ -32,7 +33,7 @@ import java.util.logging.Logger;
  *       never leave the button stuck in the pressed state.</li>
  * </ul>
  */
-public class Button extends Component implements Textual {
+public class Button extends Component implements Textual, Animatable {
     /**
      * Default horizontal padding added on each side of the measured text.
      * Matches the default theme's button padding; the theme and CSS
@@ -81,6 +82,13 @@ public class Button extends Component implements Textual {
     private Paint bgPaint;
     private Paint borderPaint;
     private Paint textPaint;
+
+    /**
+     * The background colour, eased across state changes so hover and press fade
+     * in instead of snapping. It rests at the current state's colour, so a
+     * button that is never animated paints exactly what it used to.
+     */
+    private final AnimatedColor bgColor = new AnimatedColor(0);
 
     // Cached measure() result plus the state it was computed from. Any
     // change to one of those inputs invalidates the cache.
@@ -552,6 +560,43 @@ public class Button extends Component implements Textual {
     }
 
     /**
+     * Returns the colour to paint for the current state, easing the background
+     * across state changes.
+     *
+     * <p>The first call seeds the animated colour with the live state, so an
+     * idle button paints exactly its idle colour and never fades in on
+     * appearance. Afterwards a state change retargets the eased value and
+     * registers the button with the owning application so the frame loop drives
+     * it; with no application live (a headless test) nothing drives the
+     * transition, so the colour stays put until a caller drives
+     * {@link #advance(float)}.</p>
+     *
+     * @return the ARGB colour to paint this frame
+     */
+    private int syncedBackgroundColor() {
+        return bgColor.sync(this, this, getBackgroundColor());
+    }
+
+    /**
+     * Advances the background fade by one frame. {@link Animatable}
+     * implementation: the application drives it while the transition runs.
+     *
+     * @param deltaSeconds seconds elapsed since the previous frame
+     */
+    @Override
+    public void advance(float deltaSeconds) {
+        bgColor.advance(deltaSeconds);
+    }
+
+    /**
+     * @return true when the background fade has settled
+     */
+    @Override
+    public boolean isFinished() {
+        return bgColor.isFinished();
+    }
+
+    /**
      * Gets the background color based on the current state.
      *
      * @return the appropriate background color
@@ -597,7 +642,7 @@ public class Button extends Component implements Textual {
         ensurePaints();
 
         // Update background color based on state
-        bgPaint.setColor(getBackgroundColor());
+        bgPaint.setColor(syncedBackgroundColor());
 
         float radius = getBorderRadius();
 

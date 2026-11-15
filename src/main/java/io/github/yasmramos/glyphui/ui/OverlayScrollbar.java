@@ -215,7 +215,7 @@ final class OverlayScrollbar implements Animatable {
         float highlight = highlightIntensity();
         int trackAlpha = (hover || dragging)
                 ? TRACK_ACTIVE
-                : blend(TRACK_REST, TRACK_ACTIVE, highlight);
+                : ColorBlend.lerpByte(TRACK_REST, TRACK_ACTIVE, highlight);
         trackPaint.setColor(withAlpha(theme.getForegroundColor(), trackAlpha));
         canvas.drawRRect(trackX, top, WIDTH, trackHeight(viewportHeight),
                 RADIUS, RADIUS, trackPaint);
@@ -226,7 +226,7 @@ final class OverlayScrollbar implements Animatable {
         } else if (hover) {
             thumbAlpha = THUMB_HOVER;
         } else {
-            thumbAlpha = blend(THUMB_REST, THUMB_ACTIVE, highlight);
+            thumbAlpha = ColorBlend.lerpByte(THUMB_REST, THUMB_ACTIVE, highlight);
         }
         thumbPaint.setColor(withAlpha(theme.getForegroundColor(), thumbAlpha));
         canvas.drawRRect(trackX,
@@ -311,11 +311,6 @@ final class OverlayScrollbar implements Animatable {
         }
         float faded = (idleSeconds - FADE_DELAY_SECONDS) / FADE_DURATION_SECONDS;
         return Math.max(0.0f, 1.0f - faded);
-    }
-
-    /** Linear blend of two alpha bytes by {@code t} in {@code [0, 1]}. */
-    private static int blend(int rest, int active, float t) {
-        return Math.round(rest + (active - rest) * t);
     }
 
     /** Releases the reusable paints. */
