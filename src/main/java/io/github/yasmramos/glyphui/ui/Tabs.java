@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
@@ -35,7 +36,7 @@ import java.util.List;
  * Pages can also be added programmatically with an explicit label through
  * {@link #addTab(String, Component)}.</p>
  */
-public class Tabs extends Panel {
+public class Tabs extends Panel implements Animatable {
 
     /** Height of the tab header strip, logical units. */
     public static final float HEADER_HEIGHT = 28.0f;
@@ -51,6 +52,16 @@ public class Tabs extends Panel {
     private int selectedIndex = -1;
     private int hoveredIndex = -1;
     private Property<Integer> selectedIndexProperty;
+
+    /**
+     * The selection underline's left edge and width, eased between tabs so the
+     * indicator glides instead of jumping. Both rest at the selected tab, so a
+     * container that never animates (headless, a screenshot) paints it in place.
+     */
+    private final AnimatedValue indicatorX = new AnimatedValue(0.0f);
+    private final AnimatedValue indicatorW = new AnimatedValue(0.0f);
+    /** Index the indicator currently rests on; -1 until the first selection. */
+    private int indicatorIndex = -1;
 
     private Paint headerPaint;
     private Paint borderPaint;
@@ -217,6 +228,62 @@ public class Tabs extends Panel {
         this.selectedIndex = index;
         applyVisibility();
         invalidateLayout();
+        glideIndicator();
+    }
+
+    /**
+     * Eases the selection underline towards the selected tab. The container
+     * registers itself with the owning application; with no application live
+     * (headless tests) nothing drives the glide, so the indicator stays put
+     * until a caller calls {@link #advance(float)}.
+     */
+    private void glideIndicator() {
+        float targetX = tabLeft(selectedIndex);
+        float targetW = tabWidth(selectedIndex);
+        // The first selection has no previous position to travel from, so it
+        // appears in place instead of sliding in from the left edge.
+        if (indicatorIndex < 0) {
+            indicatorX.snapTo(targetX);
+            indicatorW.snapTo(targetW);
+            indicatorIndex = selectedIndex;
+            return;
+        }
+        indicatorX.animateTo(targetX);
+        indicatorW.animateTo(targetW);
+        indicatorIndex = selectedIndex;
+        AnimationSupport.start(this, this);
+    }
+
+    /**
+     * Advances the indicator glide by one frame. {@link Animatable}
+     * implementation: register the container with
+     * {@code Application.addAnimatable(this)} and the loop feeds it the
+     * per-frame delta.
+     *
+     * @param deltaSeconds seconds elapsed since the previous frame
+     */
+    @Override
+    public void advance(float deltaSeconds) {
+        indicatorX.advance(deltaSeconds);
+        indicatorW.advance(deltaSeconds);
+        invalidatePaint();
+    }
+
+    /**
+     * @return true when the indicator has settled under the selected tab
+     */
+    @Override
+    public boolean isFinished() {
+        return indicatorX.isFinished() && indicatorW.isFinished();
+    }
+
+    /** Left edge of a tab cell, in the header strip's local space. */
+    private float tabLeft(int index) {
+        float cursor = 0.0f;
+        for (int i = 0; i < index; i++) {
+            cursor += tabWidth(i);
+        }
+        return cursor;
     }
 
     /**
@@ -294,11 +361,6 @@ public class Tabs extends Panel {
         float cursor = 0.0f;
         for (int i = 0; i < tabLabels.size(); i++) {
             float w = tabWidth(i);
-            if (i == selectedIndex) {
-                indicatorPaint.setColor(getTheme().getAccentColor());
-                canvas.drawRect(cursor, HEADER_HEIGHT - INDICATOR_THICKNESS,
-                        w, INDICATOR_THICKNESS, indicatorPaint);
-            }
             int color;
             if (!enabled) {
                 color = getTheme().getControlTextDisabledColor();
@@ -314,6 +376,14 @@ public class Tabs extends Panel {
             float textX = cursor + (w - textWidth) / 2.0f;
             canvas.drawString(tabLabels.get(i), textX, baseline, labelPaint, f);
             cursor += w;
+        }
+
+        // The underline glides between tabs; it is drawn after the labels so it
+        // reads on top of the header rule.
+        if (selectedIndex >= 0) {
+            indicatorPaint.setColor(getTheme().getAccentColor());
+            canvas.drawRect(indicatorX.get(), HEADER_HEIGHT - INDICATOR_THICKNESS,
+                    indicatorW.get(), INDICATOR_THICKNESS, indicatorPaint);
         }
 
         int saveCount = canvas.save();

@@ -161,6 +161,16 @@ clamp.
 each scrolling widget only calls `OverlayScrollbar.registerActivityWith(bar, this)`
 right after painting its bar; the highlight fades and the bar unregisters itself.
 
+A widget can also own a small motion and register itself when it starts, so the
+application gets the animation without any wiring: `ToggleSwitch` slides its
+knob and `Tabs` glides its selection underline. `AnimationSupport.start(owner,
+animatable)` resolves the owning `Application` through the component tree and is
+a no-op when the widget is detached (headless tests), so such a widget stays put
+until a caller drives `advance(...)` — never snap it in the no-application case,
+or `isFinished()` would lie to the frame loop. `AnimatedValue` (package-private)
+is the shared easing value: smooth-step, fixed duration, `isFinished()` when
+settled.
+
 ## Top-level windows: `Window` vs `Form`
 
 `core.Window` is the low-level window (the AWT `Frame` analogue); `ui.Form`

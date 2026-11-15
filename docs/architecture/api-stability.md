@@ -215,7 +215,11 @@ Added to the public surface:
   first animatable schedules a repaint; removing does not force one.
 - `Tooltip`, `Toast`, `ProgressBar` and `ProgressRing` implement `Animatable`;
   their existing `advance(float)` / `advanceAnimation(float)` methods keep
-  working unchanged.
+  working unchanged. `ToggleSwitch` and `Tabs` do too: each registers itself
+  when its motion starts (the knob slide, the tab indicator glide), so the
+  application gets the animation with no wiring. A detached widget (headless
+  tests) skips registration and stays put until a caller drives `advance(float)`,
+  so its `isFinished()` never lies to the frame loop.
 
 `Application#setAnimationCallback(Runnable)` is deprecated in favour of
 `addAnimatable`: the callback still runs every frame, but it hands no delta and
