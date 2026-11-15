@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
@@ -34,9 +35,11 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <p>Keyboard support mirrors {@link Tabs}: Left/Right move the selection,
- * Home/End jump to the ends, and the focused segment carries the ring.</p>
+ * Home/End jump to the ends, and the focused segment carries the ring. The
+ * selected block glides between segments through the shared
+ * {@link SlidingIndicator}, the same motion the {@link Tabs} underline uses.</p>
  */
-public class SegmentedControl extends Component {
+public class SegmentedControl extends Component implements Animatable {
 
     /** Height of the strip, logical units. */
     public static final float DEFAULT_HEIGHT = 28.0f;
@@ -58,6 +61,13 @@ public class SegmentedControl extends Component {
 
     private Consumer<Integer> onChange;
     private Property<Integer> selectedIndexProperty;
+
+    /**
+     * The selected block's left edge and width, eased between segments so the
+     * highlight glides instead of jumping. Both rest at the selected segment, so
+     * a control that never animates (headless, a screenshot) paints it in place.
+     */
+    private final SlidingIndicator indicator = new SlidingIndicator();
 
     private Paint bgPaint;
     private Paint selectedPaint;
@@ -267,6 +277,37 @@ public class SegmentedControl extends Component {
         return -1;
     }
 
+    /** Left edge of a segment cell, from the pre-measured widths. */
+    private static float segmentLeft(float[] widths, int index) {
+        float x = 0.0f;
+        for (int i = 0; i < index; i++) {
+            x += widths[i];
+        }
+        return x;
+    }
+
+    /**
+     * Advances the selected block's glide by one frame. {@link Animatable}
+     * implementation: register the control with
+     * {@code Application.addAnimatable(this)} and the loop feeds it the
+     * per-frame delta.
+     *
+     * @param deltaSeconds seconds elapsed since the previous frame
+     */
+    @Override
+    public void advance(float deltaSeconds) {
+        indicator.advance(deltaSeconds);
+        invalidatePaint();
+    }
+
+    /**
+     * @return true when the selected block has settled under its segment
+     */
+    @Override
+    public boolean isFinished() {
+        return indicator.isFinished();
+    }
+
     // ---- Rendering ---------------------------------------------------------
 
     @Override
@@ -280,12 +321,13 @@ public class SegmentedControl extends Component {
         canvas.drawRRect(0, 0, width, height, radius, radius, bgPaint);
 
         if (selectedIndex >= 0 && selectedIndex < widths.length) {
-            float x = 0.0f;
-            for (int i = 0; i < selectedIndex; i++) {
-                x += widths[i];
-            }
+            // Sync the glide while painting, so a selection made off the paint
+            // path (a headless test, markup) never resolves a font just to move
+            // the highlight. The first paint places it; a later change glides.
+            indicator.glideTo(this, segmentLeft(widths, selectedIndex), widths[selectedIndex]);
             selectedPaint.setColor(getAccentColor());
-            canvas.drawRect(x, 0, x + widths[selectedIndex], height, selectedPaint);
+            canvas.drawRect(indicator.left(), 0,
+                    indicator.left() + indicator.width(), height, selectedPaint);
         }
 
         FontMetrics m = f.getMetrics();

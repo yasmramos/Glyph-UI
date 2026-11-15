@@ -58,10 +58,7 @@ public class Tabs extends Panel implements Animatable {
      * indicator glides instead of jumping. Both rest at the selected tab, so a
      * container that never animates (headless, a screenshot) paints it in place.
      */
-    private final AnimatedValue indicatorX = new AnimatedValue(0.0f);
-    private final AnimatedValue indicatorW = new AnimatedValue(0.0f);
-    /** Index the indicator currently rests on; -1 until the first selection. */
-    private int indicatorIndex = -1;
+    private final SlidingIndicator indicator = new SlidingIndicator();
 
     private Paint headerPaint;
     private Paint borderPaint;
@@ -238,20 +235,7 @@ public class Tabs extends Panel implements Animatable {
      * until a caller calls {@link #advance(float)}.
      */
     private void glideIndicator() {
-        float targetX = tabLeft(selectedIndex);
-        float targetW = tabWidth(selectedIndex);
-        // The first selection has no previous position to travel from, so it
-        // appears in place instead of sliding in from the left edge.
-        if (indicatorIndex < 0) {
-            indicatorX.snapTo(targetX);
-            indicatorW.snapTo(targetW);
-            indicatorIndex = selectedIndex;
-            return;
-        }
-        indicatorX.animateTo(targetX);
-        indicatorW.animateTo(targetW);
-        indicatorIndex = selectedIndex;
-        AnimationSupport.start(this, this);
+        indicator.glideTo(this, tabLeft(selectedIndex), tabWidth(selectedIndex));
     }
 
     /**
@@ -264,8 +248,7 @@ public class Tabs extends Panel implements Animatable {
      */
     @Override
     public void advance(float deltaSeconds) {
-        indicatorX.advance(deltaSeconds);
-        indicatorW.advance(deltaSeconds);
+        indicator.advance(deltaSeconds);
         invalidatePaint();
     }
 
@@ -274,7 +257,7 @@ public class Tabs extends Panel implements Animatable {
      */
     @Override
     public boolean isFinished() {
-        return indicatorX.isFinished() && indicatorW.isFinished();
+        return indicator.isFinished();
     }
 
     /** Left edge of a tab cell, in the header strip's local space. */
@@ -382,8 +365,8 @@ public class Tabs extends Panel implements Animatable {
         // reads on top of the header rule.
         if (selectedIndex >= 0) {
             indicatorPaint.setColor(getTheme().getAccentColor());
-            canvas.drawRect(indicatorX.get(), HEADER_HEIGHT - INDICATOR_THICKNESS,
-                    indicatorW.get(), INDICATOR_THICKNESS, indicatorPaint);
+            canvas.drawRect(indicator.left(), HEADER_HEIGHT - INDICATOR_THICKNESS,
+                    indicator.width(), INDICATOR_THICKNESS, indicatorPaint);
         }
 
         int saveCount = canvas.save();
