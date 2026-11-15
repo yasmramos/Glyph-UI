@@ -165,6 +165,75 @@ No removals: existing code that builds a plain `Window` keeps working exactly
 as before, and a standalone `MenuBar` keeps its toolbar-like chrome (embedded
 mode is off by default).
 
+### Added per-widget pointer cursors
+
+Widgets now advertise the mouse-pointer shape they show while under the
+pointer, so a toolkit app gets the affordances a web page does (a hand over a
+button, a caret over editable text, a resize cursor on a split divider).
+
+Added to the public surface:
+
+- `io.github.yasmramos.glyphui.events.GlyphCursor` (enum): toolkit-owned
+  pointer vocabulary (`DEFAULT`, `POINTING_HAND`, `TEXT`, `CROSSHAIR`,
+  `RESIZE_NS`, `RESIZE_EW`, `WAIT`, `NOT_ALLOWED`). No native cursor type
+  crosses the boundary.
+- `Window#setCursor(GlyphCursor)` and the default `WindowBackend#setCursor`
+  SPI method: the application resolves the shape under the pointer and hands it
+  to the backend, which maps it onto its own native cursor. `null` normalizes
+  to `DEFAULT`, and `AbstractWindowBackend` de-duplicates repeated shapes so
+  the native layer is only touched on a real change.
+- `Component#getCursor()` / `setCursor(GlyphCursor)`: the shape a widget shows,
+  with `null` restoring the subclass default; an explicit override wins over
+  everything else.
+- `Component#defaultCursor()` (protected): the extension point a widget
+  overrides to declare one shape for its whole area (`Button` returns
+  `POINTING_HAND`, `TextField` returns `TEXT`).
+- `Component#getCursorAt(float, float)` / `cursorAt(float, float)` (the latter
+  protected) and `Component#toLocalX(float)` / `toLocalY(float)`: the
+  position-dependent variant. A widget whose affordance varies across its area
+  overrides `cursorAt` and inspects the local point — `SplitPane` returns
+  `RESIZE_EW` / `RESIZE_NS` only over its divider — while the base
+  implementation keeps returning `defaultCursor()`.
+
+A disabled component does not drive the pointer: its shape is ignored and the
+arrow is shown, matching the web convention that disabled controls lose their
+affordance.
+
+### Added the `Animatable` animation seam
+
+Time-based motion now has one public entry point, replacing the pattern where
+every caller measured frame time by hand.
+
+Added to the public surface:
+
+- `io.github.yasmramos.glyphui.core.Animatable` (interface): `advance(float)`
+  plus a default `isFinished()`. A widget whose look changes every frame
+  implements it and is registered once; the frame loop keeps repainting while
+  any is registered and advances each with the elapsed seconds of the frame.
+- `Application#addAnimatable(Animatable)` / `removeAnimatable(Animatable)`:
+  registration, next to the existing `setAnimationCallback`. Registering the
+  first animatable schedules a repaint; removing does not force one.
+- `Tooltip`, `Toast`, `ProgressBar` and `ProgressRing` implement `Animatable`;
+  their existing `advance(float)` / `advanceAnimation(float)` methods keep
+  working unchanged. `ToggleSwitch` and `Tabs` do too: each registers itself
+  when its motion starts (the knob slide, the tab indicator glide), so the
+  application gets the animation with no wiring. A detached widget (headless
+  tests) skips registration and stays put until a caller drives `advance(float)`,
+  so its `isFinished()` never lies to the frame loop.
+
+`Application#setAnimationCallback(Runnable)` is deprecated in favour of
+`addAnimatable`: the callback still runs every frame, but it hands no delta and
+applies no clamp, so it stays for compatibility only.
+
+`AnimationClock` (package-private) owns the timing and is deliberately not
+public: it seeds a zero delta on the first frame, clamps each step so a late
+frame cannot make an animation jump, and drops a finished animatable so the
+application returns to on-demand rendering. The overlay scrollbar's activity
+highlight uses the same seam, so no new public type is added for it.
+
+No removals: existing code that drives motion through `setAnimationCallback`
+keeps working exactly as before.
+
 ## Consequences
 
 - Audits become mechanical: apply the five rules, move violations to

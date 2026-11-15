@@ -186,16 +186,7 @@ public class Alert extends Component implements Textual {
      * follows the theme while still reading as the level's color.
      */
     private int fillColor() {
-        return blend(getTheme().getInputBackgroundColor(), getAccentColor(), FILL_BLEND);
-    }
-
-    /** Linear blend of {@code from} toward {@code to} by {@code t} in [0, 1]. */
-    private static int blend(int from, int to, float t) {
-        int a = Math.round(((from >>> 24) & 0xFF) * (1 - t) + ((to >>> 24) & 0xFF) * t);
-        int r = Math.round(((from >>> 16) & 0xFF) * (1 - t) + ((to >>> 16) & 0xFF) * t);
-        int g = Math.round(((from >>> 8) & 0xFF) * (1 - t) + ((to >>> 8) & 0xFF) * t);
-        int b = Math.round((from & 0xFF) * (1 - t) + (to & 0xFF) * t);
-        return (a << 24) | (r << 16) | (g << 8) | b;
+        return ColorBlend.lerp(getTheme().getInputBackgroundColor(), getAccentColor(), FILL_BLEND);
     }
 
     private Font font() {

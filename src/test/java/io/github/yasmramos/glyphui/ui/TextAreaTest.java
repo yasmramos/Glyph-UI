@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.RasterCanvasTestFactory;
 import org.junit.jupiter.api.AfterEach;
@@ -54,6 +55,17 @@ class TextAreaTest extends TestBase {
 
     private static KeyEvent key(int keyCode) {
         return key(keyCode, ' ');
+    }
+
+    private static String lines(int count) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            if (i > 0) {
+                sb.append('\n');
+            }
+            sb.append('l').append(i);
+        }
+        return sb.toString();
     }
 
     @Test
@@ -140,6 +152,50 @@ class TextAreaTest extends TestBase {
 
         area.onKeyEvent(key(GlyphKeys.END)); // end of the last line
         assertEquals(9, area.getCaret());
+    }
+
+    @Test
+    void ctrlHomeAndEndJumpToTheBufferEnds() {
+        area.setText("abc\ndefgh\nij");
+
+        area.onKeyEvent(key(GlyphKeys.END, ' ', KeyModifier.CTRL));
+        assertEquals(area.getText().length(), area.getCaret(),
+                "Ctrl+End goes to the buffer end, not the line end");
+
+        area.onKeyEvent(key(GlyphKeys.HOME, ' ', KeyModifier.CTRL));
+        assertEquals(0, area.getCaret(),
+                "Ctrl+Home goes to the buffer start, not the line start");
+    }
+
+    @Test
+    void pageDownAndPageUpMoveByAViewport() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText(lines(20));
+        area.onKeyEvent(key(GlyphKeys.HOME, ' ', KeyModifier.CTRL)); // caret 0
+
+        area.onKeyEvent(key(GlyphKeys.PAGE_DOWN));
+        int afterPageDown = area.getCaret();
+        assertTrue(afterPageDown > 0, "Page Down advances the caret");
+        assertTrue(area.getText().charAt(afterPageDown - 1) == '\n',
+                "Page Down keeps the original column (0) at the target line start");
+
+        area.onKeyEvent(key(GlyphKeys.PAGE_UP));
+        assertEquals(0, area.getCaret(), "Page Up returns to the first line");
+    }
+
+    @Test
+    void repeatedPageDownClampsToTheEnd() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText(lines(20));
+        area.onKeyEvent(key(GlyphKeys.HOME, ' ', KeyModifier.CTRL));
+
+        for (int i = 0; i < 50; i++) {
+            area.onKeyEvent(key(GlyphKeys.PAGE_DOWN));
+        }
+        assertEquals(area.getText().length(), area.getCaret(),
+                "Page Down clamps to the end of the buffer");
     }
 
     @Test
@@ -232,5 +288,84 @@ class TextAreaTest extends TestBase {
 
         assertTrue(area.getCaret() >= 6,
                 "clicking near the bottom must place the caret on the last line");
+    }
+
+    @Test
+    void theWheelScrollsLongTextAndStopsAtTheEnd() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+
+        // setText reveals the caret (bottom); start from the top explicitly.
+        assertTrue(area.onScroll(new ScrollEvent(0f, -1000f, 10, 10)),
+                "the wheel scrolls back to the top");
+        assertTrue(area.onScroll(new ScrollEvent(0f, 3f, 10, 10)),
+                "a wheel that moves a long buffer is consumed");
+        assertTrue(area.onScroll(new ScrollEvent(0f, 1000f, 10, 10)),
+                "a large wheel clamps to the last line and is consumed");
+        assertFalse(area.onScroll(new ScrollEvent(0f, 3f, 10, 10)),
+                "scrolling past the end is a no-op once the bottom is reached");
+    }
+
+    @Test
+    void aBufferThatFitsDoesNotConsumeTheWheel() {
+        area.setText("only one line");
+
+        assertFalse(area.onScroll(new ScrollEvent(0f, 3f, 10, 10)),
+                "nothing to scroll means the gesture bubbles up");
+    }
+
+    @Test
+    void theScrollbarPaintsOnTheTrailingEdge() {
+        // width 200: bar spans [190, 198).
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+        ScrollbarRaster.assertBarPaintsOnTrailingEdge(area, 190);
+    }
+
+    @Test
+    void draggingTheThumbScrollsTheText() {
+        assumeTrue(RasterCanvasTestFactory.isAvailable(),
+                "Skija native library not loadable on this host; skipping font-metric test");
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+
+        // setText reveals the caret (bottom); start at the top so the thumb is
+        // at the top of the track before the drag.
+        area.onScroll(new ScrollEvent(0f, -1000f, 10, 10));
+
+        // Press the thumb near the top of the bar and drag it to the bottom.
+        area.onMouseEvent(new MouseEvent(MouseEventType.PRESS, 195, 10, MouseButton.LEFT, 1));
+        area.onMouseEvent(new MouseEvent(MouseEventType.DRAG, 195, 200, MouseButton.LEFT, 1));
+        area.onMouseEvent(new MouseEvent(MouseEventType.RELEASE, 195, 200, MouseButton.LEFT, 0));
+
+        // Scrolled to the end, so a click near the top lands on a late line.
+        area.onMouseEvent(new MouseEvent(MouseEventType.PRESS, 8, 12, MouseButton.LEFT, 1));
+        assertTrue(area.getCaret() >= 9, "the thumb drag scrolled the buffer to the end");
+    }
+
+    @Test
+    void theEdgeShadowFadesTheTopOfTheTextWellWhenScrolled() {
+        // 200x100 with the default 8px padding: the content box is
+        // [8, 92) x [8, 92). Scrolled to the bottom there is hidden text above,
+        // so the top fade shows.
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+        area.onScroll(new ScrollEvent(0f, 1000f, 10, 10));
+        EdgeShadowRaster.render(area, (surface, pixmap) -> {
+            int top = EdgeShadowRaster.luma(pixmap.getColor(100, 10));
+            int middle = EdgeShadowRaster.luma(pixmap.getColor(100, 50));
+            assertTrue(top < middle,
+                    "scrolled down, the hidden text above must fade the well top");
+        });
+    }
+
+    @Test
+    void theEdgeShadowLeavesTheTextWellTopCleanAtTheStart() {
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+        area.onScroll(new ScrollEvent(0f, -1000f, 10, 10));
+        EdgeShadowRaster.render(area, (surface, pixmap) -> {
+            int top = EdgeShadowRaster.luma(pixmap.getColor(100, 10));
+            int below = EdgeShadowRaster.luma(pixmap.getColor(100, 50));
+            assertEquals(below, top,
+                    "at the top nothing is hidden above, so the well top stays clean");
+        });
     }
 }

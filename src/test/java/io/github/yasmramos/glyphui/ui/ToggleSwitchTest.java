@@ -275,4 +275,48 @@ class ToggleSwitchTest extends TestBase {
             }
         }
     }
+
+    @Nested
+    @DisplayName("knob slide")
+    class KnobSlide {
+
+        @Test
+        @DisplayName("turning on starts a slide and settles at the on position")
+        void turningOnSlidesToTheEnd() {
+            ToggleSwitch sw = new ToggleSwitch(0, 0, 120, 24);
+
+            sw.setOn(true);
+
+            assertFalse(sw.isFinished(), "turning on must start a slide, not jump");
+            sw.advance(1.0f);
+            assertTrue(sw.isFinished(), "the slide ends once the duration elapses");
+            sw.dispose();
+        }
+
+        @Test
+        @DisplayName("the slide is continuous: retargeting mid-flight keeps the knob between the ends")
+        void retargetMidFlightStaysContinuous() {
+            ToggleSwitch sw = new ToggleSwitch(0, 0, 120, 24);
+            sw.setOn(true);
+            sw.advance(0.09f);
+
+            sw.setOn(false);
+
+            assertFalse(sw.isFinished());
+            sw.advance(1.0f);
+            assertTrue(sw.isFinished());
+            sw.dispose();
+        }
+
+        @Test
+        @DisplayName("a switch that never animates rests at its state")
+        void restingSwitchIsFinished() {
+            ToggleSwitch sw = new ToggleSwitch(0, 0, 120, 24);
+            sw.setOn(true);
+            sw.advance(1.0f);
+
+            assertTrue(sw.isFinished());
+            sw.dispose();
+        }
+    }
 }

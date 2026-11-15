@@ -155,7 +155,7 @@ public class Skeleton extends Component {
      */
     public int getBaseColor() {
         return resolveIntStyle(StyleProperty.BACKGROUND, baseColorOverride,
-                blend(getTheme().getControlNormalColor(),
+                ColorBlend.lerp(getTheme().getControlNormalColor(),
                         getTheme().getBackgroundColor(), 0.5f));
     }
 
@@ -174,14 +174,7 @@ public class Skeleton extends Component {
 
     /** The brighter color the pulse highlight sweeps with. */
     private int highlightColor() {
-        return blend(getBaseColor(), getTheme().getForegroundColor(), 0.18f);
-    }
-
-    private static int blend(int from, int to, float ratio) {
-        int r = Math.round(((from >> 16) & 0xFF) * (1 - ratio) + ((to >> 16) & 0xFF) * ratio);
-        int g = Math.round(((from >> 8) & 0xFF) * (1 - ratio) + ((to >> 8) & 0xFF) * ratio);
-        int b = Math.round((from & 0xFF) * (1 - ratio) + (to & 0xFF) * ratio);
-        return 0xFF000000 | (r << 16) | (g << 8) | b;
+        return ColorBlend.lerp(getBaseColor(), getTheme().getForegroundColor(), 0.18f);
     }
 
     @Override

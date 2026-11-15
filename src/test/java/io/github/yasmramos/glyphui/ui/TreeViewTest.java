@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Property;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -319,5 +320,114 @@ class TreeViewTest extends TestBase {
     @Test
     void accessibleRoleIsTree() {
         assertEquals(AccessibleRole.TREE, new TreeView().getAccessibleRole());
+    }
+
+    @Test
+    void theWheelScrollsTheVisibleNodesWithoutChangingSelection() {
+        TreeView tree = new TreeView();
+        for (int i = 0; i < 20; i++) {
+            tree.addRoot("Node " + i);
+        }
+        tree.refresh();
+        // Three rows fit, so the wheel can scroll the window.
+        tree.setWidth(200.0f);
+        tree.setHeight(3 * TreeView.ROW_HEIGHT);
+
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(0, tree.getSelectedRow());
+
+        boolean consumed = tree.onScroll(new ScrollEvent(0f, 2f, 20, 5));
+
+        assertTrue(consumed);
+        assertEquals(0, tree.getSelectedRow(),
+                "the wheel scrolls the view without moving the selection");
+        // The window scrolled two rows, so clicking the top visible row now
+        // selects the node that was previously at index 2.
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(2, tree.getSelectedRow());
+    }
+
+    @Test
+    void theWheelClampsAtTheEndOfTheTree() {
+        TreeView tree = new TreeView();
+        for (int i = 0; i < 6; i++) {
+            tree.addRoot("Node " + i);
+        }
+        tree.refresh();
+        tree.setWidth(200.0f);
+        tree.setHeight(3 * TreeView.ROW_HEIGHT);
+
+        assertTrue(tree.onScroll(new ScrollEvent(0f, 100f, 20, 5)));
+        assertFalse(tree.onScroll(new ScrollEvent(0f, 1f, 20, 5)),
+                "a scroll at the end of the tree is not consumed");
+    }
+
+    @Test
+    void draggingTheThumbScrollsTheTree() {
+        TreeView tree = twentyRootsThreeRows();
+
+        // The bar is 8 wide on the trailing edge, 2 in from the right.
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 194, 4));
+        tree.onMouseEvent(mouse(MouseEventType.DRAG, 194, 200));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 194, 200));
+
+        // Scrolled to the end (20 nodes, 3 visible, so the top row is index 17).
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(17, tree.getSelectedRow(),
+                "the thumb drag scrolled the tree to the end");
+    }
+
+    @Test
+    void pressingTheTrackPagesTheTree() {
+        TreeView tree = twentyRootsThreeRows();
+
+        // A press below the thumb pages down by a viewport (three rows).
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 194, 60));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 194, 60));
+
+        tree.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        tree.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(3, tree.getSelectedRow(),
+                "a track press paged the window down by one viewport");
+    }
+
+    private static TreeView twentyRootsThreeRows() {
+        TreeView tree = new TreeView();
+        for (int i = 0; i < 20; i++) {
+            tree.addRoot("Node " + i);
+        }
+        tree.refresh();
+        tree.setWidth(200.0f);
+        tree.setHeight(3 * TreeView.ROW_HEIGHT);
+        return tree;
+    }
+
+    @Test
+    void theScrollbarPaintsOnTheTrailingEdge() {
+        // width 200: bar spans [190, 198).
+        ScrollbarRaster.assertBarPaintsOnTrailingEdge(twentyRootsThreeRows(), 190);
+    }
+
+    @Test
+    void theEdgeShadowFadesTheBottomWhileRowsRemainBelowTheFold() {
+        EdgeShadowRaster.render(twentyRootsThreeRows(), (surface, pixmap) -> {
+            int middle = EdgeShadowRaster.luma(pixmap.getColor(100, 36));
+            int edge = EdgeShadowRaster.luma(pixmap.getColor(100, 70));
+            assertTrue(edge < middle,
+                    "the bottom fold must be darker than the content above it");
+        });
+    }
+
+    @Test
+    void theEdgeShadowLeavesTheTopCleanUntilScrolled() {
+        EdgeShadowRaster.render(twentyRootsThreeRows(), (surface, pixmap) -> {
+            int top = EdgeShadowRaster.luma(pixmap.getColor(100, 2));
+            int below = EdgeShadowRaster.luma(pixmap.getColor(100, 40));
+            assertEquals(below, top,
+                    "nothing is hidden above the fold, so the top stays clean");
+        });
     }
 }

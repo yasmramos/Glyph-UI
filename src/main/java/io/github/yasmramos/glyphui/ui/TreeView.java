@@ -6,6 +6,7 @@ import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Property;
@@ -38,6 +39,10 @@ import java.util.logging.Logger;
  * parent), Home/End jump to the bounds and Enter/Space toggles. Selection
  * changes fire {@link #setOnSelect(Consumer) the selection handler} and update
  * {@link #selectedNodeProperty()}.</p>
+ *
+ * <p>The mouse wheel scrolls the visible rows one row per notch without moving
+ * the selection; when the tree already fits, the gesture is left unconsumed so
+ * an enclosing scroll container can take it.</p>
  */
 public class TreeView extends Component {
 
@@ -158,6 +163,9 @@ public class TreeView extends Component {
     private Node selected;
     private int selectedRow = -1;
     private int firstVisible;
+
+    private final OverlayScrollbar scrollbar = new OverlayScrollbar();
+    private final EdgeShadow edgeShadow = new EdgeShadow();
 
     private Consumer<Node> onSelect;
     private Property<Node> selectedNodeProperty;
@@ -436,14 +444,37 @@ public class TreeView extends Component {
     // ---- Geometry ----------------------------------------------------------
 
     private int visibleRows() {
-        if (height <= 0.0f) {
-            return DEFAULT_VISIBLE_ROWS;
-        }
-        return Math.max(1, (int) Math.floor(height / ROW_HEIGHT));
+        return ScrollMetrics.visibleRows(height, ROW_HEIGHT, DEFAULT_VISIBLE_ROWS);
     }
 
     private int maxFirstVisible() {
-        return Math.max(0, visibleNodes.size() - visibleRows());
+        return ScrollMetrics.maxFirstVisible(visibleNodes.size(), height, ROW_HEIGHT,
+                DEFAULT_VISIBLE_ROWS);
+    }
+
+    /** Total pixel height of the visible rows, for sizing the scrollbar. */
+    private float scrollContentHeight() {
+        return visibleNodes.size() * ROW_HEIGHT;
+    }
+
+    /** The scroll offset in pixels, mirroring {@link #firstVisible}. */
+    private float scrollOffsetPixels() {
+        return firstVisible * ROW_HEIGHT;
+    }
+
+    /** The largest offset the tree accepts, in pixels. */
+    private float scrollMaxPixels() {
+        return maxFirstVisible() * ROW_HEIGHT;
+    }
+
+    /** Moves the visible window by whole rows, clamped to the range. */
+    private void scrollRows(int delta) {
+        int max = maxFirstVisible();
+        int target = Math.max(0, Math.min(firstVisible + delta, max));
+        if (target != firstVisible) {
+            firstVisible = target;
+            invalidatePaint();
+        }
     }
 
     private void ensureSelectionVisible() {
@@ -535,7 +566,14 @@ public class TreeView extends Component {
             return false;
         }
         boolean isInside = contains(event.getX(), event.getY());
+        float localX = event.getX() - x;
+        float localY = event.getY() - y;
         ComponentState oldState = state;
+
+        // The overlay bar sits above the rows, so it gets the pointer first.
+        if (handleScrollbar(event, isInside, localX, localY)) {
+            return true;
+        }
 
         switch (event.getType()) {
             case MOVE -> setState(isInside ? ComponentState.HOVER : ComponentState.IDLE);
@@ -569,6 +607,84 @@ public class TreeView extends Component {
             requestRepaint();
         }
         return isInside;
+    }
+
+    /**
+     * Gives the overlay scrollbar the pointer before the rows. A press on the
+     * thumb starts a drag, a press on the track pages by a viewport, and a drag
+     * maps the pointer back to whole rows.
+     *
+     * @return true when the event was consumed by the bar
+     */
+    private boolean handleScrollbar(MouseEvent event, boolean isInside,
+            float localX, float localY) {
+        switch (event.getType()) {
+            case PRESS -> {
+                if (isInside && event.getButton() == MouseButton.LEFT) {
+                    OverlayScrollbar.Press where = scrollbar.press(localX, localY,
+                            width, height, 0.0f, scrollContentHeight(),
+                            scrollOffsetPixels(), scrollMaxPixels());
+                    if (where != OverlayScrollbar.Press.NONE) {
+                        requestFocusFromPointer();
+                        if (where == OverlayScrollbar.Press.TRACK_BEFORE) {
+                            scrollRows(-visibleRows());
+                        } else if (where == OverlayScrollbar.Press.TRACK_AFTER) {
+                            scrollRows(visibleRows());
+                        }
+                        invalidatePaint();
+                        return true;
+                    }
+                }
+            }
+            case DRAG -> {
+                if (scrollbar.isDragging() && event.getButton() == MouseButton.LEFT) {
+                    float target = scrollbar.drag(localY, height, 0.0f,
+                            scrollContentHeight(), scrollMaxPixels());
+                    if (!Float.isNaN(target)) {
+                        firstVisible = Math.max(0, Math.min(
+                                Math.round(target / ROW_HEIGHT), maxFirstVisible()));
+                        invalidatePaint();
+                        return true;
+                    }
+                }
+            }
+            case RELEASE -> {
+                if (scrollbar.release()) {
+                    invalidatePaint();
+                    return true;
+                }
+            }
+            case MOVE -> {
+                if (scrollbar.setHover(scrollbar.isOverTrack(localX, localY,
+                        width, height, 0.0f, scrollContentHeight()))) {
+                    invalidatePaint();
+                }
+            }
+            default -> {
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean onScroll(ScrollEvent event) {
+        if (!visible || !enabled || event.getDeltaY() == 0f) {
+            return false;
+        }
+        // One notch scrolls one row without moving the selection, so the wheel
+        // is a pure view gesture (matching ListBox).
+        int max = maxFirstVisible();
+        if (max == 0) {
+            return false;
+        }
+        int rows = Math.round(event.getDeltaY());
+        int target = Math.max(0, Math.min(firstVisible + rows, max));
+        if (target == firstVisible) {
+            return false;
+        }
+        firstVisible = target;
+        invalidatePaint();
+        return true;
     }
 
     @Override
@@ -696,6 +812,12 @@ public class TreeView extends Component {
         borderPaint.setColor(getTheme().getBorderColor());
         canvas.drawRect(0.5f, 0.5f, Math.max(0.0f, width - 1.0f),
                 Math.max(0.0f, height - 1.0f), borderPaint);
+
+        scrollbar.render(canvas, width, height, 0.0f, scrollContentHeight(),
+                scrollOffsetPixels(), scrollMaxPixels(), getTheme());
+        OverlayScrollbar.registerActivityWith(scrollbar, this);
+        edgeShadow.renderVertical(canvas, 0.0f, 0.0f, width, height,
+                scrollOffsetPixels(), scrollMaxPixels(), getTheme());
     }
 
     /** Draws the disclosure triangle: pointing down when expanded, right when not. */
@@ -745,6 +867,8 @@ public class TreeView extends Component {
 
     @Override
     protected void onDispose() {
+        scrollbar.dispose();
+        edgeShadow.dispose();
         closeQuietly(bgPaint);
         bgPaint = null;
         closeQuietly(selectedPaint);

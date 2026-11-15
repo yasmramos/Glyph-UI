@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Property;
@@ -27,7 +28,7 @@ import io.github.humbleui.skija.PaintMode;
  * keeps the clock out of the widget and the animation deterministic in
  * tests.</p>
  */
-public class ProgressRing extends Component {
+public class ProgressRing extends Component implements Animatable {
 
     /** Default diameter of the ring, logical units. */
     public static final float DEFAULT_SIZE = 36.0f;
@@ -150,6 +151,11 @@ public class ProgressRing extends Component {
      * Advances the indeterminate sweep by one frame. A no-op for a
      * determinate ring. Wire it to {@code Application.setAnimationCallback}.
      *
+     * <p>{@link Animatable} implementation: register the ring with
+     * {@code Application.addAnimatable(this)} and the loop feeds it the
+     * per-frame delta; {@link #advance(float)} is the same update under the
+     * seam's name.</p>
+     *
      * @param deltaSeconds seconds elapsed since the previous frame
      */
     public void advanceAnimation(float deltaSeconds) {
@@ -158,6 +164,11 @@ public class ProgressRing extends Component {
         }
         phase = (phase + deltaSeconds * INDETERMINATE_SPEED) % 1.0f;
         invalidatePaint();
+    }
+
+    @Override
+    public void advance(float deltaSeconds) {
+        advanceAnimation(deltaSeconds);
     }
 
     // ---- Geometry ----------------------------------------------------------

@@ -249,14 +249,7 @@ public class Link extends Component implements Textual {
      * toward the foreground, which reads as "seen" without leaving the theme.
      */
     private int mutedAccent() {
-        return blend(getTheme().getAccentColor(), getTheme().getForegroundColor(), 0.5f);
-    }
-
-    private static int blend(int from, int to, float ratio) {
-        int r = Math.round(((from >> 16) & 0xFF) * (1 - ratio) + ((to >> 16) & 0xFF) * ratio);
-        int g = Math.round(((from >> 8) & 0xFF) * (1 - ratio) + ((to >> 8) & 0xFF) * ratio);
-        int b = Math.round((from & 0xFF) * (1 - ratio) + (to & 0xFF) * ratio);
-        return 0xFF000000 | (r << 16) | (g << 8) | b;
+        return ColorBlend.lerp(getTheme().getAccentColor(), getTheme().getForegroundColor(), 0.5f);
     }
 
     private Font font() {

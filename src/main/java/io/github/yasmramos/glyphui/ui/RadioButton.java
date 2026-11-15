@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
@@ -31,7 +32,7 @@ import java.util.function.Consumer;
  * first render, so construction and the state machine are safe in headless
  * unit tests.</p>
  */
-public class RadioButton extends Component implements Textual {
+public class RadioButton extends Component implements Textual, Animatable {
 
     /** Diameter of the circular indicator, logical units. */
     public static final float INDICATOR_SIZE = 18.0f;
@@ -49,6 +50,9 @@ public class RadioButton extends Component implements Textual {
     private Paint borderPaint;
     private Paint dotPaint;
     private Paint textPaint;
+
+    /** The indicator fill, eased so hover and selection fade in. */
+    private final AnimatedColor circleColor = new AnimatedColor(0);
 
     /**
      * Creates an unselected radio button with no caption.
@@ -300,7 +304,7 @@ public class RadioButton extends Component implements Textual {
                 : (state == ComponentState.HOVER
                         ? getTheme().getControlHoverColor()
                         : getTheme().getInputBackgroundColor());
-        circlePaint.setColor(fill);
+        circlePaint.setColor(circleColor.sync(this, this, fill));
         canvas.drawCircle(cx, cy, r, circlePaint);
 
         borderPaint.setColor(getTheme().getBorderColor());
@@ -377,6 +381,25 @@ public class RadioButton extends Component implements Textual {
             setState(ComponentState.IDLE);
             setSelected(true);
         }
+    }
+
+    /**
+     * Advances the indicator fill fade by one frame. {@link Animatable}
+     * implementation: the application drives it while a transition runs.
+     *
+     * @param deltaSeconds seconds elapsed since the previous frame
+     */
+    @Override
+    public void advance(float deltaSeconds) {
+        circleColor.advance(deltaSeconds);
+    }
+
+    /**
+     * @return true when the indicator fill has settled
+     */
+    @Override
+    public boolean isFinished() {
+        return circleColor.isFinished();
     }
 
     @Override

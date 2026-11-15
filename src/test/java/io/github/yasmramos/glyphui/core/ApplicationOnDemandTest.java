@@ -101,6 +101,32 @@ class ApplicationOnDemandTest extends TestBase {
     }
 
     @Test
+    void addAnimatableRequestsRepaintAndRemoveDoesNot() {
+        writePaintDirty(app, false);
+
+        io.github.yasmramos.glyphui.core.Animatable animatable = delta -> { };
+        app.addAnimatable(animatable);
+        assertTrue(readPaintDirty(app),
+                "registering the first animation must schedule a repaint");
+
+        writePaintDirty(app, false);
+        app.removeAnimatable(animatable);
+        assertFalse(readPaintDirty(app),
+                "removing the animation must not force a repaint");
+    }
+
+    @Test
+    void registeringTheSameAnimatableTwiceOnlyRepaintsOnce() {
+        io.github.yasmramos.glyphui.core.Animatable animatable = delta -> { };
+        app.addAnimatable(animatable);
+
+        writePaintDirty(app, false);
+        app.addAnimatable(animatable);
+        assertFalse(readPaintDirty(app),
+                "a duplicate registration must not schedule another repaint");
+    }
+
+    @Test
     void rasterBackendIdentifiedByNullDirectContext() throws Exception {
         setField(app, "directContext", null);
         assertFalse(app.isGpuBackend());

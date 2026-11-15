@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Property;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -306,5 +307,109 @@ class TableTest extends TestBase {
     @Test
     void accessibleRoleIsTable() {
         assertEquals(AccessibleRole.TABLE, new Table().getAccessibleRole());
+    }
+
+    @Test
+    void theWheelScrollsTheBodyWithoutChangingSelection() {
+        Table table = new Table("Name", "Value");
+        for (int i = 0; i < 20; i++) {
+            table.addRow("Row " + i, String.valueOf(i));
+        }
+        // Three body rows fit below the header.
+        table.setWidth(200.0f);
+        table.setHeight(Table.HEADER_HEIGHT + 3 * Table.ROW_HEIGHT);
+        table.setSelectedIndex(0);
+
+        boolean consumed = table.onScroll(new ScrollEvent(0f, 2f, 20, 40));
+
+        assertTrue(consumed);
+        assertEquals(0, table.getSelectedIndex(),
+                "the wheel scrolls the view without moving the selection");
+    }
+
+    @Test
+    void theWheelClampsAtTheEndOfTheBody() {
+        Table table = new Table("Name", "Value");
+        for (int i = 0; i < 6; i++) {
+            table.addRow("Row " + i, String.valueOf(i));
+        }
+        table.setWidth(200.0f);
+        table.setHeight(Table.HEADER_HEIGHT + 3 * Table.ROW_HEIGHT);
+
+        assertTrue(table.onScroll(new ScrollEvent(0f, 100f, 20, 40)));
+        assertFalse(table.onScroll(new ScrollEvent(0f, 1f, 20, 40)),
+                "a scroll at the end of the body is not consumed");
+    }
+
+    @Test
+    void draggingTheThumbScrollsTheBody() {
+        Table table = sixRowsThreeVisible();
+
+        // The bar runs down the body, below the header (28 tall).
+        table.onMouseEvent(mouse(MouseEventType.PRESS, 194, 30));
+        table.onMouseEvent(mouse(MouseEventType.DRAG, 194, 200));
+        table.onMouseEvent(mouse(MouseEventType.RELEASE, 194, 200));
+
+        // Scrolled to the end, so the top body row is now the fourth row.
+        table.onMouseEvent(mouse(MouseEventType.PRESS, 20, 30));
+        table.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 30));
+        assertEquals(3, table.getSelectedIndex(),
+                "the thumb drag scrolled the body to the end");
+    }
+
+    @Test
+    void aPressOnTheHeaderIsNotOnTheBar() {
+        Table table = sixRowsThreeVisible();
+
+        // The header is above the body viewport, so the bar does not cover it:
+        // the press selects a row the normal way (row -1 for the header).
+        table.onMouseEvent(mouse(MouseEventType.PRESS, 194, 10));
+        table.onMouseEvent(mouse(MouseEventType.RELEASE, 194, 10));
+        assertEquals(-1, table.getSelectedIndex(),
+                "a press on the header does not start a thumb drag");
+    }
+
+    private static Table sixRowsThreeVisible() {
+        Table table = new Table("Name", "Value");
+        for (int i = 0; i < 6; i++) {
+            table.addRow("Row " + i, String.valueOf(i));
+        }
+        table.setWidth(200.0f);
+        table.setHeight(Table.HEADER_HEIGHT + 3 * Table.ROW_HEIGHT);
+        return table;
+    }
+
+    @Test
+    void theScrollbarPaintsOnTheTrailingEdge() {
+        // width 200: bar spans [190, 198), starting below the header.
+        ScrollbarRaster.assertBarPaintsOnTrailingEdge(sixRowsThreeVisible(), 190);
+    }
+
+    @Test
+    void theEdgeShadowFadesTheBottomOfTheBodyNotTheHeader() {
+        // Six rows in a three-row body, at the top: the fade sits at the bottom
+        // of the body, and the header strip above it stays flat (a whole-widget
+        // fade would have darkened the top of the header instead).
+        EdgeShadowRaster.render(sixRowsThreeVisible(), (surface, pixmap) -> {
+            int headerTop = EdgeShadowRaster.luma(pixmap.getColor(100, 4));
+            int headerBottom = EdgeShadowRaster.luma(pixmap.getColor(100, 22));
+            int bodyMiddle = EdgeShadowRaster.luma(pixmap.getColor(100, 60));
+            // Inside the 8px body fade (92..100) but clear of the border stroke.
+            int bodyBottom = EdgeShadowRaster.luma(pixmap.getColor(100, 96));
+            assertEquals(headerBottom, headerTop,
+                    "the header must stay flat, so the fade lives in the body");
+            assertTrue(bodyBottom < bodyMiddle,
+                    "the bottom of the body must be darker than the content above it");
+        });
+    }
+
+    @Test
+    void theEdgeShadowLeavesTheBodyTopCleanUntilScrolled() {
+        EdgeShadowRaster.render(sixRowsThreeVisible(), (surface, pixmap) -> {
+            int justBelowHeader = EdgeShadowRaster.luma(pixmap.getColor(100, 32));
+            int bodyMiddle = EdgeShadowRaster.luma(pixmap.getColor(100, 60));
+            assertEquals(bodyMiddle, justBelowHeader,
+                    "nothing is hidden above the fold, so the body top stays clean");
+        });
     }
 }

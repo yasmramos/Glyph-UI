@@ -52,6 +52,7 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     protected KeyListener keyListener;
     protected MouseListener mouseListener;
     protected CursorPosListener cursorPosListener;
+    protected ScrollListener scrollListener;
     protected WindowFocusListener windowFocusListener;
     protected TextInputListener textInputListener;
     protected ImeClient imeClient;
@@ -220,6 +221,11 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     }
 
     @Override
+    public void setScrollListener(ScrollListener listener) {
+        this.scrollListener = listener;
+    }
+
+    @Override
     public void setWindowFocusListener(WindowFocusListener listener) {
         this.windowFocusListener = listener;
     }
@@ -313,6 +319,13 @@ public abstract class AbstractWindowBackend implements WindowBackend {
     protected void notifyCursorPos(double x, double y) {
         if (cursorPosListener != null) {
             cursorPosListener.onCursorPos(x, y);
+        }
+    }
+
+    /** Dispatches a scroll gesture (notch deltas, logical coordinates). */
+    protected void notifyScroll(float deltaX, float deltaY, double x, double y) {
+        if (scrollListener != null) {
+            scrollListener.onScroll(deltaX, deltaY, x, y);
         }
     }
 

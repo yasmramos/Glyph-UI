@@ -4,6 +4,7 @@ import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Dimension;
 import io.github.yasmramos.glyphui.graphics.Theme;
@@ -19,9 +20,10 @@ import io.github.humbleui.skija.Paint;
  * <p>Editing reuses the {@link TextField} model (single {@code String} buffer,
  * caret + selection anchor, clipboard and IME) and adds the behaviour that a
  * multi-line field needs: Enter inserts a newline instead of submitting,
- * Up/Down/Home/End move the caret by visual line, pressing and dragging with
- * the mouse extends the selection, and the content scrolls (both axes) so the
- * caret stays in view. The value is exposed through the inherited
+ * Up/Down move the caret by visual line, Page Up/Down by a viewport, Home/End
+ * are line-relative and Ctrl+Home/End jump to the buffer ends, pressing and
+ * dragging with the mouse extends the selection, and the content scrolls (both
+ * axes) so the caret stays in view. The value is exposed through the inherited
  * {@link #getText()} / {@link #setText(String)} pair, newlines included.</p>
  *
  * <p>Unlike the single-line field, this widget keeps a stable size driven by
@@ -39,6 +41,8 @@ public class TextArea extends TextField {
     private static final int KEY_LEFT = 263;
     private static final int KEY_DOWN = 264;
     private static final int KEY_UP = 265;
+    private static final int KEY_PAGE_UP = 266;
+    private static final int KEY_PAGE_DOWN = 267;
     private static final int KEY_HOME = 268;
     private static final int KEY_END = 269;
 
@@ -62,6 +66,9 @@ public class TextArea extends TextField {
 
     /** Horizontal scroll, in pixels, keeping the caret column inside the box. */
     private float horizontalScrollOffset = 0.0f;
+
+    private final OverlayScrollbar scrollbar = new OverlayScrollbar();
+    private final EdgeShadow edgeShadow = new EdgeShadow();
 
     /** True between a press that began a selection and its end. */
     private boolean selecting = false;
@@ -128,7 +135,20 @@ public class TextArea extends TextField {
         setText(updated, false);
         caret = Math.max(0, Math.min(newCaret, updated.length()));
         selectionAnchor = caret;
+        revealCaret();
         invalidateLayout();
+    }
+
+    @Override
+    public void setText(String text) {
+        super.setText(text);
+        revealCaret();
+    }
+
+    @Override
+    public void setText(String text, boolean notify) {
+        super.setText(text, notify);
+        revealCaret();
     }
 
     @Override
@@ -150,11 +170,20 @@ public class TextArea extends TextField {
             case KEY_DOWN:
                 moveCaretVertically(1, shift);
                 break;
+            case KEY_PAGE_UP:
+                moveCaretVertically(-pageRows(), shift);
+                break;
+            case KEY_PAGE_DOWN:
+                moveCaretVertically(pageRows(), shift);
+                break;
             case KEY_HOME:
-                setCaret(lineStartAt(getText(), caret), shift);
+                // Ctrl+Home/End jump to the buffer ends, as in a <textarea>;
+                // plain Home/End stay line-relative.
+                setCaret(event.isCtrlDown() ? 0 : lineStartAt(getText(), caret), shift);
                 break;
             case KEY_END:
-                setCaret(lineEndAt(getText(), caret), shift);
+                setCaret(event.isCtrlDown() ? getText().length() : lineEndAt(getText(), caret),
+                        shift);
                 break;
             case KEY_BACKSPACE:
                 handleBackspace();
@@ -179,6 +208,11 @@ public class TextArea extends TextField {
     public boolean onMouseEvent(MouseEvent event) {
         if (!isEnabled()) {
             return false;
+        }
+        float localX = event.getX() - x;
+        float localY = event.getY() - y;
+        if (handleScrollbar(event, localX, localY)) {
+            return true;
         }
         switch (event.getType()) {
             case PRESS:
@@ -210,6 +244,90 @@ public class TextArea extends TextField {
         }
     }
 
+    @Override
+    public boolean onScroll(ScrollEvent event) {
+        if (!isEnabled() || event.getDeltaY() == 0f) {
+            return false;
+        }
+        Font font = areaFont();
+        float padding = areaPadding();
+        float contentHeight = Math.max(0.0f, height - 2.0f * padding);
+        float max = maxVerticalScroll(font, countLines(getText()), contentHeight);
+        if (max <= 0.0f) {
+            return false;
+        }
+        // One notch scrolls one line; positive delta moves the view down,
+        // matching the row widgets.
+        float target = Math.max(0.0f, Math.min(
+                verticalScrollOffset + event.getDeltaY() * lineHeight(font), max));
+        if (target == verticalScrollOffset) {
+            return false;
+        }
+        verticalScrollOffset = target;
+        invalidate();
+        return true;
+    }
+
+    /**
+     * Gives the overlay scrollbar the pointer before the text. A press on the
+     * thumb starts a drag, a press on the track pages by a viewport, and a drag
+     * maps the pointer back to a pixel offset.
+     *
+     * @return true when the event was consumed by the bar
+     */
+    private boolean handleScrollbar(MouseEvent event, float localX, float localY) {
+        float padding = areaPadding();
+        float contentHeight = Math.max(0.0f, height - 2.0f * padding);
+        float content = Math.max(contentHeight,
+                countLines(getText()) * lineHeight(areaFont()));
+        float max = maxVerticalScroll(areaFont(), countLines(getText()), contentHeight);
+        switch (event.getType()) {
+            case PRESS:
+                if (event.getButton() == MouseButton.LEFT) {
+                    OverlayScrollbar.Press where = scrollbar.press(localX, localY,
+                            width, contentHeight, padding, content,
+                            verticalScrollOffset, max);
+                    if (where != OverlayScrollbar.Press.NONE) {
+                        requestFocus();
+                        if (where == OverlayScrollbar.Press.TRACK_BEFORE) {
+                            verticalScrollOffset = Math.max(0.0f,
+                                    verticalScrollOffset - contentHeight);
+                        } else if (where == OverlayScrollbar.Press.TRACK_AFTER) {
+                            verticalScrollOffset = Math.min(max,
+                                    verticalScrollOffset + contentHeight);
+                        }
+                        invalidate();
+                        return true;
+                    }
+                }
+                return false;
+            case DRAG:
+                if (scrollbar.isDragging() && event.getButton() == MouseButton.LEFT) {
+                    float target = scrollbar.drag(localY, contentHeight, padding, content, max);
+                    if (!Float.isNaN(target)) {
+                        verticalScrollOffset = target;
+                        invalidate();
+                        return true;
+                    }
+                }
+                return false;
+            case RELEASE:
+                if (scrollbar.release()) {
+                    invalidate();
+                    return true;
+                }
+                return false;
+            case MOVE:
+                if (scrollbar.setHover(scrollbar.isOverTrack(localX, localY,
+                        width, contentHeight, padding, content))) {
+                    invalidate();
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
     // ------------------------------------------------------------------
     // Editing primitives
     // ------------------------------------------------------------------
@@ -227,32 +345,38 @@ public class TextArea extends TextField {
         if (!keepSelection) {
             selectionAnchor = caret;
         }
+        revealCaret();
         invalidate();
     }
 
-    /** Moves the caret one visual line up ({@code -1}) or down ({@code +1}). */
-    private void moveCaretVertically(int direction, boolean keepSelection) {
+    /**
+     * Moves the caret {@code deltaLines} visual lines away, keeping the
+     * current column where the target line is long enough. A single line
+     * ({@code ±1}) is the arrow key; a page is {@code ±pageRows()}. Clamps to
+     * the buffer ends, so Up on the first line and Down on the last land on
+     * the start and end respectively.
+     */
+    private void moveCaretVertically(int deltaLines, boolean keepSelection) {
         String text = getText();
-        int lineStart = lineStartAt(text, caret);
-        int column = caret - lineStart;
-        int target;
-        if (direction < 0) {
-            if (lineStart == 0) {
-                target = 0;
-            } else {
-                int previousStart = lineStartAt(text, lineStart - 1);
-                target = Math.min(previousStart + column, lineEndAt(text, previousStart));
-            }
-        } else {
-            int lineEnd = lineEndAt(text, caret);
-            if (lineEnd >= text.length()) {
-                target = text.length();
-            } else {
-                int nextStart = lineEnd + 1;
-                target = Math.min(nextStart + column, lineEndAt(text, nextStart));
-            }
+        int column = caret - lineStartAt(text, caret);
+        int targetLine = lineIndexAt(text, caret) + deltaLines;
+        if (targetLine < 0) {
+            setCaret(0, keepSelection);
+            return;
         }
-        setCaret(target, keepSelection);
+        if (targetLine > countLines(text) - 1) {
+            setCaret(text.length(), keepSelection);
+            return;
+        }
+        int start = lineStartOfLine(text, targetLine);
+        setCaret(Math.min(start + column, lineEndAt(text, start)), keepSelection);
+    }
+
+    /** Whole lines visible in the box, at least one, for Page Up/Down. */
+    private int pageRows() {
+        Font font = areaFont();
+        float contentHeight = Math.max(0.0f, height - 2.0f * areaPadding());
+        return ScrollMetrics.visibleRows(contentHeight, lineHeight(font), 1);
     }
 
     private void handleBackspace() {
@@ -342,6 +466,19 @@ public class TextArea extends TextField {
     private static int lineEndAt(String text, int index) {
         int next = text.indexOf('\n', Math.max(0, Math.min(index, text.length())));
         return next < 0 ? text.length() : next;
+    }
+
+    /** Index of the first character of the given zero-based line. */
+    private static int lineStartOfLine(String text, int lineIndex) {
+        int start = 0;
+        for (int line = 0; line < lineIndex; line++) {
+            int next = text.indexOf('\n', start);
+            if (next < 0) {
+                return text.length();
+            }
+            start = next + 1;
+        }
+        return start;
     }
 
     private static String longestLine(String text) {
@@ -521,16 +658,10 @@ public class TextArea extends TextField {
         float contentHeight = Math.max(0.0f, height - 2.0f * padding);
         int lineCount = countLines(text);
 
-        // Keep the caret line inside the box.
-        int caretLine = lineIndexAt(text, caret);
-        float caretTop = caretLine * lineHeight;
-        if (caretTop - verticalScrollOffset < 0.0f) {
-            verticalScrollOffset = caretTop;
-        } else if (caretTop + lineHeight - verticalScrollOffset > contentHeight) {
-            verticalScrollOffset = caretTop + lineHeight - contentHeight;
-        }
-        float maxScroll = Math.max(0.0f, lineCount * lineHeight - contentHeight);
-        verticalScrollOffset = Math.max(0.0f, Math.min(verticalScrollOffset, maxScroll));
+        // Clamp to the content; the caret following happens in setCaret, so a
+        // wheel or scrollbar drag is not snapped back on the next frame.
+        verticalScrollOffset = Math.max(0.0f, Math.min(verticalScrollOffset,
+                maxVerticalScroll(font, lineCount, contentHeight)));
 
         // Keep the caret column inside the box as well.
         float caretX = font.measureTextWidth(text.substring(lineStartAt(text, caret), caret));
@@ -561,6 +692,7 @@ public class TextArea extends TextField {
 
         int lineStart = 0;
         int lineIndex = 0;
+        int caretLine = lineIndexAt(text, caret);
         while (lineStart <= text.length()) {
             int lineEnd = text.indexOf('\n', lineStart);
             if (lineEnd < 0) {
@@ -611,6 +743,40 @@ public class TextArea extends TextField {
         }
 
         canvas.restoreToCount(saveCount);
+
+        scrollbar.render(canvas, width, contentHeight, padding,
+                Math.max(contentHeight, lineCount * lineHeight), verticalScrollOffset,
+                maxVerticalScroll(font, lineCount, contentHeight), theme);
+        OverlayScrollbar.registerActivityWith(scrollbar, this);
+        // The fades live inside the padding box, so they sit at the text fold
+        // rather than on the widget's border.
+        edgeShadow.renderVertical(canvas, padding, padding, contentWidth, contentHeight,
+                verticalScrollOffset, maxVerticalScroll(font, lineCount, contentHeight), theme);
+    }
+
+    /** The largest vertical offset that still fills the box with lines. */
+    private float maxVerticalScroll(Font font, int lineCount, float contentHeight) {
+        return Math.max(0.0f, lineCount * lineHeight(font) - contentHeight);
+    }
+
+    /**
+     * Scrolls the box so the caret line is visible. Called whenever the caret
+     * moves, so the user's own wheel or scrollbar position is not overridden on
+     * the next frame.
+     */
+    private void revealCaret() {
+        Font font = areaFont();
+        float padding = areaPadding();
+        float contentHeight = Math.max(0.0f, height - 2.0f * padding);
+        float lineHeight = lineHeight(font);
+        float caretTop = lineIndexAt(getText(), caret) * lineHeight;
+        if (caretTop - verticalScrollOffset < 0.0f) {
+            verticalScrollOffset = caretTop;
+        } else if (caretTop + lineHeight - verticalScrollOffset > contentHeight) {
+            verticalScrollOffset = caretTop + lineHeight - contentHeight;
+        }
+        verticalScrollOffset = Math.max(0.0f, Math.min(verticalScrollOffset,
+                maxVerticalScroll(font, countLines(getText()), contentHeight)));
     }
 
     /** Maps a widget-space point to the nearest caret index. */
@@ -650,6 +816,8 @@ public class TextArea extends TextField {
     @Override
     protected void onDispose() {
         super.onDispose();
+        scrollbar.dispose();
+        edgeShadow.dispose();
         if (backgroundPaint != null) {
             backgroundPaint.close();
             backgroundPaint = null;

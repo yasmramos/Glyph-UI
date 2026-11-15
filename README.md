@@ -10,7 +10,7 @@ A modern UI toolkit built on Skija and JWM for Java 17+.
 - Window management and event handling via JWM (io.github.humbleui:jwm)
 - Component-based UI architecture
 - Support for rounded corners, custom colors, and text rendering
-- Event system for mouse and keyboard input
+- Event system for mouse, keyboard and mouse-wheel (scroll) input
 - Layout managers for automatic component positioning
 - Cross-platform support (Windows, Linux, macOS)
 
@@ -68,6 +68,52 @@ JWM owns the process UI thread: its native message loop is started by
 `Application.init()`, which stays fully headless until then. Frames are
 blitted from the CPU surface onto the window layer via
 `WindowBackend.present(...)`.
+
+Mouse-wheel gestures arrive as `ScrollEvent`s on `Window.setScrollListener`.
+The wheel is a gesture rather than a button: it is routed to the deepest
+component under the pointer (popups first), and the first widget that consumes
+the delta wins. `ScrollPane`, `ListBox`, `Table`, `TreeView` and `TextArea`
+scroll on it; a widget with nothing to scroll leaves the gesture unconsumed so
+an enclosing scroller can take it.
+
+The scrolling containers draw a thin overlay scrollbar when their content
+overflows, the way a modern web page does: the bar is painted on top of the
+content so it never takes layout space, it fades in on hover, the thumb can be
+dragged and pressing the track pages towards the click. Moving the content —
+a wheel notch, a key, a track page or a drag — also brightens the bar, and it
+fades back to its resting tint a moment after the movement stops.
+
+`ScrollPane` also dims the edge where more content is hidden — the top only once
+it has scrolled, the bottom only while content remains below the fold — with a
+short gradient rather than a hard line. The fade is a linear gradient anchored
+to the edge and needs no extra state: it is derived from the same scroll offset
+the wheel, the keyboard and the scrollbar drag already move.
+
+### Animation
+
+Time-based motion goes through one seam. A widget that changes on every frame
+implements `Animatable` and is registered once:
+
+```java
+app.addAnimatable(progressRing);   // indeterminate spinner
+```
+
+While at least one animatable is registered the loop keeps repainting, and each
+one is advanced with the elapsed seconds of the frame. The delta is clamped, so
+a late frame (a stall, a debugger pause, a backgrounded window) advances the
+animation by at most one short step instead of making it jump. An animatable
+that reports `isFinished()` — a fade that has settled, a delay that has elapsed
+— is dropped automatically and the application returns to on-demand rendering.
+`Tooltip`, `Toast`, `ProgressBar`, `ProgressRing` and the overlay scrollbar's
+activity highlight are driven this way.
+
+Widgets that own a small motion — the switch knob, the tab indicator — register
+themselves when the motion starts, so an application gets the slide for free
+without wiring a callback. `AnimatedValue` (package-private) is the shared
+easing value behind them: it eases towards a target over a fixed duration with a
+smooth-step curve and reports `isFinished()` when it settles. Detached widgets
+(headless tests, a component built before any window exists) skip registration
+and stay put until a caller drives `advance(...)`.
 
 ### Visual quality
 
@@ -190,6 +236,7 @@ src/main/java/io/github/yasmramos/glyphui/
 ├── events/
 │   ├── MouseEvent.java       # Mouse event class
 │   ├── KeyEvent.java         # Key event class
+│   ├── ScrollEvent.java      # Mouse-wheel scroll gesture
 │   ├── MouseEventType.java   # Mouse event type enum
 │   ├── MouseButton.java      # Mouse button enum
 │   ├── KeyEventType.java     # Key event type enum

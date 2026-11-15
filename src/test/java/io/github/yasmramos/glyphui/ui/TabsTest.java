@@ -183,4 +183,50 @@ class TabsTest extends TestBase {
         assertEquals(1, tabs.getTabCount());
         assertEquals("Tab 1", tabs.getTabLabel(0));
     }
+
+    @Test
+    void theFirstSelectionPutsTheIndicatorInPlaceAndSettles() {
+        Tabs tabs = new Tabs();
+        tabs.setWidth(200.0f);
+        tabs.setHeight(150.0f);
+
+        tabs.addTab("A", new Label("a"));
+
+        assertTrue(tabs.isFinished(),
+                "the first selection has no previous position, so it does not slide");
+    }
+
+    @Test
+    void changingTabStartsAGlideAndSettlesUnderTheNewLabel() {
+        Tabs tabs = new Tabs();
+        tabs.setWidth(200.0f);
+        tabs.setHeight(150.0f);
+        tabs.addTab("A", new Label("a"));
+        tabs.addTab("B", new Label("b"));
+
+        tabs.setSelectedIndex(1);
+
+        assertFalse(tabs.isFinished(), "moving to another tab must start a glide");
+        tabs.advance(1.0f);
+        assertTrue(tabs.isFinished(), "the glide ends once the duration elapses");
+    }
+
+    @Test
+    void retargetingTheGlideMidFlightStaysContinuous() {
+        Tabs tabs = new Tabs();
+        tabs.setWidth(200.0f);
+        tabs.setHeight(150.0f);
+        tabs.addTab("A", new Label("a"));
+        tabs.addTab("B", new Label("b"));
+        tabs.addTab("C", new Label("c"));
+
+        tabs.setSelectedIndex(2);
+        tabs.advance(0.05f);
+
+        tabs.setSelectedIndex(1);
+
+        assertFalse(tabs.isFinished(), "the glide is still travelling");
+        tabs.advance(1.0f);
+        assertTrue(tabs.isFinished());
+    }
 }

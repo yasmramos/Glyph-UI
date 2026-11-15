@@ -2,6 +2,7 @@ package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.TestBase;
 import io.github.yasmramos.glyphui.core.FocusManager;
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
@@ -172,5 +173,40 @@ class SplitPaneTest extends TestBase {
         pane.onKeyEvent(key(GlyphKeys.RIGHT));
 
         assertTrue(pane.getRatio() > 0.5f);
+    }
+
+    @Test
+    void dividerShowsTheHorizontalResizeCursor() {
+        SplitPane pane = sizedPane();
+
+        // The divider starts at 200 * 0.5 = 100 and is DIVIDER_SIZE wide.
+        assertEquals(GlyphCursor.RESIZE_EW, pane.getCursorAt(101, 50));
+    }
+
+    @Test
+    void verticalSplitShowsTheVerticalResizeCursorOnTheDivider() {
+        SplitPane pane = new SplitPane(SplitPane.Orientation.VERTICAL,
+                new Panel(), new Panel());
+        pane.setWidth(200.0f);
+        pane.setHeight(100.0f);
+
+        // Height 100 minus the divider leaves 94, so the divider sits at 47.
+        assertEquals(GlyphCursor.RESIZE_NS, pane.getCursorAt(50, 49));
+    }
+
+    @Test
+    void offTheDividerTheCursorStaysTheArrow() {
+        SplitPane pane = sizedPane();
+
+        assertEquals(GlyphCursor.DEFAULT, pane.getCursorAt(10, 50));
+        assertEquals(GlyphCursor.DEFAULT, pane.getCursorAt(190, 50));
+    }
+
+    @Test
+    void anExplicitOverrideBeatsTheDividerResizeCursor() {
+        SplitPane pane = sizedPane();
+        pane.setCursor(GlyphCursor.CROSSHAIR);
+
+        assertEquals(GlyphCursor.CROSSHAIR, pane.getCursorAt(101, 50));
     }
 }

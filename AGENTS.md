@@ -22,6 +22,17 @@ can drag the bundle ratio below the gate.
 The Surefire reports in `target/surefire-reports/*.xml` are the quickest way to
 aggregate results without reading the Maven log.
 
+Keep tests independent of the host environment, since CI and developer
+machines differ:
+
+- Do not assert a fixed wall-clock string: the JUL formatter prints local time
+  (`ZoneId.systemDefault()`), so derive the expected stamp with the same zone
+  (a hard-coded `00:00:00.000` only holds on a UTC host).
+- A test that scans source text must normalize line endings
+  (`.replace("\r\n", "\n").replace('\r', '\n')`) before searching for a
+  multi-line needle such as `"\n    }\n"`; a CRLF checkout otherwise makes
+  `indexOf` return `-1` and `substring` throw.
+
 ## Conventions
 
 - All code, comments, Javadoc and docs in English.
@@ -117,6 +128,66 @@ static `TextField.setClipboardHooks` installed by `Application`; unit tests
 without that wiring must not rely on them. `TextArea` deliberately keeps Enter
 (inserts `\n`, never submits) and makes Home/End line-relative; every other key
 falls through to `super.onKeyEvent`.
+
+## Native types in internal plumbing
+
+Widgets that need Skija directly (gradients, shaders, native paints) keep it in a
+package-private helper in `io.github.yasmramos.glyphui.ui`, not on a widget's
+public surface — the same pattern as `OverlayScrollbar` (bar geometry) and
+`EdgeShadow` (the scroll edge fade). `ApiSurfaceLeakageTest` only forbids native
+types in `public`/`protected` signatures, so a `final class` with
+package-private methods is the sanctioned home for this plumbing. Widgets pass
+the `Canvas` facade, the `Theme` and plain floats; the helper owns the native
+`Paint`/`Shader` and releases them from the widget's `onDispose()`.
+
+## Animation: the `Animatable` seam
+
+Time-based motion has one entry point. A widget whose look changes every frame
+implements `io.github.yasmramos.glyphui.core.Animatable` and is registered with
+`Application.addAnimatable(...)`; the frame loop keeps repainting while any is
+registered and calls `advance(deltaSeconds)` with the elapsed seconds of the
+frame. `AnimationClock` owns the timing: it seeds a zero delta on the first
+frame, clamps each step to `MAX_STEP_SECONDS` (a late frame must not make an
+animation jump), and drops an animatable that reports `isFinished()`.
+
+Keep the clock out of widgets: they expose a plain `advance(float)` (or
+`advanceAnimation(float)`) and stay deterministic in tests, which drive them with
+explicit deltas instead of sleeping. `Tooltip`, `Toast`, `ProgressBar`,
+`ProgressRing` and `OverlayScrollbar` follow this. `setAnimationCallback(Runnable)`
+is deprecated: it makes every caller measure the elapsed time by hand and has no
+clamp.
+
+`OverlayScrollbar` detects activity from the scroll offset it paints with, so
+each scrolling widget only calls `OverlayScrollbar.registerActivityWith(bar, this)`
+right after painting its bar; the highlight fades and the bar unregisters itself.
+
+A widget can also own a small motion and register itself when it starts, so the
+application gets the animation without any wiring: `ToggleSwitch` slides its
+knob and `Tabs` glides its selection underline. `AnimationSupport.start(owner,
+animatable)` resolves the owning `Application` through the component tree and is
+a no-op when the widget is detached (headless tests), so such a widget stays put
+until a caller drives `advance(...)` — never snap it in the no-application case,
+or `isFinished()` would lie to the frame loop. `AnimatedValue` (package-private)
+is the shared easing value: smooth-step, fixed duration, `isFinished()` when
+settled.
+
+Interactive controls fade their fill instead of snapping on hover/press. They
+carry an `AnimatedColor` (package-private, built on `AnimatedValue`) and call
+`color.sync(this, this, targetColor)` while painting: the first paint seeds the
+colour with the live state (no fade on appearance), a later state change starts
+the run and registers the widget as the animatable. `ColorBlend.lerp` (ARGB) and
+`ColorBlend.lerpByte` (one byte-scale value, e.g. a scrollbar alpha) are the
+single blend helpers — do not re-add a private `blend(...)` per widget.
+`Button`, `CheckBox` and `RadioButton` follow this.
+
+A "selection glides between cells" motion shares one helper too. `Tabs` (its
+header underline) and `SegmentedControl` (its selected block) both drive a
+`SlidingIndicator` (package-private, built on two `AnimatedValue`s for the left
+edge and the width): `indicator.glideTo(this, left, width)` places it on the
+first call and eases it on every later target, then the widget paints
+`indicator.left()` / `indicator.width()`. Call `glideTo` while painting when the
+target needs a font measurement (so a headless selection never resolves a font);
+`Tabs` measures without Skija, so it syncs on selection instead.
 
 ## Top-level windows: `Window` vs `Form`
 

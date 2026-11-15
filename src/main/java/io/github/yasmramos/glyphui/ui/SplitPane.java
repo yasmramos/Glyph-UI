@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
@@ -293,6 +294,17 @@ public class SplitPane extends Panel {
             return localX >= start && localX <= start + DIVIDER_SIZE;
         }
         return localY >= start && localY <= start + DIVIDER_SIZE;
+    }
+
+    @Override
+    protected GlyphCursor cursorAt(float localX, float localY) {
+        // Over the divider the pointer advertises the resize axis, matching the
+        // web's col-resize / row-resize; over either pane it stays the arrow so
+        // the panes' own widgets keep their affordances.
+        if (isOnDivider(localX, localY)) {
+            return horizontal() ? GlyphCursor.RESIZE_EW : GlyphCursor.RESIZE_NS;
+        }
+        return super.cursorAt(localX, localY);
     }
 
     @Override

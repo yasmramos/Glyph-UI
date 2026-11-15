@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.graphics.Canvas;
@@ -31,7 +32,7 @@ import io.github.humbleui.skija.Paint;
  * {@code Application.setAnimationCallback} — which keeps the widget
  * deterministic in tests and lets an application keep its own frame cadence.</p>
  */
-public class Toast extends Panel implements PassiveOverlay {
+public class Toast extends Panel implements PassiveOverlay, Animatable {
 
     /** Severity of a toast, which selects its accent colour. */
     public enum Level {
@@ -217,8 +218,13 @@ public class Toast extends Panel implements PassiveOverlay {
      * its duration elapses. Wire it to
      * {@code Application.setAnimationCallback}.
      *
+     * <p>{@link Animatable} implementation: register the toast with
+     * {@code Application.addAnimatable(this)} and the loop feeds it the
+     * per-frame delta.</p>
+     *
      * @param deltaSeconds seconds elapsed since the previous frame
      */
+    @Override
     public void advance(float deltaSeconds) {
         if (deltaSeconds <= 0.0f || paused || !isVisible()) {
             return;

@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.graphics.Canvas;
@@ -33,7 +34,7 @@ import io.github.humbleui.skija.PaintMode;
  * in tests. With no application running (headless unit tests) the tooltip
  * still computes its size and text, it is simply never painted.</p>
  */
-public class Tooltip extends Panel implements PassiveOverlay {
+public class Tooltip extends Panel implements PassiveOverlay, Animatable {
 
     /** Inner padding between the bubble border and its text, logical units. */
     public static final float CONTENT_PADDING = 6.0f;
@@ -211,8 +212,13 @@ public class Tooltip extends Panel implements PassiveOverlay {
      * {@code Application.setAnimationCallback} so the delay is honoured; with
      * no animation callback the tooltip appears as soon as it is hovered.
      *
+     * <p>{@link Animatable} implementation: register the tooltip with
+     * {@code Application.addAnimatable(this)} and the loop feeds it the
+     * per-frame delta.</p>
+     *
      * @param deltaSeconds seconds elapsed since the previous frame
      */
+    @Override
     public void advance(float deltaSeconds) {
         if (deltaSeconds <= 0.0f || isVisible() || anchor == null) {
             return;

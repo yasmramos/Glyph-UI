@@ -9,6 +9,7 @@ import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
+import io.github.yasmramos.glyphui.events.ScrollEvent;
 import io.github.yasmramos.glyphui.graphics.Property;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -210,5 +211,142 @@ class ListBoxTest extends TestBase {
         list.onKeyEvent(key(GlyphKeys.DOWN));
 
         assertEquals(0, list.getSelectedIndex());
+    }
+
+    @Test
+    void theWheelScrollsTheVisibleWindowWithoutChangingSelection() {
+        ListBox list = new ListBox();
+        for (int i = 0; i < 20; i++) {
+            list.addItem("Item " + i);
+        }
+        // Three rows fit, so the wheel can scroll the window.
+        list.setWidth(160.0f);
+        list.setHeight(3 * ListBox.ROW_HEIGHT);
+        list.setSelectedIndex(0);
+
+        boolean consumed = list.onScroll(new ScrollEvent(0f, 2f, 20, 5));
+
+        assertTrue(consumed);
+        assertEquals(0, list.getSelectedIndex(),
+                "the wheel scrolls the view without moving the selection");
+        // The window scrolled two rows, so the top visible row is now row 2:
+        // clicking it selects row 2 rather than row 0.
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(2, list.getSelectedIndex());
+    }
+
+    @Test
+    void theWheelClampsAtBothEndsAndReportsWhetherItMoved() {
+        ListBox list = new ListBox();
+        for (int i = 0; i < 6; i++) {
+            list.addItem("Item " + i);
+        }
+        list.setWidth(160.0f);
+        list.setHeight(3 * ListBox.ROW_HEIGHT);
+
+        assertTrue(list.onScroll(new ScrollEvent(0f, 100f, 20, 5)),
+                "a scroll that moves the window is consumed");
+        // Already at the bottom: nothing left to scroll.
+        assertFalse(list.onScroll(new ScrollEvent(0f, 1f, 20, 5)),
+                "a scroll at the end of the list is not consumed");
+
+        assertTrue(list.onScroll(new ScrollEvent(0f, -100f, 20, 5)));
+        assertFalse(list.onScroll(new ScrollEvent(0f, -1f, 20, 5)));
+    }
+
+    @Test
+    void aListThatFitsDoesNotConsumeTheWheel() {
+        ListBox list = sizedList(3);
+        assertFalse(list.onScroll(new ScrollEvent(0f, 1f, 20, 5)),
+                "nothing to scroll means the gesture bubbles up");
+    }
+
+    @Test
+    void draggingTheThumbScrollsTheList() {
+        ListBox list = sixItemsThreeRows();
+
+        // The bar is 8 wide on the trailing edge, 2 in from the right.
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 154, 4));
+        list.onMouseEvent(mouse(MouseEventType.DRAG, 154, 200));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 154, 200));
+
+        // Scrolled to the end, so the top row is now the fourth item.
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(3, list.getSelectedIndex(),
+                "the thumb drag scrolled the window to the end");
+    }
+
+    @Test
+    void pressingTheTrackPagesTheList() {
+        ListBox list = sixItemsThreeRows();
+
+        // A press below the thumb pages down by a viewport (three rows).
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 154, 60));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 154, 60));
+
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 20, 5));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 20, 5));
+        assertEquals(3, list.getSelectedIndex(),
+                "a track press paged the window down by one viewport");
+    }
+
+    @Test
+    void aPressOnTheTrailingEdgeOfAFittingListStillSelectsARow() {
+        ListBox list = sizedList(3);
+        list.onMouseEvent(mouse(MouseEventType.PRESS, 154, 5));
+        list.onMouseEvent(mouse(MouseEventType.RELEASE, 154, 5));
+        assertEquals(0, list.getSelectedIndex(),
+                "with no bar the trailing edge behaves like any other row");
+    }
+
+    private static ListBox sixItemsThreeRows() {
+        ListBox list = new ListBox();
+        for (int i = 0; i < 6; i++) {
+            list.addItem("Item " + i);
+        }
+        list.setWidth(160.0f);
+        list.setHeight(3 * ListBox.ROW_HEIGHT);
+        return list;
+    }
+
+    @Test
+    void theScrollbarPaintsOnTheTrailingEdge() {
+        // width 160: bar spans [150, 158).
+        ScrollbarRaster.assertBarPaintsOnTrailingEdge(sixItemsThreeRows(), 150);
+    }
+
+    @Test
+    void theEdgeShadowFadesTheBottomWhileRowsRemainBelowTheFold() {
+        // Six rows in a four-row viewport, at the top: only the bottom edge has
+        // hidden content, so the last row reads darker than a middle one.
+        EdgeShadowRaster.render(sixItemsFourRows(), (surface, pixmap) -> {
+            int middle = EdgeShadowRaster.luma(pixmap.getColor(80, 48));
+            // Inside the 8px bottom fade (88..96) but clear of the border stroke.
+            int edge = EdgeShadowRaster.luma(pixmap.getColor(80, 92));
+            assertTrue(edge < middle,
+                    "the bottom fold must be darker than the content above it");
+        });
+    }
+
+    @Test
+    void theEdgeShadowLeavesTheTopCleanUntilScrolled() {
+        EdgeShadowRaster.render(sixItemsFourRows(), (surface, pixmap) -> {
+            int top = EdgeShadowRaster.luma(pixmap.getColor(80, 2));
+            int below = EdgeShadowRaster.luma(pixmap.getColor(80, 40));
+            assertEquals(below, top,
+                    "nothing is hidden above the fold, so the top stays clean");
+        });
+    }
+
+    private static ListBox sixItemsFourRows() {
+        ListBox list = new ListBox();
+        for (int i = 0; i < 6; i++) {
+            list.addItem("Item " + i);
+        }
+        list.setWidth(160.0f);
+        list.setHeight(4 * ListBox.ROW_HEIGHT);
+        return list;
     }
 }

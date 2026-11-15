@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
@@ -27,7 +28,7 @@ import java.util.function.Consumer;
  * first render, so constructing a switch and driving its state machine is safe
  * in headless unit tests.</p>
  */
-public class ToggleSwitch extends Component implements Textual {
+public class ToggleSwitch extends Component implements Textual, Animatable {
 
     /** Width of the pill track, logical units. */
     public static final float TRACK_WIDTH = 36.0f;
@@ -42,6 +43,13 @@ public class ToggleSwitch extends Component implements Textual {
     private boolean on;
     private Consumer<Boolean> onChange;
     private Property<String> textProperty;
+
+    /**
+     * Knob position, 0 = off, 1 = on, eased between the two so the knob slides
+     * instead of jumping. Rests at the current state, so a switch that never
+     * animates (headless, a screenshot) paints at its final position.
+     */
+    private final AnimatedValue knobSlide = new AnimatedValue(0.0f);
 
     private Paint trackPaint;
     private Paint knobPaint;
@@ -149,11 +157,44 @@ public class ToggleSwitch extends Component implements Textual {
             return;
         }
         this.on = on;
+        slideKnob();
         invalidatePaint();
         Consumer<Boolean> listener = onChange;
         if (listener != null) {
             listener.accept(on);
         }
+    }
+
+    /**
+     * Starts the knob easing towards the current state. The widget registers
+     * itself with the owning application; with no application live (headless
+     * tests) nothing drives the slide, so the knob stays put until a caller
+     * calls {@link #advance(float)}.
+     */
+    private void slideKnob() {
+        knobSlide.animateTo(on ? 1.0f : 0.0f);
+        AnimationSupport.start(this, this);
+    }
+
+    /**
+     * Advances the knob slide by one frame. {@link Animatable} implementation:
+     * register the switch with {@code Application.addAnimatable(this)} and the
+     * loop feeds it the per-frame delta.
+     *
+     * @param deltaSeconds seconds elapsed since the previous frame
+     */
+    @Override
+    public void advance(float deltaSeconds) {
+        knobSlide.advance(deltaSeconds);
+        invalidatePaint();
+    }
+
+    /**
+     * @return true when the knob has settled at its target
+     */
+    @Override
+    public boolean isFinished() {
+        return knobSlide.isFinished();
     }
 
     /**
@@ -272,9 +313,9 @@ public class ToggleSwitch extends Component implements Textual {
         float inset = 2.0f;
         float knobD = Math.max(0.0f, trackH - 2.0f * inset);
         float knobR = knobD / 2.0f;
-        float knobCx = on
-                ? trackW - inset - knobR
-                : inset + knobR;
+        float offCx = inset + knobR;
+        float onCx = trackW - inset - knobR;
+        float knobCx = offCx + (onCx - offCx) * knobSlide.get();
         knobPaint.setColor(getTheme().getControlTextColor());
         canvas.drawCircle(knobCx, trackY + trackH / 2.0f, knobR, knobPaint);
 

@@ -1071,31 +1071,17 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             cursorY = e._y;
             notifyCursorPos(e._x, e._y);
         } else if (event instanceof EventMouseScroll e) {
-            // Wheel gestures are surfaced as press/release pairs on the
-            // neutral virtual wheel buttons (BTN_WHEEL_UP/DOWN/LEFT/RIGHT —
-            // see WindowBackend.MouseListener). One pair per line of integer
-            // magnitude, so a fast flick scrolls proportionally instead of
-            // being flattened to a single notch.
-            int mods = mapNativeModifiers(e._modifiers);
-            float dy = Float.isFinite(e._deltaY) ? e._deltaY : 0f;
+            // The wheel is a gesture, not a button: report the notch deltas
+            // once so the toolkit can scroll the widget under the pointer. A
+            // fast flick carries a larger integer magnitude, so the delta is
+            // forwarded as-is instead of being flattened to one step. Sign
+            // convention: positive deltaX scrolls right, positive deltaY
+            // scrolls down (JWM reports the opposite vertical sign, so it is
+            // negated here).
             float dx = Float.isFinite(e._deltaX) ? e._deltaX : 0f;
-            int stepsY = Math.min(16, (int) Math.abs(dy));
-            if (stepsY == 0 && dy != 0f) {
-                stepsY = 1; // sub-notch deltas still scroll one line
-            }
-            for (int i = 0; i < stepsY; i++) {
-                int btn = dy > 0 ? BTN_WHEEL_UP : BTN_WHEEL_DOWN;
-                notifyMouseButton(btn, true, e._x, e._y, mods);
-                notifyMouseButton(btn, false, e._x, e._y, mods);
-            }
-            int stepsX = Math.min(16, (int) Math.abs(dx));
-            if (stepsX == 0 && dx != 0f) {
-                stepsX = 1;
-            }
-            for (int i = 0; i < stepsX; i++) {
-                int btn = dx > 0 ? BTN_WHEEL_RIGHT : BTN_WHEEL_LEFT;
-                notifyMouseButton(btn, true, e._x, e._y, mods);
-                notifyMouseButton(btn, false, e._x, e._y, mods);
+            float dy = Float.isFinite(e._deltaY) ? -e._deltaY : 0f;
+            if (dx != 0f || dy != 0f) {
+                notifyScroll(dx, dy, e._x, e._y);
             }
         }
     }
@@ -1230,11 +1216,6 @@ public class JwmWindowBackend extends AbstractWindowBackend {
     static final int BTN_LEFT = 0;
     static final int BTN_RIGHT = 1;
     static final int BTN_MIDDLE = 2;
-    /** Wheel gestures are emitted as press/release pairs on these virtual buttons. */
-    static final int BTN_WHEEL_UP = 3;
-    static final int BTN_WHEEL_DOWN = 4;
-    static final int BTN_WHEEL_LEFT = 5;
-    static final int BTN_WHEEL_RIGHT = 6;
 
     /** JWM MouseButton → toolkit ids (0=left, 1=right, 2=middle). */
     private static int buttonToToolkit(io.github.humbleui.jwm.MouseButton b) {
@@ -1242,8 +1223,10 @@ public class JwmWindowBackend extends AbstractWindowBackend {
             case PRIMARY -> BTN_LEFT;
             case SECONDARY -> BTN_RIGHT;
             case MIDDLE -> BTN_MIDDLE;
-            case BACK -> BTN_WHEEL_UP;    // legacy collision kept for compatibility
-            case FORWARD -> BTN_WHEEL_DOWN;
+            // Back/forward are extra thumb buttons, not wheel notches; the
+            // toolkit has no vocabulary for them yet, so they fall back to
+            // left rather than aliasing a wheel id (the old mapping collided
+            // BACK with BTN_WHEEL_UP and made a thumb click scroll).
             default -> BTN_LEFT;
         };
     }
