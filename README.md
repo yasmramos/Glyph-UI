@@ -107,6 +107,14 @@ that reports `isFinished()` — a fade that has settled, a delay that has elapse
 `Tooltip`, `Toast`, `ProgressBar`, `ProgressRing` and the overlay scrollbar's
 activity highlight are driven this way.
 
+Widgets that own a small motion — the switch knob, the tab indicator — register
+themselves when the motion starts, so an application gets the slide for free
+without wiring a callback. `AnimatedValue` (package-private) is the shared
+easing value behind them: it eases towards a target over a fixed duration with a
+smooth-step curve and reports `isFinished()` when it settles. Detached widgets
+(headless tests, a component built before any window exists) skip registration
+and stay put until a caller drives `advance(...)`.
+
 ### Visual quality
 
 Rendering defaults to a smooth, modern look; jagged edges are treated as a

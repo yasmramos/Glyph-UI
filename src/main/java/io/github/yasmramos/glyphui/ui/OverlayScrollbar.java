@@ -1,7 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
 import io.github.yasmramos.glyphui.core.Animatable;
-import io.github.yasmramos.glyphui.core.AppContext;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.graphics.Canvas;
 import io.github.yasmramos.glyphui.graphics.Theme;
@@ -266,11 +265,7 @@ final class OverlayScrollbar implements Animatable {
         if (!bar.consumeScrollActivity()) {
             return;
         }
-        AppContext ctx = owner.context();
-        Application app = ctx != null ? ctx.app() : null;
-        if (app != null) {
-            app.addAnimatable(bar);
-        }
+        AnimationSupport.start(owner, bar);
     }
 
     /**
