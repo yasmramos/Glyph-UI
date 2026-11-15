@@ -5,6 +5,10 @@ import io.github.yasmramos.glyphui.TestBase;
 import io.github.yasmramos.glyphui.core.Application;
 import io.github.yasmramos.glyphui.core.Window;
 import io.github.yasmramos.glyphui.core.internal.TestHooks;
+import io.github.yasmramos.glyphui.events.GlyphKeys;
+import io.github.yasmramos.glyphui.events.KeyEvent;
+import io.github.yasmramos.glyphui.events.KeyEventType;
+import io.github.yasmramos.glyphui.events.KeyModifier;
 import io.github.yasmramos.glyphui.events.MouseButton;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.events.MouseEventType;
@@ -16,6 +20,8 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.EnumSet;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -130,6 +136,40 @@ class WidgetColorTransitionTest extends TestBase {
 
         radio.advance(1.0f);
         assertTrue(radio.isFinished());
+    }
+
+    @Test
+    @DisplayName("an attached accordion fades the header fill when focus moves")
+    void accordionHeaderFadesWhenAttached() {
+        Accordion accordion = new Accordion();
+        accordion.setWidth(200);
+        accordion.setHeight(100);
+        accordion.addSection("One", new Label("one"));
+        accordion.addSection("Two", new Label("two"));
+        attach(accordion);
+
+        accordion.renderInternal(canvas);
+        canvas.flush();
+        assertTrue(accordion.isFinished(), "the first paint rests at the unfocused fill");
+
+        // Keyboard navigation moves the focused section without painting.
+        accordion.onKeyEvent(key(GlyphKeys.DOWN));
+        assertTrue(accordion.isFinished(), "moving focus alone does not paint");
+
+        // The next paint sees the new focus and starts the fade.
+        accordion.renderInternal(canvas);
+        canvas.flush();
+        assertFalse(accordion.isFinished(), "an attached accordion must fade, not snap");
+
+        accordion.advance(1.0f);
+        accordion.renderInternal(canvas);
+        canvas.flush();
+        assertTrue(accordion.isFinished(), "the fade settles once its duration elapses");
+    }
+
+    private static KeyEvent key(int keyCode) {
+        return new KeyEvent(KeyEventType.PRESS, keyCode, ' ',
+                EnumSet.noneOf(KeyModifier.class));
     }
 
     @Test

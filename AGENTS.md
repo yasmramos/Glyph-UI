@@ -178,16 +178,18 @@ colour with the live state (no fade on appearance), a later state change starts
 the run and registers the widget as the animatable. `ColorBlend.lerp` (ARGB) and
 `ColorBlend.lerpByte` (one byte-scale value, e.g. a scrollbar alpha) are the
 single blend helpers — do not re-add a private `blend(...)` per widget.
-`Button`, `CheckBox` and `RadioButton` follow this.
+`Button`, `CheckBox` and `RadioButton` follow this; `Accordion` keeps one
+`AnimatedColor` per section so focus fades its header fill.
 
 A "selection glides between cells" motion shares one helper too. `Tabs` (its
-header underline) and `SegmentedControl` (its selected block) both drive a
-`SlidingIndicator` (package-private, built on two `AnimatedValue`s for the left
-edge and the width): `indicator.glideTo(this, left, width)` places it on the
-first call and eases it on every later target, then the widget paints
-`indicator.left()` / `indicator.width()`. Call `glideTo` while painting when the
-target needs a font measurement (so a headless selection never resolves a font);
-`Tabs` measures without Skija, so it syncs on selection instead.
+header underline), `SegmentedControl` (its selected block) and `Pagination` (its
+active page pill) drive a `SlidingIndicator` (package-private, built on two
+`AnimatedValue`s for the left edge and the width): `indicator.glideTo(this,
+left, width)` places it on the first call and eases it on every later target,
+then the widget paints `indicator.left()` / `indicator.width()`. Call `glideTo`
+while painting when the target needs a font measurement (so a headless selection
+never resolves a font); `Tabs` measures without Skija, so it syncs on selection
+instead.
 
 ## Top-level windows: `Window` vs `Form`
 

@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.events.GlyphCursor;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
@@ -38,7 +39,7 @@ import java.util.logging.Logger;
  * label. Colors resolve like every other widget: a CSS declaration wins, then
  * the theme.</p>
  */
-public class Pagination extends Component {
+public class Pagination extends Component implements Animatable {
 
     /** Logger for page-change handler failures (never swallowed silently). */
     private static final Logger LOG = Logger.getLogger(Pagination.class.getName());
@@ -69,6 +70,13 @@ public class Pagination extends Component {
 
     private int hoveredSlot = -1;
     private List<Slot> slots = List.of();
+
+    /**
+     * The active page pill's left edge and width, eased between slots so the
+     * highlight glides instead of jumping. It rests at the active slot, so a
+     * pager that never animates (headless, a screenshot) paints it in place.
+     */
+    private final SlidingIndicator indicator = new SlidingIndicator();
 
     private Paint bgPaint;
     private Paint hoverPaint;
@@ -302,6 +310,21 @@ public class Pagination extends Component {
         float line = metrics.getDescent() - metrics.getAscent();
         float radius = getTheme().getControlCornerRadius();
 
+        int activeSlot = -1;
+        for (int i = 0; i < slots.size(); i++) {
+            Slot slot = slots.get(i);
+            if (slot.kind() == Kind.PAGE && slot.page() == currentPage) {
+                activeSlot = i;
+                break;
+            }
+        }
+        if (activeSlot >= 0) {
+            Slot slot = slots.get(activeSlot);
+            // Sync the glide while painting so the pill eases between slots. The
+            // first paint places it; a page change starts the glide.
+            indicator.glideTo(this, slot.x(), slot.width());
+        }
+
         for (int i = 0; i < slots.size(); i++) {
             Slot slot = slots.get(i);
             if (slot.kind() == Kind.ELLIPSIS) {
@@ -310,10 +333,10 @@ public class Pagination extends Component {
                 continue;
             }
 
-            boolean active = slot.kind() == Kind.PAGE && slot.page() == currentPage;
+            boolean active = i == activeSlot;
             if (active) {
                 bgPaint.setColor(getTheme().getAccentColor());
-                canvas.drawRRect(slot.x(), 0, slot.width(), BUTTON_SIZE,
+                canvas.drawRRect(indicator.left(), 0, indicator.width(), BUTTON_SIZE,
                         radius, radius, bgPaint);
             } else if (i == hoveredSlot && isEnabledSlot(i)) {
                 hoverPaint.setColor(getTheme().getControlHoverColor());
@@ -457,6 +480,28 @@ public class Pagination extends Component {
                 LOG.log(Level.SEVERE, "Pagination change handler threw", e);
             }
         }
+    }
+
+    /**
+     * Advances the active pill's glide by one frame. {@link Animatable}
+     * implementation: register the pager with
+     * {@code Application.addAnimatable(this)} and the loop feeds it the
+     * per-frame delta.
+     *
+     * @param deltaSeconds seconds elapsed since the previous frame
+     */
+    @Override
+    public void advance(float deltaSeconds) {
+        indicator.advance(deltaSeconds);
+        requestRepaint();
+    }
+
+    /**
+     * @return true when the active pill has settled under its page
+     */
+    @Override
+    public boolean isFinished() {
+        return indicator.isFinished();
     }
 
     @Override
