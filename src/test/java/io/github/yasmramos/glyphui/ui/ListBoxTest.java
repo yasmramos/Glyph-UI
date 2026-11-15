@@ -316,4 +316,37 @@ class ListBoxTest extends TestBase {
         // width 160: bar spans [150, 158).
         ScrollbarRaster.assertBarPaintsOnTrailingEdge(sixItemsThreeRows(), 150);
     }
+
+    @Test
+    void theEdgeShadowFadesTheBottomWhileRowsRemainBelowTheFold() {
+        // Six rows in a four-row viewport, at the top: only the bottom edge has
+        // hidden content, so the last row reads darker than a middle one.
+        EdgeShadowRaster.render(sixItemsFourRows(), (surface, pixmap) -> {
+            int middle = EdgeShadowRaster.luma(pixmap.getColor(80, 48));
+            // Inside the 8px bottom fade (88..96) but clear of the border stroke.
+            int edge = EdgeShadowRaster.luma(pixmap.getColor(80, 92));
+            assertTrue(edge < middle,
+                    "the bottom fold must be darker than the content above it");
+        });
+    }
+
+    @Test
+    void theEdgeShadowLeavesTheTopCleanUntilScrolled() {
+        EdgeShadowRaster.render(sixItemsFourRows(), (surface, pixmap) -> {
+            int top = EdgeShadowRaster.luma(pixmap.getColor(80, 2));
+            int below = EdgeShadowRaster.luma(pixmap.getColor(80, 40));
+            assertEquals(below, top,
+                    "nothing is hidden above the fold, so the top stays clean");
+        });
+    }
+
+    private static ListBox sixItemsFourRows() {
+        ListBox list = new ListBox();
+        for (int i = 0; i < 6; i++) {
+            list.addItem("Item " + i);
+        }
+        list.setWidth(160.0f);
+        list.setHeight(4 * ListBox.ROW_HEIGHT);
+        return list;
+    }
 }

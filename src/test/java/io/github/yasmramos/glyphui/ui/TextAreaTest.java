@@ -341,4 +341,31 @@ class TextAreaTest extends TestBase {
         area.onMouseEvent(new MouseEvent(MouseEventType.PRESS, 8, 12, MouseButton.LEFT, 1));
         assertTrue(area.getCaret() >= 9, "the thumb drag scrolled the buffer to the end");
     }
+
+    @Test
+    void theEdgeShadowFadesTheTopOfTheTextWellWhenScrolled() {
+        // 200x100 with the default 8px padding: the content box is
+        // [8, 92) x [8, 92). Scrolled to the bottom there is hidden text above,
+        // so the top fade shows.
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+        area.onScroll(new ScrollEvent(0f, 1000f, 10, 10));
+        EdgeShadowRaster.render(area, (surface, pixmap) -> {
+            int top = EdgeShadowRaster.luma(pixmap.getColor(100, 10));
+            int middle = EdgeShadowRaster.luma(pixmap.getColor(100, 50));
+            assertTrue(top < middle,
+                    "scrolled down, the hidden text above must fade the well top");
+        });
+    }
+
+    @Test
+    void theEdgeShadowLeavesTheTextWellTopCleanAtTheStart() {
+        area.setText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9");
+        area.onScroll(new ScrollEvent(0f, -1000f, 10, 10));
+        EdgeShadowRaster.render(area, (surface, pixmap) -> {
+            int top = EdgeShadowRaster.luma(pixmap.getColor(100, 10));
+            int below = EdgeShadowRaster.luma(pixmap.getColor(100, 50));
+            assertEquals(below, top,
+                    "at the top nothing is hidden above, so the well top stays clean");
+        });
+    }
 }

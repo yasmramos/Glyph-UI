@@ -199,6 +199,37 @@ A disabled component does not drive the pointer: its shape is ignored and the
 arrow is shown, matching the web convention that disabled controls lose their
 affordance.
 
+### Added the `Animatable` animation seam
+
+Time-based motion now has one public entry point, replacing the pattern where
+every caller measured frame time by hand.
+
+Added to the public surface:
+
+- `io.github.yasmramos.glyphui.core.Animatable` (interface): `advance(float)`
+  plus a default `isFinished()`. A widget whose look changes every frame
+  implements it and is registered once; the frame loop keeps repainting while
+  any is registered and advances each with the elapsed seconds of the frame.
+- `Application#addAnimatable(Animatable)` / `removeAnimatable(Animatable)`:
+  registration, next to the existing `setAnimationCallback`. Registering the
+  first animatable schedules a repaint; removing does not force one.
+- `Tooltip`, `Toast`, `ProgressBar` and `ProgressRing` implement `Animatable`;
+  their existing `advance(float)` / `advanceAnimation(float)` methods keep
+  working unchanged.
+
+`Application#setAnimationCallback(Runnable)` is deprecated in favour of
+`addAnimatable`: the callback still runs every frame, but it hands no delta and
+applies no clamp, so it stays for compatibility only.
+
+`AnimationClock` (package-private) owns the timing and is deliberately not
+public: it seeds a zero delta on the first frame, clamps each step so a late
+frame cannot make an animation jump, and drops a finished animatable so the
+application returns to on-demand rendering. The overlay scrollbar's activity
+highlight uses the same seam, so no new public type is added for it.
+
+No removals: existing code that drives motion through `setAnimationCallback`
+keeps working exactly as before.
+
 ## Consequences
 
 - Audits become mechanical: apply the five rules, move violations to

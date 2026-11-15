@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.MouseEvent;
 import io.github.yasmramos.glyphui.graphics.Canvas;
@@ -28,7 +29,7 @@ import io.github.humbleui.skija.Paint;
  * first render, so construction and state changes are safe in headless unit
  * tests.</p>
  */
-public class ProgressBar extends Component {
+public class ProgressBar extends Component implements Animatable {
 
     /** Default height of the track, logical units. */
     public static final float DEFAULT_BAR_HEIGHT = 16.0f;
@@ -175,6 +176,11 @@ public class ProgressBar extends Component {
         }
         phase = (phase + seconds * INDETERMINATE_SPEED) % 1.0f;
         invalidatePaint();
+    }
+
+    @Override
+    public void advance(float deltaSeconds) {
+        advanceAnimation(deltaSeconds);
     }
 
     @Override

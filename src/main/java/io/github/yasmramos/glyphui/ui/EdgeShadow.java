@@ -37,22 +37,50 @@ final class EdgeShadow {
     private Edge shaderEdge;
 
     /**
-     * Paints a fade of {@link #DEPTH} pixels at {@code edge} of a
-     * {@code width}-wide viewport.
+     * Paints a fade of {@link #DEPTH} pixels at {@code edge} of a viewport.
      *
      * @param canvas  the canvas, in the widget's local coordinate space
+     * @param x       the viewport's left edge
+     * @param y       the viewport's top edge
      * @param width   the viewport width in logical units
      * @param height  the viewport height in logical units
      * @param edge    the edge to fade
      * @param theme   the active theme (supplies the shadow colour)
      */
-    void render(Canvas canvas, float width, float height, Edge edge, Theme theme) {
-        if (width <= 0.0f || height <= 0.0f) {
+    void render(Canvas canvas, float x, float y, float width, float height, Edge edge,
+            Theme theme) {
+        if (width <= 0.0f || height <= 0.0f || height < DEPTH) {
             return;
         }
-        float top = edge == Edge.TOP ? 0.0f : height - DEPTH;
+        float top = edge == Edge.TOP ? y : y + height - DEPTH;
         ensureShader(edge, top, theme.getShadowColor());
-        canvas.drawRect(0.0f, top, width, DEPTH, paint);
+        canvas.drawRect(x, top, x + width, top + DEPTH, paint);
+    }
+
+    /**
+     * Paints the vertical fades of a scrolled viewport: the top one only once
+     * {@code offset} is past zero, the bottom one only while more content
+     * remains below the fold. The two conditions are exactly the ones a web
+     * scroller uses, so every scrolling widget can share this instead of
+     * repeating them.
+     *
+     * @param canvas    the canvas, in the widget's local coordinate space
+     * @param x         the viewport's left edge
+     * @param y         the viewport's top edge
+     * @param width     the viewport width in logical units
+     * @param height    the viewport height in logical units
+     * @param offset    the current scroll offset in pixels
+     * @param maxOffset the largest scroll offset the widget accepts
+     * @param theme     the active theme
+     */
+    void renderVertical(Canvas canvas, float x, float y, float width, float height,
+            float offset, float maxOffset, Theme theme) {
+        if (offset > 0.0f) {
+            render(canvas, x, y, width, height, Edge.TOP, theme);
+        }
+        if (offset < maxOffset) {
+            render(canvas, x, y, width, height, Edge.BOTTOM, theme);
+        }
     }
 
     /** Releases the reusable paint and shader. */

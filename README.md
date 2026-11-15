@@ -79,13 +79,33 @@ an enclosing scroller can take it.
 The scrolling containers draw a thin overlay scrollbar when their content
 overflows, the way a modern web page does: the bar is painted on top of the
 content so it never takes layout space, it fades in on hover, the thumb can be
-dragged and pressing the track pages towards the click.
+dragged and pressing the track pages towards the click. Moving the content —
+a wheel notch, a key, a track page or a drag — also brightens the bar, and it
+fades back to its resting tint a moment after the movement stops.
 
 `ScrollPane` also dims the edge where more content is hidden — the top only once
 it has scrolled, the bottom only while content remains below the fold — with a
 short gradient rather than a hard line. The fade is a linear gradient anchored
 to the edge and needs no extra state: it is derived from the same scroll offset
 the wheel, the keyboard and the scrollbar drag already move.
+
+### Animation
+
+Time-based motion goes through one seam. A widget that changes on every frame
+implements `Animatable` and is registered once:
+
+```java
+app.addAnimatable(progressRing);   // indeterminate spinner
+```
+
+While at least one animatable is registered the loop keeps repainting, and each
+one is advanced with the elapsed seconds of the frame. The delta is clamped, so
+a late frame (a stall, a debugger pause, a backgrounded window) advances the
+animation by at most one short step instead of making it jump. An animatable
+that reports `isFinished()` — a fade that has settled, a delay that has elapsed
+— is dropped automatically and the application returns to on-demand rendering.
+`Tooltip`, `Toast`, `ProgressBar`, `ProgressRing` and the overlay scrollbar's
+activity highlight are driven this way.
 
 ### Visual quality
 

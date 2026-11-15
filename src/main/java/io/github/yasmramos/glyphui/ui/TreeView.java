@@ -165,6 +165,7 @@ public class TreeView extends Component {
     private int firstVisible;
 
     private final OverlayScrollbar scrollbar = new OverlayScrollbar();
+    private final EdgeShadow edgeShadow = new EdgeShadow();
 
     private Consumer<Node> onSelect;
     private Property<Node> selectedNodeProperty;
@@ -443,14 +444,12 @@ public class TreeView extends Component {
     // ---- Geometry ----------------------------------------------------------
 
     private int visibleRows() {
-        if (height <= 0.0f) {
-            return DEFAULT_VISIBLE_ROWS;
-        }
-        return Math.max(1, (int) Math.floor(height / ROW_HEIGHT));
+        return ScrollMetrics.visibleRows(height, ROW_HEIGHT, DEFAULT_VISIBLE_ROWS);
     }
 
     private int maxFirstVisible() {
-        return Math.max(0, visibleNodes.size() - visibleRows());
+        return ScrollMetrics.maxFirstVisible(visibleNodes.size(), height, ROW_HEIGHT,
+                DEFAULT_VISIBLE_ROWS);
     }
 
     /** Total pixel height of the visible rows, for sizing the scrollbar. */
@@ -816,6 +815,9 @@ public class TreeView extends Component {
 
         scrollbar.render(canvas, width, height, 0.0f, scrollContentHeight(),
                 scrollOffsetPixels(), scrollMaxPixels(), getTheme());
+        OverlayScrollbar.registerActivityWith(scrollbar, this);
+        edgeShadow.renderVertical(canvas, 0.0f, 0.0f, width, height,
+                scrollOffsetPixels(), scrollMaxPixels(), getTheme());
     }
 
     /** Draws the disclosure triangle: pointing down when expanded, right when not. */
@@ -866,6 +868,7 @@ public class TreeView extends Component {
     @Override
     protected void onDispose() {
         scrollbar.dispose();
+        edgeShadow.dispose();
         closeQuietly(bgPaint);
         bgPaint = null;
         closeQuietly(selectedPaint);

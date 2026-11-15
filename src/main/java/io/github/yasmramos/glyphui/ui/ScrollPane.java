@@ -162,12 +162,8 @@ public class ScrollPane extends Panel {
      * Drawn after the scrollbar so the fade covers the full width.
      */
     private void renderEdgeShadow(Canvas canvas) {
-        if (scrollY > 0.0f) {
-            edgeShadow.render(canvas, width, height, EdgeShadow.Edge.TOP, getTheme());
-        }
-        if (scrollY < getMaxScrollY()) {
-            edgeShadow.render(canvas, width, height, EdgeShadow.Edge.BOTTOM, getTheme());
-        }
+        edgeShadow.renderVertical(canvas, 0.0f, 0.0f, width, height,
+                scrollY, getMaxScrollY(), getTheme());
     }
 
     /**
@@ -178,6 +174,7 @@ public class ScrollPane extends Panel {
     private void renderScrollbar(Canvas canvas) {
         scrollbar.render(canvas, width, height, 0.0f, contentHeight(), scrollY,
                 getMaxScrollY(), getTheme());
+        OverlayScrollbar.registerActivityWith(scrollbar, this);
     }
 
     /**

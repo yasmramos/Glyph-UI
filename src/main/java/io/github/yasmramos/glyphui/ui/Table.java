@@ -83,6 +83,7 @@ public class Table extends Component {
     private int firstVisible;
 
     private final OverlayScrollbar scrollbar = new OverlayScrollbar();
+    private final EdgeShadow edgeShadow = new EdgeShadow();
 
     private IntConsumer onSelect;
     private Property<Integer> selectedIndexProperty;
@@ -470,15 +471,12 @@ public class Table extends Component {
     // ---- Geometry ----------------------------------------------------------
 
     private int visibleRows() {
-        float body = height - HEADER_HEIGHT;
-        if (body <= 0.0f) {
-            return DEFAULT_VISIBLE_ROWS;
-        }
-        return Math.max(1, (int) Math.floor(body / ROW_HEIGHT));
+        return ScrollMetrics.visibleRows(bodyHeight(), ROW_HEIGHT, DEFAULT_VISIBLE_ROWS);
     }
 
     private int maxFirstVisible() {
-        return Math.max(0, rows.size() - visibleRows());
+        return ScrollMetrics.maxFirstVisible(rows.size(), bodyHeight(), ROW_HEIGHT,
+                DEFAULT_VISIBLE_ROWS);
     }
 
     /** Height of the body viewport (everything below the header). */
@@ -890,6 +888,11 @@ public class Table extends Component {
 
         scrollbar.render(canvas, width, bodyHeight(), HEADER_HEIGHT,
                 scrollContentHeight(), scrollOffsetPixels(), scrollMaxPixels(), getTheme());
+        OverlayScrollbar.registerActivityWith(scrollbar, this);
+        // The fades live in the body, below the header: the top one sits just
+        // under it once the rows have scrolled, the bottom one at the fold.
+        edgeShadow.renderVertical(canvas, 0.0f, HEADER_HEIGHT, width, bodyHeight(),
+                scrollOffsetPixels(), scrollMaxPixels(), getTheme());
     }
 
     private void ensurePaints() {
@@ -925,6 +928,7 @@ public class Table extends Component {
     @Override
     protected void onDispose() {
         scrollbar.dispose();
+        edgeShadow.dispose();
         closeQuietly(bgPaint);
         bgPaint = null;
         closeQuietly(headerPaint);

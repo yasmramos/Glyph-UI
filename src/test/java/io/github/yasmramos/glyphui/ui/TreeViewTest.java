@@ -410,4 +410,24 @@ class TreeViewTest extends TestBase {
         // width 200: bar spans [190, 198).
         ScrollbarRaster.assertBarPaintsOnTrailingEdge(twentyRootsThreeRows(), 190);
     }
+
+    @Test
+    void theEdgeShadowFadesTheBottomWhileRowsRemainBelowTheFold() {
+        EdgeShadowRaster.render(twentyRootsThreeRows(), (surface, pixmap) -> {
+            int middle = EdgeShadowRaster.luma(pixmap.getColor(100, 36));
+            int edge = EdgeShadowRaster.luma(pixmap.getColor(100, 70));
+            assertTrue(edge < middle,
+                    "the bottom fold must be darker than the content above it");
+        });
+    }
+
+    @Test
+    void theEdgeShadowLeavesTheTopCleanUntilScrolled() {
+        EdgeShadowRaster.render(twentyRootsThreeRows(), (surface, pixmap) -> {
+            int top = EdgeShadowRaster.luma(pixmap.getColor(100, 2));
+            int below = EdgeShadowRaster.luma(pixmap.getColor(100, 40));
+            assertEquals(below, top,
+                    "nothing is hidden above the fold, so the top stays clean");
+        });
+    }
 }
