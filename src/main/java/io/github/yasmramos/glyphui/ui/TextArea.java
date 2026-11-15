@@ -68,6 +68,7 @@ public class TextArea extends TextField {
     private float horizontalScrollOffset = 0.0f;
 
     private final OverlayScrollbar scrollbar = new OverlayScrollbar();
+    private final EdgeShadow edgeShadow = new EdgeShadow();
 
     /** True between a press that began a selection and its end. */
     private boolean selecting = false;
@@ -375,7 +376,7 @@ public class TextArea extends TextField {
     private int pageRows() {
         Font font = areaFont();
         float contentHeight = Math.max(0.0f, height - 2.0f * areaPadding());
-        return Math.max(1, (int) Math.floor(contentHeight / lineHeight(font)));
+        return ScrollMetrics.visibleRows(contentHeight, lineHeight(font), 1);
     }
 
     private void handleBackspace() {
@@ -746,6 +747,11 @@ public class TextArea extends TextField {
         scrollbar.render(canvas, width, contentHeight, padding,
                 Math.max(contentHeight, lineCount * lineHeight), verticalScrollOffset,
                 maxVerticalScroll(font, lineCount, contentHeight), theme);
+        OverlayScrollbar.registerActivityWith(scrollbar, this);
+        // The fades live inside the padding box, so they sit at the text fold
+        // rather than on the widget's border.
+        edgeShadow.renderVertical(canvas, padding, padding, contentWidth, contentHeight,
+                verticalScrollOffset, maxVerticalScroll(font, lineCount, contentHeight), theme);
     }
 
     /** The largest vertical offset that still fills the box with lines. */
@@ -811,6 +817,7 @@ public class TextArea extends TextField {
     protected void onDispose() {
         super.onDispose();
         scrollbar.dispose();
+        edgeShadow.dispose();
         if (backgroundPaint != null) {
             backgroundPaint.close();
             backgroundPaint = null;

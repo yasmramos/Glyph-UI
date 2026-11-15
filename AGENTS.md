@@ -140,6 +140,27 @@ package-private methods is the sanctioned home for this plumbing. Widgets pass
 the `Canvas` facade, the `Theme` and plain floats; the helper owns the native
 `Paint`/`Shader` and releases them from the widget's `onDispose()`.
 
+## Animation: the `Animatable` seam
+
+Time-based motion has one entry point. A widget whose look changes every frame
+implements `io.github.yasmramos.glyphui.core.Animatable` and is registered with
+`Application.addAnimatable(...)`; the frame loop keeps repainting while any is
+registered and calls `advance(deltaSeconds)` with the elapsed seconds of the
+frame. `AnimationClock` owns the timing: it seeds a zero delta on the first
+frame, clamps each step to `MAX_STEP_SECONDS` (a late frame must not make an
+animation jump), and drops an animatable that reports `isFinished()`.
+
+Keep the clock out of widgets: they expose a plain `advance(float)` (or
+`advanceAnimation(float)`) and stay deterministic in tests, which drive them with
+explicit deltas instead of sleeping. `Tooltip`, `Toast`, `ProgressBar`,
+`ProgressRing` and `OverlayScrollbar` follow this. `setAnimationCallback(Runnable)`
+is deprecated: it makes every caller measure the elapsed time by hand and has no
+clamp.
+
+`OverlayScrollbar` detects activity from the scroll offset it paints with, so
+each scrolling widget only calls `OverlayScrollbar.registerActivityWith(bar, this)`
+right after painting its bar; the highlight fades and the bar unregisters itself.
+
 ## Top-level windows: `Window` vs `Form`
 
 `core.Window` is the low-level window (the AWT `Frame` analogue); `ui.Form`

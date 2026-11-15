@@ -149,8 +149,21 @@ public class Application implements AutoCloseable {
     /**
      * Optional animation callback. While it returns true, the event loop keeps
      * repainting every frame (continuous animations). May be null.
+     *
+     * @deprecated use {@link #addAnimatable(Animatable)}, which drives each
+     *     animation with a clamped per-frame delta and keeps the loop painting
+     *     while any animatable is registered. Retained for callers that already
+     *     manage their own clock.
      */
+    @Deprecated
     private Runnable animationCallback;
+
+    /**
+     * Animation registration and per-frame timing. While it holds at least one
+     * {@link Animatable} the loop keeps repainting and every animatable is
+     * advanced with the elapsed seconds of each frame.
+     */
+    private final AnimationClock animations = new AnimationClock();
 
     /**
      * The UI thread: the thread that called {@link #run()}. All widget state
@@ -1686,12 +1699,48 @@ public class Application implements AutoCloseable {
      *
      * @param animationCallback callback advanced once per loop iteration while
      * set
+     * @deprecated use {@link #addAnimatable(Animatable)}, which feeds each
+     *     animation a clamped per-frame delta instead of making every caller
+     *     measure the elapsed time itself.
      */
+    @Deprecated
     public void setAnimationCallback(Runnable animationCallback) {
         this.animationCallback = animationCallback;
         if (animationCallback != null) {
             requestRepaint();
         }
+    }
+
+    /**
+     * Registers an animation that the frame loop advances with the elapsed
+     * seconds of every frame. While at least one animatable is registered the
+     * loop keeps repainting, so the motion stays smooth; the delta is clamped
+     * to {@link AnimationClock#MAX_STEP_SECONDS} so a late frame never makes
+     * the animation jump.
+     *
+     * <p>Registering the first animatable schedules a repaint, so motion starts
+     * without waiting for unrelated input. Must be called on the UI thread (or
+     * before {@link #run()}); use {@link #invokeLater(Runnable)} to register
+     * from another thread.</p>
+     *
+     * @param animatable the animation to drive (null is ignored)
+     * @see Animatable
+     */
+    public void addAnimatable(Animatable animatable) {
+        if (animations.add(animatable)) {
+            requestRepaint();
+        }
+    }
+
+    /**
+     * Unregisters an animation previously passed to
+     * {@link #addAnimatable(Animatable)}. Removing the last one returns the
+     * loop to on-demand rendering.
+     *
+     * @param animatable the animation to stop driving (null is ignored)
+     */
+    public void removeAnimatable(Animatable animatable) {
+        animations.remove(animatable);
     }
 
     /**
@@ -1769,10 +1818,16 @@ public class Application implements AutoCloseable {
         // "drainCurrent()" pass is needed.
         drainUiTasks();
 
-        // Advance animation while one is registered (continuous repainting)
-        boolean animating = (animationCallback != null);
+        // Advance animations while any is registered (continuous repainting).
+        // The registered animatables get the elapsed seconds of this frame,
+        // clamped by AnimationClock; the legacy callback, if set, runs after.
+        boolean animating = animations.isAnimating();
         if (animating) {
+            animations.advance();
+        }
+        if (animationCallback != null) {
             animationCallback.run();
+            animating = true;
         }
 
         // Consume the global style-dirty latch once per frame. The cascade is

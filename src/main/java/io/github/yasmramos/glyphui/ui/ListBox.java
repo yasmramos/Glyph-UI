@@ -62,6 +62,7 @@ public class ListBox extends Component {
     private int firstVisible;
 
     private final OverlayScrollbar scrollbar = new OverlayScrollbar();
+    private final EdgeShadow edgeShadow = new EdgeShadow();
 
     private IntConsumer onSelect;
     private Property<Integer> selectedIndexProperty;
@@ -298,14 +299,12 @@ public class ListBox extends Component {
 
     /** Number of rows that fit in the current height. */
     private int visibleRows() {
-        if (height <= 0.0f) {
-            return DEFAULT_VISIBLE_ROWS;
-        }
-        return Math.max(1, (int) Math.floor(height / ROW_HEIGHT));
+        return ScrollMetrics.visibleRows(height, ROW_HEIGHT, DEFAULT_VISIBLE_ROWS);
     }
 
     private int maxFirstVisible() {
-        return Math.max(0, items.size() - visibleRows());
+        return ScrollMetrics.maxFirstVisible(items.size(), height, ROW_HEIGHT,
+                DEFAULT_VISIBLE_ROWS);
     }
 
     /** Total pixel height of the rows, for sizing the scrollbar. */
@@ -443,6 +442,9 @@ public class ListBox extends Component {
                 Math.max(0.0f, height - 1.0f), borderPaint);
 
         scrollbar.render(canvas, width, height, 0.0f, scrollContentHeight(),
+                scrollOffsetPixels(), scrollMaxPixels(), getTheme());
+        OverlayScrollbar.registerActivityWith(scrollbar, this);
+        edgeShadow.renderVertical(canvas, 0.0f, 0.0f, width, height,
                 scrollOffsetPixels(), scrollMaxPixels(), getTheme());
     }
 
@@ -643,6 +645,7 @@ public class ListBox extends Component {
     @Override
     protected void onDispose() {
         scrollbar.dispose();
+        edgeShadow.dispose();
         if (bgPaint != null) {
             bgPaint.close();
             bgPaint = null;

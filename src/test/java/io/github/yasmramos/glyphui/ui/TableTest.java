@@ -384,4 +384,32 @@ class TableTest extends TestBase {
         // width 200: bar spans [190, 198), starting below the header.
         ScrollbarRaster.assertBarPaintsOnTrailingEdge(sixRowsThreeVisible(), 190);
     }
+
+    @Test
+    void theEdgeShadowFadesTheBottomOfTheBodyNotTheHeader() {
+        // Six rows in a three-row body, at the top: the fade sits at the bottom
+        // of the body, and the header strip above it stays flat (a whole-widget
+        // fade would have darkened the top of the header instead).
+        EdgeShadowRaster.render(sixRowsThreeVisible(), (surface, pixmap) -> {
+            int headerTop = EdgeShadowRaster.luma(pixmap.getColor(100, 4));
+            int headerBottom = EdgeShadowRaster.luma(pixmap.getColor(100, 22));
+            int bodyMiddle = EdgeShadowRaster.luma(pixmap.getColor(100, 60));
+            // Inside the 8px body fade (92..100) but clear of the border stroke.
+            int bodyBottom = EdgeShadowRaster.luma(pixmap.getColor(100, 96));
+            assertEquals(headerBottom, headerTop,
+                    "the header must stay flat, so the fade lives in the body");
+            assertTrue(bodyBottom < bodyMiddle,
+                    "the bottom of the body must be darker than the content above it");
+        });
+    }
+
+    @Test
+    void theEdgeShadowLeavesTheBodyTopCleanUntilScrolled() {
+        EdgeShadowRaster.render(sixRowsThreeVisible(), (surface, pixmap) -> {
+            int justBelowHeader = EdgeShadowRaster.luma(pixmap.getColor(100, 32));
+            int bodyMiddle = EdgeShadowRaster.luma(pixmap.getColor(100, 60));
+            assertEquals(bodyMiddle, justBelowHeader,
+                    "nothing is hidden above the fold, so the body top stays clean");
+        });
+    }
 }
