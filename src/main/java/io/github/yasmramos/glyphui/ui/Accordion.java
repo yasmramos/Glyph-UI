@@ -1,5 +1,6 @@
 package io.github.yasmramos.glyphui.ui;
 
+import io.github.yasmramos.glyphui.core.Animatable;
 import io.github.yasmramos.glyphui.events.GlyphKeys;
 import io.github.yasmramos.glyphui.events.KeyEvent;
 import io.github.yasmramos.glyphui.events.KeyEventType;
@@ -33,7 +34,7 @@ import java.util.List;
  * positioned below their headers, so content never overlaps a header. The
  * open-section state is observable through {@link #openIndicesProperty()}.</p>
  */
-public class Accordion extends Panel {
+public class Accordion extends Panel implements Animatable {
 
     /** Height of each section header, logical units. */
     public static final float HEADER_HEIGHT = 32.0f;
@@ -50,6 +51,13 @@ public class Accordion extends Panel {
     private boolean allowMultiple;
     private int focusedSection = -1;
     private Property<List<Integer>> openIndicesProperty;
+
+    /**
+     * One eased header fill per section, so focus moves with a fade instead of
+     * a jump. Grown lazily to the section count; each value rests at its target
+     * so a headless render paints the resting colour.
+     */
+    private final List<AnimatedColor> headerColors = new ArrayList<>();
 
     private Paint headerPaint;
     private Paint titlePaint;
@@ -353,9 +361,7 @@ public class Accordion extends Panel {
 
         float y = 0.0f;
         for (int i = 0; i < bodies.size(); i++) {
-            headerPaint.setColor(i == focusedSection
-                    ? getTheme().getControlHoverColor()
-                    : getTheme().getControlNormalColor());
+            headerPaint.setColor(syncedHeaderColor(i));
             canvas.drawRRect(0, y, width, HEADER_HEIGHT, radius, radius, headerPaint);
 
             titlePaint.setColor(enabled
@@ -395,6 +401,61 @@ public class Accordion extends Panel {
         } finally {
             canvas.restoreToCount(saveCount);
         }
+    }
+
+    /**
+     * Returns the header fill for a section, easing focus changes so the
+     * highlight fades instead of jumping.
+     *
+     * <p>The first call seeds the colour with the live state, so a headless
+     * render paints the resting fill and never fades in on appearance.
+     * Afterwards a focus change retargets the eased value and registers the
+     * accordion with the owning application so the frame loop drives it; with
+     * no application live nothing drives the transition, so the colour stays
+     * put until a caller drives {@link #advance(float)}.</p>
+     *
+     * @param index the section index
+     * @return the ARGB fill to paint this frame
+     */
+    private int syncedHeaderColor(int index) {
+        int target = index == focusedSection
+                ? getTheme().getControlHoverColor()
+                : getTheme().getControlNormalColor();
+        return headerColor(index).sync(this, this, target);
+    }
+
+    /** The eased fill for a section, created on first use. */
+    private AnimatedColor headerColor(int index) {
+        while (headerColors.size() <= index) {
+            headerColors.add(new AnimatedColor(0));
+        }
+        return headerColors.get(index);
+    }
+
+    /**
+     * Advances every header fade by one frame. {@link Animatable}
+     * implementation: the application drives it while a transition runs.
+     *
+     * @param deltaSeconds seconds elapsed since the previous frame
+     */
+    @Override
+    public void advance(float deltaSeconds) {
+        for (AnimatedColor color : headerColors) {
+            color.advance(deltaSeconds);
+        }
+    }
+
+    /**
+     * @return true when every header fade has settled
+     */
+    @Override
+    public boolean isFinished() {
+        for (AnimatedColor color : headerColors) {
+            if (!color.isFinished()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void ensurePaints() {
