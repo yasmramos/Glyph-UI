@@ -260,6 +260,32 @@ class NewWidgetsRasterTest extends TestBase {
         control.dispose();
     }
 
+    @Test
+    @DisplayName("Pagination eases the active pill between pages")
+    void paginationGlidesTheActivePill() {
+        Pagination pager = new Pagination();
+        pager.setX(0);
+        pager.setY(0);
+        pager.setPageCount(5);
+        pager.setWidth(pager.getPreferredWidth());
+        pager.setHeight(28);
+
+        // First paint places the pill on the current page: no glide.
+        pager.renderInternal(canvas);
+        canvas.flush();
+        assertTrue(pager.isFinished(), "the first paint places the pill in place");
+
+        // Moving a page starts a glide; a caller drives it to settle.
+        pager.setCurrentPage(3);
+        pager.renderInternal(canvas);
+        canvas.flush();
+        assertFalse(pager.isFinished(), "moving a page must start a glide");
+        pager.advance(1.0f);
+        assertTrue(pager.isFinished(), "the glide settles once its duration elapses");
+
+        pager.dispose();
+    }
+
     private boolean anyPixelNotIn(int excluded, int x0, int y0, int x1, int y1) {
         try (Pixmap pixmap = new Pixmap()) {
             if (!surfaceHolder[0].peekPixels(pixmap)) {
